@@ -1,5 +1,5 @@
 import { type z } from 'zod';
-/**if
+/**
  * Loads and validates environment variables from .env files.
  *
  * @param schema - The Zod schema to validate against.

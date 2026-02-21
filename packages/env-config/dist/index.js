@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { URL } from 'url'; // Built-in Node.js module
 import {} from 'zod';
-/**if
+/**
  * Loads and validates environment variables from .env files.
  *
  * @param schema - The Zod schema to validate against.
@@ -11,20 +11,17 @@ import {} from 'zod';
  * @returns The validated, type-safe environment object.
  */
 export function loadEnv(schema, importMetaUrl) {
-    // By using node file system functions create path/url strings - basically construct strings
+    // Resolve the app directory from the caller path.
     const appEnvDir = path.dirname(new URL(importMetaUrl).pathname);
-    // Set NODE_ENV either by default or passed value
+    // Use NODE_ENV if defined; default to development.
     const NODE_ENV = process.env.NODE_ENV || 'development';
-    // Create an array literal and add three path/url strings that are one level less than the current directory
-    // the resolve actually builds the string to make it a valid path
+    // Load env files with increasing override priority.
     const envFiles = [
         path.resolve(appEnvDir, '..', '.env'), // 1. Base .env
         path.resolve(appEnvDir, '..', `.env.${NODE_ENV}`), // 2. .env.development or .env.production
         path.resolve(appEnvDir, '..', '.env.local'), // 3. .env.local (highest priority)
     ];
-    // For each path/url string in the array check if the path exists and if it does
-    // load the .env file by dotenv and override any values in node.env if some already exists
-    // dotenv loads data from file into process.env object in NODE!
+    // Read each existing file into process.env.
     envFiles.forEach((filePath) => {
         if (fs.existsSync(filePath)) {
             dotenv.config({
@@ -33,9 +30,8 @@ export function loadEnv(schema, importMetaUrl) {
             });
         }
     });
-    // Zod parses the whole process.env object and validates it with zod
+    // Validate loaded values against the provided schema.
     const parsedEnv = schema.safeParse(process.env);
-    // validated object that contains values from process.env is returned for further use
     if (!parsedEnv.success) {
         const errors = parsedEnv.error.issues
             .map((issue) => `  ${issue.path.join('.')}: ${issue.message}`)
