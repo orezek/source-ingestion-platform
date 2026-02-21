@@ -1,0 +1,82 @@
+[
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 0,
+    "source": "jobs.cz",
+    "sourceId": "2000874556",
+    "htmlDetailPageKey": "job-html-2000874556.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000874556.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 1,
+    "source": "jobs.cz",
+    "sourceId": "2000380187",
+    "htmlDetailPageKey": "job-html-2000380187.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000380187.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 2,
+    "source": "jobs.cz",
+    "sourceId": "2000930746",
+    "htmlDetailPageKey": "job-html-2000930746.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000930746.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 3,
+    "source": "jobs.cz",
+    "sourceId": "2000934904",
+    "htmlDetailPageKey": "job-html-2000934904.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000934904.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 4,
+    "source": "jobs.cz",
+    "sourceId": "2000862264",
+    "htmlDetailPageKey": "job-html-2000862264.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000862264.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 5,
+    "source": "jobs.cz",
+    "sourceId": "2000869037",
+    "htmlDetailPageKey": "job-html-2000869037.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000869037.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 6,
+    "source": "jobs.cz",
+    "sourceId": "2000773058",
+    "htmlDetailPageKey": "job-html-2000773058.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000773058.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 7,
+    "source": "jobs.cz",
+    "sourceId": "2000783411",
+    "htmlDetailPageKey": "job-html-2000783411.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000783411.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 8,
+    "source": "jobs.cz",
+    "sourceId": "2000936882",
+    "htmlDetailPageKey": "job-html-2000936882.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000936882.html"
+  },
+  {
+    "datasetFileName": "dataset_TechCompassCZ_2025-12-19_21-40-52-997.json",
+    "datasetRecordIndex": 9,
+    "source": "jobs.cz",
+    "sourceId": "2000803447",
+    "htmlDetailPageKey": "job-html-2000803447.html",
+    "htmlPath": "/Users/aldokezer/Development/jobcompass/apps/job-ingestion-service/scrapped_jobs/records/job-html-2000803447.html"
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "name": "job-ingestion-service",
+  "version": "1.0.0",
+  "description": "JobCompass ETL ingestion shell for normalizing scraped jobs and persisting to MongoDB.",
+  "license": "ISC",
+  "author": "Oldrich Rezek oldrich.rezek@oldrichrezek.com",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "tsx watch src/app.ts",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/google-genai": "catalog:",
+    "@langchain/langgraph": "catalog:",
+    "@repo/env-config": "workspace:*",
+    "cheerio": "catalog:",
+    "mongodb": "catalog:",
+    "pino": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

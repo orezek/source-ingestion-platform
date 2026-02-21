@@ -1,0 +1,1 @@
+{"debugLog":true,"maxItems":2000,"proxyConfiguration":{"useApifyProxy":true,"apifyProxyGroups":["RESIDENTIAL"]},"startUrls":[{"url":"https://www.jobs.cz/prace/?field%5B%5D=200900012&field%5B%5D=200900013"}]}
