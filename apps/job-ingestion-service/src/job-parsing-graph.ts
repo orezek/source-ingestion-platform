@@ -93,6 +93,7 @@ export class JobParsingGraph {
           fileSizeBytes: loadedDetailPage.fileSizeBytes,
           rawHtmlChars: loadedDetailPage.rawHtmlChars,
           textContentChars: loadedDetailPage.textContentChars,
+          jobDescriptionSourceTextChars: loadedDetailPage.jobDescriptionSourceText?.length ?? 0,
         },
         'Loaded detail HTML file',
       );
@@ -106,6 +107,7 @@ export class JobParsingGraph {
       const extractionResult = await config.extractor.extractFromDetailPage(
         state.inputRecord.listingRecord,
         state.loadedDetailPage.textContent,
+        state.loadedDetailPage.jobDescriptionSourceText,
       );
       this.logger.debug(
         {
@@ -113,6 +115,8 @@ export class JobParsingGraph {
           llmCallDurationSeconds: extractionResult.telemetry.llmCallDurationSeconds,
           llmTotalTokens: extractionResult.telemetry.llmTotalTokens,
           llmTotalCostUsd: extractionResult.telemetry.llmTotalCostUsd,
+          summaryChars: extractionResult.detail.summary?.length ?? 0,
+          jobDescriptionChars: extractionResult.detail.jobDescription?.length ?? 0,
         },
         'Extracted structured detail fields from LLM',
       );

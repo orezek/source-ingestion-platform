@@ -16,6 +16,8 @@ scrapped_jobs/
 The parser is implemented with `@langchain/langgraph` and runs these nodes per record:
 
 1. `loadDetailPage`: reads `htmlDetailPageKey`, handles gzip, builds cleaned text.
+   - Also derives deterministic `jobDescription` source text from detail HTML with Cheerio.
+   - If the page matches jobs.cz template, it prioritizes the section headed `Pracovní nabídka`.
 2. `extractDetail`: calls Gemini with listing context + detail text and extracts structured fields.
 3. `merge`: merges listing + detail into one Zod-validated structured document.
 
@@ -48,7 +50,7 @@ High-level shape:
   detail: {
     canonicalTitle: string | null;
     summary: string | null;
-    description: string | null;
+    jobDescription: string | null;
     responsibilities: string[];
     requirements: string[];
     niceToHave: string[];

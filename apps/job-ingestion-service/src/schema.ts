@@ -66,7 +66,7 @@ export const languageRequirementSchema = z.object({
 export const extractedJobDetailSchema = z.object({
   canonicalTitle: z.string().nullable().default(null),
   summary: z.string().nullable().default(null),
-  description: z.string().nullable().default(null),
+  jobDescription: z.string().nullable().default(null),
   responsibilities: z.array(z.string()).default([]),
   requirements: z.array(z.string()).default([]),
   niceToHave: z.array(z.string()).default([]),

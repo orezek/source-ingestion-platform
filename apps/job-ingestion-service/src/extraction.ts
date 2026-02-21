@@ -14,6 +14,15 @@ Rules:
 - Extract only what is supported by evidence from the provided listing context and detail page text.
 - Do not invent values. If unknown, use null for scalar fields and [] for arrays.
 - Keep Czech content in Czech. Keep English content in English.
+- For detail.jobDescription:
+  - Use the provided "jobDescriptionSourceText" as the primary source whenever it is available.
+  - Preserve source wording. Do not paraphrase, summarize, or translate.
+  - Keep only role-relevant posting content (scope, responsibilities, requirements, conditions, benefits, process).
+  - Exclude navigation, legal, cookie, and unrelated UI text.
+- For detail.summary:
+  - Write a rich analytical summary in the same language as the ad.
+  - Target 4-8 sentences and at least ~450 characters when enough evidence is available.
+  - Cover role scope, key responsibilities, required skills, seniority, location/work mode, and compensation when present.
 - Normalize employmentTypes to one or more of:
   full-time, part-time, contract, freelance, internship, temporary, other.
 - Normalize workModes to one or more of:
@@ -21,15 +30,25 @@ Rules:
 - For salary use numbers only when explicitly available; otherwise keep numbers as null and fill rawText when possible.
 `;
 
-const buildPrompt = (listingRecord: SourceListingRecord, detailText: string): string => {
+const buildPrompt = (
+  listingRecord: SourceListingRecord,
+  detailText: string,
+  jobDescriptionSourceText: string | null,
+): string => {
   const listingContext = JSON.stringify(listingRecord, null, 2);
+  const descriptionSource = jobDescriptionSourceText?.trim().length
+    ? jobDescriptionSourceText
+    : '[not available]';
 
   return `${parserInstructions}
 
 Listing JSON context:
 ${listingContext}
 
-Detail page text:
+jobDescriptionSourceText (pre-extracted from detail page; preserve wording in detail.jobDescription):
+${descriptionSource}
+
+Detail page text (full cleaned body):
 ${detailText}`;
 };
 
@@ -94,6 +113,72 @@ const resolveTokenUsage = (raw: RawLlmMessage | undefined) => {
 
 const tokensToUsd = (tokens: number, usdPerMillionTokens: number): number =>
   (tokens / 1_000_000) * usdPerMillionTokens;
+
+const minimumSummaryChars = 260;
+const minimumJobDescriptionChars = 120;
+const fallbackSummaryMaxChars = 1_400;
+
+const compactWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const trimToWholeWord = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  const sliced = value.slice(0, maxChars);
+  const lastSpaceIndex = sliced.lastIndexOf(' ');
+  if (lastSpaceIndex <= 0) {
+    return sliced.trim();
+  }
+
+  return sliced.slice(0, lastSpaceIndex).trim();
+};
+
+const normalizeJobDescription = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value
+    .split('\n')
+    .map((line) => compactWhitespace(line))
+    .filter((line) => line.length > 0)
+    .join('\n')
+    .trim();
+
+  return normalized.length >= minimumJobDescriptionChars ? normalized : null;
+};
+
+const buildFallbackSummary = (
+  listingRecord: SourceListingRecord,
+  summary: string | null,
+  jobDescription: string | null,
+): string | null => {
+  const normalizedSummary = summary ? compactWhitespace(summary) : null;
+  if (normalizedSummary && normalizedSummary.length >= minimumSummaryChars) {
+    return normalizedSummary;
+  }
+
+  if (!jobDescription) {
+    return normalizedSummary;
+  }
+
+  const normalizedDescription = compactWhitespace(jobDescription.replace(/\n+/g, ' '));
+  if (normalizedDescription.length === 0) {
+    return normalizedSummary;
+  }
+
+  const heading = [listingRecord.jobTitle, listingRecord.companyName, listingRecord.location]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join(' | ');
+  const descriptionSnippet = trimToWholeWord(normalizedDescription, fallbackSummaryMaxChars);
+
+  if (heading.length === 0) {
+    return descriptionSnippet;
+  }
+
+  return `${heading}. ${descriptionSnippet}`.trim();
+};
 
 export type GeminiExtractorConfig = {
   apiKey: string;
@@ -160,13 +245,15 @@ export class GeminiJobDetailExtractor {
   async extractFromDetailPage(
     listingRecord: SourceListingRecord,
     detailPageText: string,
+    jobDescriptionSourceText: string | null,
   ): Promise<ExtractionResult> {
-    const prompt = buildPrompt(listingRecord, detailPageText);
+    const prompt = buildPrompt(listingRecord, detailPageText, jobDescriptionSourceText);
     this.logger.debug(
       {
         sourceId: listingRecord.sourceId,
         source: listingRecord.source,
         detailTextChars: detailPageText.length,
+        jobDescriptionSourceTextChars: jobDescriptionSourceText?.length ?? 0,
         model: this.modelName,
       },
       'Starting LLM detail extraction',
@@ -176,7 +263,19 @@ export class GeminiJobDetailExtractor {
     const response = await this.structuredModel.invoke(prompt);
     const llmCallDurationSeconds = (performance.now() - startedAt) / 1_000;
 
-    const detail = extractedJobDetailSchema.parse(response.parsed);
+    const parsedDetail = extractedJobDetailSchema.parse(response.parsed);
+    const resolvedJobDescription =
+      normalizeJobDescription(jobDescriptionSourceText) ?? parsedDetail.jobDescription;
+    const resolvedSummary = buildFallbackSummary(
+      listingRecord,
+      parsedDetail.summary,
+      resolvedJobDescription,
+    );
+    const detail = extractedJobDetailSchema.parse({
+      ...parsedDetail,
+      summary: resolvedSummary,
+      jobDescription: resolvedJobDescription,
+    });
     const usage = resolveTokenUsage(response.raw);
 
     const llmInputCostUsd = tokensToUsd(usage.inputTokens, this.inputPriceUsdPerMillionTokens);
@@ -188,6 +287,8 @@ export class GeminiJobDetailExtractor {
         llmInputTokens: usage.inputTokens,
         llmOutputTokens: usage.outputTokens,
         llmTotalTokens: usage.totalTokens,
+        summaryChars: detail.summary?.length ?? 0,
+        jobDescriptionChars: detail.jobDescription?.length ?? 0,
         llmTotalCostUsd: llmInputCostUsd + llmOutputCostUsd,
       },
       'Completed LLM detail extraction',
