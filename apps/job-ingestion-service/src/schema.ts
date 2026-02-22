@@ -295,7 +295,7 @@ export const extractedJobDetailSchema = z.object({
     .nullable()
     .default(null)
     .describe(
-      'Standardize to one of: medior, senior, junior, absolvent. Use signals from the whole ad context (listing JSON, pre-extracted jobDescription, and full detail text). If explicit, extract directly. Otherwise infer from required experience, responsibility scope, ownership, and title signals. Use "absolvent" for graduate/entry-level ads aimed at fresh graduates, "medior" for mid-level roles. Do not output synonyms like mid, lead, principal, or manager. Keep null only when there is truly no seniority signal.',
+      'Standardize to one of: medior, senior, junior, absolvent. Prefer explicit evidence (keywords such as junior/senior/medior/mid/intermediate, graduate/absolvent labels). If explicit evidence is absent, infer only when there are at least 2 strong signals (e.g. years of experience + leadership scope). Do not infer "medior" from a generic role title alone. Keep null when evidence is weak or ambiguous.',
     ),
   employmentTypes: z
     .array(employmentTypeSchema)
@@ -303,7 +303,12 @@ export const extractedJobDetailSchema = z.object({
     .describe(
       'Normalize to one or more of: full-time, part-time, contract, freelance, internship, temporary, other.',
     ),
-  workModes: z.array(workModeSchema).default([]),
+  workModes: z
+    .array(workModeSchema)
+    .default([])
+    .describe(
+      'Use only explicit evidence from the ad. Default to ["unknown"] when remote/hybrid/onsite is not explicitly stated. Do not assume onsite from location alone.',
+    ),
   locations: z.array(extractedLocationSchema).default([]),
   salary: extractedSalarySchema,
   languageRequirements: z.array(languageRequirementSchema).default([]),

@@ -25,8 +25,14 @@ Rules:
   - recruiterContacts.contactName
   - recruiterContacts.contactEmail
   - recruiterContacts.contactPhone
-- Normalize workModes to one or more of:
-  onsite, hybrid, remote, unknown.
+- For detail.workModes:
+  - Default to ["unknown"] unless the ad explicitly states remote, hybrid, or onsite.
+  - Only infer onsite when there is an explicit place-of-work statement and no remote/hybrid hints.
+  - Do not assume onsite just because a location or office address is present.
+- For detail.seniorityLevel:
+  - Keep null unless there is explicit evidence (e.g. junior/senior keyword, medior/mid/intermediate label) or at least 2 strong signals.
+  - Strong signals include explicit years-of-experience requirements and leadership scope signals.
+  - Do not infer "medior" from a generic role title alone.
 - For detail.techStack:
   - Include only explicitly named technologies, languages, frameworks, databases, tools, protocols, or standards.
   - Exclude soft skills, personality traits, and generic job categories.
@@ -75,7 +81,7 @@ const modelOutputJobDetailSchema = extractedJobDetailSchema.extend({
     .nullable()
     .default(null)
     .describe(
-      'Standardize to one of: medior, senior, junior, absolvent. Use signals from the whole ad context (listing JSON, pre-extracted jobDescription, and full detail text). If explicit, extract directly. Otherwise infer from required experience, responsibility scope, ownership, and title signals. Use "absolvent" for graduate/entry-level ads aimed at fresh graduates, "medior" for mid-level roles. Do not output synonyms like mid, lead, principal, or manager. Keep null only when there is truly no seniority signal.',
+      'Standardize to one of: medior, senior, junior, absolvent. Prefer explicit evidence (keywords such as junior/senior/medior/mid/intermediate, graduate/absolvent labels). If explicit evidence is absent, infer only when there are at least 2 strong signals (e.g. years of experience + leadership scope). Do not infer "medior" from a generic role title alone. Keep null when evidence is weak or ambiguous.',
     ),
 });
 
@@ -192,82 +198,17 @@ const normalizeJobDescription = (value: string | null): string | null => {
 };
 
 type StandardSeniorityLevel = 'medior' | 'senior' | 'junior' | 'absolvent';
+type StandardWorkMode = 'onsite' | 'hybrid' | 'remote' | 'unknown';
 
-const seniorityPatternRules: Array<{ value: StandardSeniorityLevel; patterns: RegExp[] }> = [
-  {
-    value: 'absolvent',
-    patterns: [
-      /\babsolvent/i,
-      /\bgraduate\b/i,
-      /\bentry[\s-]?level\b/i,
-      /\bbez\s+praxe\b/i,
-      /\bfor\s+graduates\b/i,
-      /\bpro\s+absolventy\b/i,
-      /\bvhodn[eé]\s+i\s+pro\s+absolventy\b/i,
-    ],
-  },
-  {
-    value: 'junior',
-    patterns: [
-      /\bjunior\b/i,
-      /\bjr\.?\b/i,
-      /\bza[cč][aá]te[cč]n[ií]k/i,
-      /\b1-2\s+roky/i,
-      /\bdo\s+2\s+let\b/i,
-    ],
-  },
-  {
-    value: 'medior',
-    patterns: [
-      /\bmedior\b/i,
-      /\bmid(?:dle)?\b/i,
-      /\bintermediate\b/i,
-      /\b2-4\s+roky/i,
-      /\b3\s+roky/i,
-    ],
-  },
-  {
-    value: 'senior',
-    patterns: [
-      /\bsenior\b/i,
-      /\bsr\.?\b/i,
-      /\blead\b/i,
-      /\bprincipal\b/i,
-      /\bstaff\b/i,
-      /\bexpert\b/i,
-      /\b5\+\s*(?:years?|let)\b/i,
-      /\b6\+\s*(?:years?|let)\b/i,
-      /\barchitekt\b/i,
-      /\bvedouc[ií]\b/i,
-    ],
-  },
-];
+const countRegexHits = (text: string, patterns: RegExp[]): number =>
+  patterns.reduce((sum, pattern) => sum + (pattern.test(text) ? 1 : 0), 0);
 
-const normalizeSeniorityLevel = (value: string | null): StandardSeniorityLevel | null => {
-  if (!value) {
-    return null;
-  }
-
-  const normalized = compactWhitespace(value).toLowerCase();
-  if (normalized.length === 0) {
-    return null;
-  }
-
-  for (const rule of seniorityPatternRules) {
-    if (rule.patterns.some((pattern) => pattern.test(normalized))) {
-      return rule.value;
-    }
-  }
-
-  return null;
-};
-
-const inferSeniorityLevelFromContext = (
+const collectSeniorityContext = (
   listingRecord: SourceListingRecord,
   detailPageText: string,
   jobDescription: string | null,
-): StandardSeniorityLevel | null => {
-  const context = [
+): string =>
+  [
     listingRecord.jobTitle,
     listingRecord.publishedInfoText,
     listingRecord.salary,
@@ -279,6 +220,65 @@ const inferSeniorityLevelFromContext = (
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     .join('\n');
 
+const explicitSenioritySignals: Array<{ value: StandardSeniorityLevel; patterns: RegExp[] }> = [
+  {
+    value: 'absolvent',
+    patterns: [
+      /\babsolvent/i,
+      /\bgraduate\b/i,
+      /\bentry[\s-]?level\b/i,
+      /\bfor\s+graduates\b/i,
+      /\bpro\s+absolventy\b/i,
+      /\bvhodn[eé]\s+i\s+pro\s+absolventy\b/i,
+      /\bjunior\s+absolvent/i,
+    ],
+  },
+  {
+    value: 'junior',
+    patterns: [/\bjunior\b/i, /\bjr\.?\b/i, /\bza[cč][aá]te[cč]n[ií]k/i],
+  },
+  {
+    value: 'medior',
+    patterns: [/\bmedior\b/i, /\bmid(?:dle)?[\s-]?level\b/i, /\bintermediate\b/i],
+  },
+  {
+    value: 'senior',
+    patterns: [/\bsenior\b/i, /\bsr\.?\b/i, /\bprincipal\b/i, /\bstaff\b/i, /\blead\b/i],
+  },
+];
+
+const strongSenioritySignals: Array<{ value: StandardSeniorityLevel; patterns: RegExp[] }> = [
+  {
+    value: 'absolvent',
+    patterns: [/\bbez\s+praxe\b/i, /\bno\s+experience\s+required\b/i, /\b0\s*(?:-|to)\s*1\s+rok/i],
+  },
+  {
+    value: 'junior',
+    patterns: [/\b1-2\s+roky/i, /\bdo\s+2\s+let\b/i, /\b1\+\s*(?:years?|let)\b/i],
+  },
+  {
+    value: 'medior',
+    patterns: [/\b2-4\s+roky/i, /\b3\+\s*(?:years?|let)\b/i, /\b4\+\s*(?:years?|let)\b/i],
+  },
+  {
+    value: 'senior',
+    patterns: [
+      /\b5\+\s*(?:years?|let)\b/i,
+      /\b6\+\s*(?:years?|let)\b/i,
+      /\b7\+\s*(?:years?|let)\b/i,
+      /\barchitekt\b/i,
+      /\bteam\s+lead\b/i,
+      /\bleading\s+(?:a\s+)?team\b/i,
+      /\bvede(?:n[ií])?\s+t[ýy]m/i,
+      /\bmentoring\b/i,
+      /\bmentor(?:ing)?\b/i,
+    ],
+  },
+];
+
+const resolveExplicitSeniorityLevelFromContext = (
+  context: string,
+): StandardSeniorityLevel | null => {
   if (context.length === 0) {
     return null;
   }
@@ -290,21 +290,120 @@ const inferSeniorityLevelFromContext = (
     senior: 0,
   };
 
-  for (const rule of seniorityPatternRules) {
-    for (const pattern of rule.patterns) {
-      if (pattern.test(context)) {
-        scores[rule.value] += 1;
-      }
-    }
+  for (const rule of explicitSenioritySignals) {
+    scores[rule.value] = countRegexHits(context, rule.patterns);
   }
 
   const ranked = Object.entries(scores).sort((left, right) => right[1] - left[1]);
   const [topLevel, topScore] = ranked[0] ?? [];
-  if (!topLevel || typeof topScore !== 'number' || topScore <= 0) {
+  const secondScore = typeof ranked[1]?.[1] === 'number' ? ranked[1][1] : 0;
+  if (!topLevel || typeof topScore !== 'number' || topScore <= 0 || topScore === secondScore) {
     return null;
   }
 
   return topLevel as StandardSeniorityLevel;
+};
+
+const inferSeniorityLevelFromStrongSignals = (context: string): StandardSeniorityLevel | null => {
+  if (context.length === 0) {
+    return null;
+  }
+
+  const scores: Record<StandardSeniorityLevel, number> = {
+    absolvent: 0,
+    junior: 0,
+    medior: 0,
+    senior: 0,
+  };
+
+  for (const rule of strongSenioritySignals) {
+    scores[rule.value] = countRegexHits(context, rule.patterns);
+  }
+
+  const ranked = Object.entries(scores).sort((left, right) => right[1] - left[1]);
+  const [topLevel, topScore] = ranked[0] ?? [];
+  const secondScore = typeof ranked[1]?.[1] === 'number' ? ranked[1][1] : 0;
+  if (!topLevel || typeof topScore !== 'number' || topScore < 2 || topScore === secondScore) {
+    return null;
+  }
+
+  return topLevel as StandardSeniorityLevel;
+};
+
+const resolveSeniorityLevelFromContext = (
+  listingRecord: SourceListingRecord,
+  detailPageText: string,
+  jobDescription: string | null,
+): StandardSeniorityLevel | null => {
+  const context = collectSeniorityContext(listingRecord, detailPageText, jobDescription);
+  return (
+    resolveExplicitSeniorityLevelFromContext(context) ??
+    inferSeniorityLevelFromStrongSignals(context)
+  );
+};
+
+const explicitRemotePatterns = [
+  /\bremote\b/i,
+  /\bfull[\s-]?remote\b/i,
+  /\bhome\s*office\b/i,
+  /\bwork\s+from\s+home\b/i,
+  /\bna\s+d[aá]lku\b/i,
+  /\bpr[aá]ce\s+z\s+domova\b/i,
+];
+
+const explicitHybridPatterns = [
+  /\bhybrid\b/i,
+  /\bhybridn[ěe]\b/i,
+  /\bhybridn[ií]\s+re[zž]im\b/i,
+  /\bkombinace\b.*\b(?:home\s*office|domov|kancel[aá][řr])\b/i,
+  /\bpartly\s+remote\b/i,
+];
+
+const explicitOnsitePatterns = [
+  /\bonsite\b/i,
+  /\bon[\s-]?site\b/i,
+  /\bna\s+pracovi[sš]ti\b/i,
+  /\bm[ií]sto\s+v[ýy]konu\s+pr[aá]ce\b/i,
+  /\bplace\s+of\s+work\b/i,
+];
+
+const resolveWorkModesFromContext = (
+  listingRecord: SourceListingRecord,
+  detailPageText: string,
+  jobDescription: string | null,
+): StandardWorkMode[] => {
+  const context = [
+    listingRecord.jobTitle,
+    listingRecord.publishedInfoText,
+    listingRecord.location,
+    jobDescription,
+    detailPageText,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+
+  if (context.length === 0) {
+    return ['unknown'];
+  }
+
+  const hasRemote = explicitRemotePatterns.some((pattern) => pattern.test(context));
+  const hasHybrid = explicitHybridPatterns.some((pattern) => pattern.test(context));
+  const hasOnsite = explicitOnsitePatterns.some((pattern) => pattern.test(context));
+
+  const resolved: StandardWorkMode[] = [];
+  if (hasRemote) {
+    resolved.push('remote');
+  }
+
+  if (hasHybrid) {
+    resolved.push('hybrid');
+  }
+
+  if (hasOnsite && !hasHybrid && !hasRemote) {
+    resolved.push('onsite');
+  }
+
+  return resolved.length > 0 ? resolved : ['unknown'];
 };
 
 const formatListPreview = (items: string[], limit: number): string | null => {
@@ -389,7 +488,7 @@ const buildDerivedSummary = (
   const company = listingRecord.companyName ?? null;
   const seniority = detail.seniorityLevel ?? null;
   const employment = formatEnumListSummary(detail.employmentTypes);
-  const workModes = formatEnumListSummary(detail.workModes);
+  const workModes = formatEnumListSummary(detail.workModes.filter((mode) => mode !== 'unknown'));
   const locations = formatLocationsSummary(listingRecord, detail);
   const salary = formatSalarySummary(listingRecord, detail);
   const languages = formatListPreview(
@@ -726,18 +825,31 @@ export class GeminiJobDetailExtractor {
     const parsedDetail = modelOutputJobDetailSchema.parse(response.parsed);
     const resolvedJobDescription =
       normalizeJobDescription(extractedJobDescription) ?? parsedDetail.jobDescription;
-    const resolvedSeniorityLevel =
-      normalizeSeniorityLevel(parsedDetail.seniorityLevel) ??
-      inferSeniorityLevelFromContext(listingRecord, detailPageText, resolvedJobDescription);
     const normalizedDetail = normalizedExtractedJobDetailSchema.parse({
       ...parsedDetail,
       summary: parsedDetail.summary,
       jobDescription: resolvedJobDescription,
-      seniorityLevel: resolvedSeniorityLevel,
     });
-    const resolvedSummary = buildDerivedSummary(listingRecord, normalizedDetail);
+    const resolvedSeniorityLevel = resolveSeniorityLevelFromContext(
+      listingRecord,
+      detailPageText,
+      normalizedDetail.jobDescription,
+    );
+    const resolvedWorkModes = resolveWorkModesFromContext(
+      listingRecord,
+      detailPageText,
+      normalizedDetail.jobDescription,
+    );
+    const summaryDetailContext = {
+      ...normalizedDetail,
+      seniorityLevel: resolvedSeniorityLevel,
+      workModes: resolvedWorkModes,
+    };
+    const resolvedSummary = buildDerivedSummary(listingRecord, summaryDetailContext);
     const detail = extractedJobDetailSchema.parse({
       ...normalizedDetail,
+      seniorityLevel: resolvedSeniorityLevel,
+      workModes: resolvedWorkModes,
       summary: resolvedSummary,
     });
     const usage = resolveTokenUsage(response.raw);
