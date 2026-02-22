@@ -4,3 +4,4 @@ dist
 .gitignore
 Dockerfile*
 README.md
+scrapped_jobs_converted/
