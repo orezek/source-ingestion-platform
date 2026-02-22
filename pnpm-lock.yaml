@@ -123,6 +123,9 @@ importers:
       crawlee:
         specifier: 'catalog:'
         version: 3.16.0(@types/node@25.0.3)(playwright@1.58.2)
+      mongodb:
+        specifier: 'catalog:'
+        version: 7.1.0(socks@2.8.7)
       playwright:
         specifier: 'catalog:'
         version: 1.58.2

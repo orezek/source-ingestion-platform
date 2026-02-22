@@ -67,6 +67,13 @@ The actor also writes a run-level summary JSON into the key-value store under `R
 including parsed list-page totals (for example `Našli jsme 1 587 nabídek`), crawl counters,
 render-type breakdowns, and stop reason.
 
+Optional MongoDB sink for run summaries (best effort; crawler still succeeds if Mongo is unavailable):
+
+- `ENABLE_MONGO_RUN_SUMMARY_WRITE=true`
+- `MONGODB_URI=...`
+- `MONGODB_DB_NAME=jobCompass` (default)
+- `MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION=crawlRunSummaryCollection` (default)
+
 ## Validate
 
 From the repository root:

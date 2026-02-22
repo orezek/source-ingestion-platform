@@ -36,6 +36,7 @@
     "@repo/env-config": "workspace:*",
     "apify": "catalog:",
     "crawlee": "catalog:",
+    "mongodb": "catalog:",
     "playwright": "catalog:",
     "zod": "catalog:"
   }

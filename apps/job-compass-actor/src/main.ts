@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { PlaywrightCrawler, Dataset, createPlaywrightRouter, log, type LogLevel } from 'crawlee';
 import type { Locator } from 'playwright';
 import { Actor, type ProxyConfigurationOptions } from 'apify';
+import { MongoClient } from 'mongodb';
 import { envs } from './env-setup.js';
 
 // ------------------ 1. Definition of Schemas & Types ------------------ //
@@ -133,6 +134,112 @@ type SeedListSummary = {
   parsedResultsCount: number | null;
   parsedResultsText: string | null;
 };
+
+type CrawlRunStatus = 'running' | 'succeeded' | 'failed';
+
+type CrawlRunSummaryDocument = {
+  _id: string;
+  crawlRunId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  [key: string]: unknown;
+};
+
+type CrawlRunSummaryMongoConfig = {
+  enabled: boolean;
+  mongoUri?: string;
+  dbName: string;
+  collectionName: string;
+};
+
+function serializeErrorForSummary(error: unknown): {
+  name: string;
+  message: string;
+  stack?: string;
+} {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    name: 'UnknownError',
+    message: typeof error === 'string' ? error : JSON.stringify(error),
+  };
+}
+
+async function upsertRunSummaryToMongo(
+  config: CrawlRunSummaryMongoConfig,
+  crawlRunId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!config.enabled) {
+    return;
+  }
+
+  if (!config.mongoUri) {
+    log.warning(
+      'ENABLE_MONGO_RUN_SUMMARY_WRITE=true but MONGODB_URI is not configured. Skipping Mongo run summary write.',
+    );
+    return;
+  }
+
+  const client = new MongoClient(config.mongoUri);
+  try {
+    await client.connect();
+    const now = new Date();
+    const collection = client
+      .db(config.dbName)
+      .collection<CrawlRunSummaryDocument>(config.collectionName);
+    await collection.updateOne(
+      { _id: crawlRunId },
+      {
+        $set: {
+          ...payload,
+          updatedAt: now,
+        },
+        $setOnInsert: {
+          _id: crawlRunId,
+          crawlRunId,
+          createdAt: now,
+        },
+      },
+      { upsert: true },
+    );
+  } finally {
+    await client.close();
+  }
+}
+
+async function upsertRunSummaryToMongoBestEffort(
+  config: CrawlRunSummaryMongoConfig,
+  crawlRunId: string,
+  payload: Record<string, unknown>,
+  phase: 'start' | 'final',
+): Promise<void> {
+  try {
+    await upsertRunSummaryToMongo(config, crawlRunId, payload);
+    if (config.enabled && config.mongoUri) {
+      log.info('Persisted crawl run summary to MongoDB', {
+        crawlRunId,
+        phase,
+        mongoDbName: config.dbName,
+        mongoCollection: config.collectionName,
+      });
+    }
+  } catch (error) {
+    log.warning('Failed to persist crawl run summary to MongoDB (best effort)', {
+      crawlRunId,
+      phase,
+      error,
+      mongoDbName: config.dbName,
+      mongoCollection: config.collectionName,
+    });
+  }
+}
 
 const JOB_CARD_SELECTOR = 'article.SearchResultCard, article[data-jobad-id]';
 const SALARY_SELECTOR = 'span.Tag--success, [data-test="serp-salary"]';
@@ -633,9 +740,16 @@ const rawInput = await Actor.getInput<unknown>();
 if (!rawInput) throw new Error('⚠️ Input is missing!');
 const input = actorInputSchema.parse(rawInput);
 
+const crawlRunId = randomUUID();
 const startUrls = input.startUrls;
 const runStartedAt = new Date();
 const runStartedAtMs = Date.now();
+const mongoRunSummaryConfig: CrawlRunSummaryMongoConfig = {
+  enabled: envs.ENABLE_MONGO_RUN_SUMMARY_WRITE,
+  mongoUri: envs.MONGODB_URI,
+  dbName: envs.MONGODB_DB_NAME,
+  collectionName: envs.MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION,
+};
 
 for (const startUrl of startUrls) {
   if (!seedListSummaries.has(startUrl.url)) {
@@ -700,16 +814,46 @@ const crawler = new PlaywrightCrawler({
 
 log.info(`🚀 Starting scraper with limit: ${input.maxItems} items.`);
 
-await crawler.run(
-  startUrls.map((req) => ({
-    ...req,
-    label: 'LIST',
-    userData: {
-      startUrlSeed: req.url,
-      isSeedList: true,
+await upsertRunSummaryToMongoBestEffort(
+  mongoRunSummaryConfig,
+  crawlRunId,
+  {
+    source: 'jobs.cz',
+    status: 'running',
+    startedAt: runStartedAt.toISOString(),
+    input: {
+      startUrlsCount: startUrls.length,
+      startUrls: startUrls.map((item) => item.url),
+      maxItems: input.maxItems,
+      maxRequestsPerCrawlSafetyCap: Math.max(input.maxItems * 5, 50),
+      maxConcurrency: 1,
+      maxRequestsPerMinute: 30,
+      debugLog: input.debugLog ?? false,
+      proxyConfigured: Boolean(input.proxyConfiguration),
     },
-  })),
+  },
+  'start',
 );
+
+let crawlerRunError: unknown = null;
+try {
+  await crawler.run(
+    startUrls.map((req) => ({
+      ...req,
+      label: 'LIST',
+      userData: {
+        startUrlSeed: req.url,
+        isSeedList: true,
+      },
+    })),
+  );
+} catch (error) {
+  crawlerRunError = error;
+  log.error('Crawler run failed before completion', {
+    crawlRunId,
+    error,
+  });
+}
 
 const runEndedAt = new Date();
 const runDurationMs = Date.now() - runStartedAtMs;
@@ -730,13 +874,19 @@ const averageDetailRenderWaitMs =
 const averageDetailHtmlByteSize =
   htmlSnapshotsSaved > 0 ? Math.round(totalDetailHtmlBytes / htmlSnapshotsSaved) : 0;
 
-const runStopReason = maxItemsAbortTriggered
-  ? 'max_items_reached'
-  : storedDetailPages < input.maxItems
-    ? 'pagination_exhausted_or_no_more_requests'
-    : 'completed';
+const runStatus: CrawlRunStatus = crawlerRunError ? 'failed' : 'succeeded';
+const runStopReason = crawlerRunError
+  ? 'crawler_error'
+  : maxItemsAbortTriggered
+    ? 'max_items_reached'
+    : storedDetailPages < input.maxItems
+      ? 'pagination_exhausted_or_no_more_requests'
+      : 'completed';
 
 const runSummary = {
+  crawlRunId,
+  source: 'jobs.cz',
+  status: runStatus,
   startedAt: runStartedAt.toISOString(),
   finishedAt: runEndedAt.toISOString(),
   runDurationSeconds: Number((runDurationMs / 1000).toFixed(3)),
@@ -786,9 +936,31 @@ const runSummary = {
     totalDetailHtmlBytes,
   },
   failedRequestSamples,
+  error: crawlerRunError ? serializeErrorForSummary(crawlerRunError) : null,
 };
 
 await Actor.setValue('RUN_SUMMARY', runSummary);
 log.info('📊 Crawl run summary', runSummary);
+
+await upsertRunSummaryToMongoBestEffort(
+  mongoRunSummaryConfig,
+  crawlRunId,
+  {
+    source: 'jobs.cz',
+    status: runStatus,
+    startedAt: runSummary.startedAt,
+    finishedAt: runSummary.finishedAt,
+    stopReason: runSummary.outcome.stopReason,
+    parsedListingResultsCountTotal: runSummary.listPageResults.parsedListingResultsCountTotal,
+    datasetRecordsStored: runSummary.counters.datasetRecordsStored,
+    failedRequests: runSummary.outcome.failedRequests,
+    runSummary,
+  },
+  'final',
+);
+
+if (crawlerRunError) {
+  throw crawlerRunError;
+}
 
 await Actor.exit();
