@@ -53,6 +53,7 @@ type HubPromptChain = {
 
 type HubPromptRunnable = {
   inputVariables?: string[];
+  invoke(input: Record<string, string>): Promise<unknown>;
   pipe(input: unknown): HubPromptChain;
 };
 
@@ -66,7 +67,6 @@ type StructuredPromptContext = {
   detailText: string;
   listingJson: string;
   listingSalaryHint: string;
-  combinedInput: string;
 };
 
 const buildStructuredPromptContext = (
@@ -75,70 +75,12 @@ const buildStructuredPromptContext = (
 ): StructuredPromptContext => {
   const listingJson = JSON.stringify(listingRecord, null, 2);
   const listingSalaryHint = listingRecord.salary ?? '[not available]';
-  const combinedInput = [
-    'Listing JSON context:',
-    listingJson,
-    '',
-    'Listing salary hint (list page salary text):',
-    listingSalaryHint,
-    '',
-    'Detail page text (full cleaned body):',
-    detailText,
-  ].join('\n');
 
   return {
     detailText,
     listingJson,
     listingSalaryHint,
-    combinedInput,
   };
-};
-
-const resolveHubPromptVariableValue = (
-  variableName: string,
-  promptContext: StructuredPromptContext,
-): string => {
-  const normalized = variableName.trim().toLowerCase();
-
-  if (normalized.length === 0) {
-    return promptContext.combinedInput;
-  }
-
-  if (
-    normalized.includes('salary') &&
-    (normalized.includes('listing') || normalized.includes('hint'))
-  ) {
-    return promptContext.listingSalaryHint;
-  }
-
-  if (normalized.includes('listing')) {
-    return promptContext.listingJson;
-  }
-
-  if (
-    normalized.includes('detail') ||
-    normalized.includes('job_ad') ||
-    normalized.includes('jobad') ||
-    normalized.includes('raw_ad') ||
-    normalized.includes('ad_text')
-  ) {
-    return promptContext.detailText;
-  }
-
-  if (
-    normalized === 'input' ||
-    normalized === 'content' ||
-    normalized === 'context' ||
-    normalized === 'prompt'
-  ) {
-    return promptContext.combinedInput;
-  }
-
-  if (normalized === 'text' || normalized.endsWith('_text') || normalized.endsWith('text')) {
-    return promptContext.detailText;
-  }
-
-  return promptContext.combinedInput;
 };
 
 const buildHubPromptInput = (
@@ -147,29 +89,32 @@ const buildHubPromptInput = (
   inputVariables: string[] | undefined,
 ): Record<string, string> => {
   const promptContext = buildStructuredPromptContext(listingRecord, detailText);
+  const exactPromptInputs = {
+    jobAdDetailText: promptContext.detailText,
+    listingJson: promptContext.listingJson,
+    listingSalaryHint: promptContext.listingSalaryHint,
+  } satisfies Record<string, string>;
 
   if (inputVariables && inputVariables.length > 0) {
+    const unsupportedVariables = inputVariables.filter(
+      (variable) => !(variable in exactPromptInputs),
+    );
+    if (unsupportedVariables.length > 0) {
+      throw new Error(
+        `Unsupported LangSmith extractDetail prompt input variables: ${unsupportedVariables.join(', ')}. Supported variables are: ${Object.keys(exactPromptInputs).join(', ')}`,
+      );
+    }
+
     return Object.fromEntries(
       inputVariables.map((variable) => [
         variable,
-        resolveHubPromptVariableValue(variable, promptContext),
+        exactPromptInputs[variable as keyof typeof exactPromptInputs],
       ]),
     );
   }
 
   return {
-    input: promptContext.combinedInput,
-    context: promptContext.combinedInput,
-    content: promptContext.combinedInput,
-    listing_json: promptContext.listingJson,
-    listingJson: promptContext.listingJson,
-    listing_salary_hint: promptContext.listingSalaryHint,
-    listingSalaryHint: promptContext.listingSalaryHint,
-    detail_text: promptContext.detailText,
-    detailText: promptContext.detailText,
-    job_ad_text: promptContext.detailText,
-    jobAdText: promptContext.detailText,
-    text: promptContext.detailText,
+    jobAdDetailText: promptContext.detailText,
   };
 };
 
@@ -687,7 +632,8 @@ export class GeminiJobDetailExtractor {
     );
 
     const startedAt = performance.now();
-    const response = await prompt.pipe(this.structuredModel).invoke(promptInput);
+    const renderedPrompt = await prompt.invoke(promptInput);
+    const response = await this.structuredModel.invoke(renderedPrompt);
     const llmCallDurationSeconds = (performance.now() - startedAt) / 1_000;
 
     const parsedDetail = modelOutputJobDetailSchema.parse(response.parsed);
