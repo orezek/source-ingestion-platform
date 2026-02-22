@@ -26,6 +26,11 @@ Rules:
   - recruiterContacts.contactPhone
 - Normalize workModes to one or more of:
   onsite, hybrid, remote, unknown.
+- For detail.techStack:
+  - Include only explicitly named technologies, languages, frameworks, databases, tools, protocols, or standards.
+  - Exclude soft skills, personality traits, and generic job categories.
+  - Exclude generic office tools (e.g. Word/Excel/Outlook) unless they are explicitly critical to the role.
+  - Deduplicate and prefer canonical names; avoid emitting both generic and versioned variants of the same technology unless both are explicitly important.
 - For detail.salary:
   - Use evidence from both the listing JSON context and the detail page text.
   - The list-page salary text may be present in listing JSON field "salary" even when the detail page hides salary.

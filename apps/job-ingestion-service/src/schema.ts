@@ -77,6 +77,113 @@ const normalizeStringArray = (items: string[]): string[] =>
       .filter((item): item is string => item !== null),
   );
 
+const techStackNoisePatterns = [
+  /^komunikace$/i,
+  /^komunika[čc]n[íi]\s+schopnosti?$/i,
+  /^analytick[ée]\s+schopnosti?$/i,
+  /^t[ýy]mov[ýy]\s+duch$/i,
+  /^samostatnost$/i,
+  /^pe[čc]livost$/i,
+  /^zodpov[eě]dnost$/i,
+  /^proaktivita$/i,
+  /^flexibilita$/i,
+  /^komunika[čc]n[íi]\s+dovednosti$/i,
+  /^soft\s*skills?$/i,
+  /^communication(?:\s+skills?)?$/i,
+  /^analytical\s+skills?$/i,
+  /^problem[\s-]*solving$/i,
+  /^team(?:\s|-)?player$/i,
+  /^teamwork$/i,
+  /^backend$/i,
+  /^frontend$/i,
+  /^front-end$/i,
+  /^back-end$/i,
+  /^full[\s-]?stack$/i,
+  /^developer$/i,
+  /^program[aá]tor$/i,
+  /^engineer$/i,
+  /^analyst$/i,
+  /^word$/i,
+  /^excel$/i,
+  /^outlook$/i,
+  /^microsoft\s+word$/i,
+  /^microsoft\s+excel$/i,
+  /^microsoft\s+outlook$/i,
+];
+
+const techStackCanonicalForms: Array<[RegExp, string]> = [
+  [/^cicd$/i, 'CI/CD'],
+  [/^ci\s*[/\\-]\s*cd$/i, 'CI/CD'],
+  [/^git\s*hub\s*actions$/i, 'GitHub Actions'],
+  [/^github\s*actions$/i, 'GitHub Actions'],
+  [/^javascript$/i, 'JavaScript'],
+  [/^typescript$/i, 'TypeScript'],
+  [/^node\s*\.?\s*js$/i, 'Node.js'],
+  [/^react(?:\.?\s*js)?$/i, 'React'],
+  [/^vue(?:\.?\s*js)?$/i, 'Vue.js'],
+  [/^next(?:\.?\s*js)?$/i, 'Next.js'],
+  [/^nuxt(?:\.?\s*js)?$/i, 'Nuxt.js'],
+  [/^postgres(?:ql)?$/i, 'PostgreSQL'],
+  [/^mongo\s*db$/i, 'MongoDB'],
+  [/^ms\s*sql$/i, 'MS SQL'],
+  [/^mssql$/i, 'MS SQL'],
+  [/^sql\s*server$/i, 'SQL Server'],
+  [/^k8s$/i, 'Kubernetes'],
+  [/^dotnet$/i, '.NET'],
+  [/^\.net$/i, '.NET'],
+  [/^asp\s*\.?\s*net$/i, 'ASP.NET'],
+];
+
+const canonicalizeTechStackItem = (item: string): string => {
+  for (const [pattern, canonical] of techStackCanonicalForms) {
+    if (pattern.test(item)) {
+      return canonical;
+    }
+  }
+
+  return item;
+};
+
+const isTechStackNoise = (item: string): boolean =>
+  techStackNoisePatterns.some((pattern) => pattern.test(item));
+
+const getVersionlessTechBaseKey = (item: string): string | null => {
+  const match = item.match(/^(.+?)\s+v?\d[\w.+/-]*(?:\s+v?\d[\w.+/-]*)*$/i);
+  if (!match) {
+    return null;
+  }
+
+  const base = canonicalizeTechStackItem(match[1]!.trim()).toLocaleLowerCase();
+  return base.length > 0 ? base : null;
+};
+
+const collapseBaseAndVersionTechDuplicates = (items: string[]): string[] => {
+  const versionedBaseKeys = new Set(
+    items
+      .map((item) => getVersionlessTechBaseKey(item))
+      .filter((item): item is string => item !== null),
+  );
+
+  return items.filter((item) => {
+    if (getVersionlessTechBaseKey(item) !== null) {
+      return true;
+    }
+
+    const plainKey = canonicalizeTechStackItem(item).toLocaleLowerCase();
+    return !versionedBaseKeys.has(plainKey);
+  });
+};
+
+const normalizeTechStackArray = (items: string[]): string[] => {
+  const normalized = items
+    .map((item) => normalizeListItemText(item))
+    .filter((item): item is string => item !== null)
+    .map((item) => canonicalizeTechStackItem(item))
+    .filter((item) => !isTechStackNoise(item));
+
+  return collapseBaseAndVersionTechDuplicates(dedupeStringsCaseInsensitive(normalized));
+};
+
 const employmentTypeSchema = z.enum([
   'full-time',
   'part-time',
@@ -204,7 +311,7 @@ export const extractedJobDetailSchema = z.object({
     .array(z.string())
     .default([])
     .describe(
-      'Specific technologies, languages, frameworks (e.g. Java, SQL, React). Exclude generic tools like Word/Excel/Outlook unless critical.',
+      'Only explicitly named technologies, languages, frameworks, databases, tools, protocols, or standards (e.g. Java, SQL, React, OAuth2). Exclude soft skills, personality traits, and generic job categories. Exclude generic office tools like Word/Excel/Outlook unless critical.',
     ),
   travelRequirements: z
     .string()
@@ -316,7 +423,7 @@ export const normalizedExtractedJobDetailSchema = extractedJobDetailSchema.trans
     requirements: normalizeStringArray(detail.requirements),
     niceToHave: normalizeStringArray(detail.niceToHave),
     benefits: normalizeStringArray(detail.benefits),
-    techStack: normalizeStringArray(detail.techStack),
+    techStack: normalizeTechStackArray(detail.techStack),
     employmentTypes: dedupeStringsExact(detail.employmentTypes),
     workModes: dedupeStringsExact(detail.workModes),
     locations: normalizedLocations,
