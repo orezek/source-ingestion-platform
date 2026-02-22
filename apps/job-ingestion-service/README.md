@@ -110,6 +110,7 @@ High-level shape:
 Copy `.env.example` to `.env` and configure:
 
 - `LOG_LEVEL` for structured pino logs (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`)
+- `LOG_PRETTY=true` to enable human-readable `pino-pretty` console logs in a TTY terminal (development/local use)
 - `GEMINI_API_KEY` for model access
 - `LANGSMITH_API_KEY` to authenticate prompt pulls from LangSmith Hub
 - `LANGSMITH_PROMPT_NAME` (default `job-ad-extractor`)

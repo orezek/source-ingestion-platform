@@ -57,6 +57,7 @@ const logLevelSchema = z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: logLevelSchema.default('info'),
+  LOG_PRETTY: toBoolean.default(false),
   INPUT_ROOT_DIR: z.string().default('scrapped_jobs'),
   INPUT_RECORDS_DIR_NAME: z.string().default('records'),
   INGESTION_SAMPLE_SIZE: toOptionalPositiveInt.default(null),
@@ -92,7 +93,7 @@ type ParseRunStats = {
 };
 
 export const envs: EnvSchema = loadEnv(envSchema, import.meta.url);
-const logger = createLogger(envs.LOG_LEVEL);
+const logger = createLogger(envs.LOG_LEVEL, { pretty: envs.LOG_PRETTY });
 
 const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const inputRootDir = path.resolve(appRootDir, envs.INPUT_ROOT_DIR);
@@ -275,6 +276,7 @@ async function main(): Promise<void> {
       langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
       minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
       logLevel: envs.LOG_LEVEL,
+      logPretty: envs.LOG_PRETTY,
     },
     'Run configuration',
   );
