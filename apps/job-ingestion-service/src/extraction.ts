@@ -1,5 +1,4 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import * as hub from 'langchain/hub/node';
 import { z } from 'zod';
 
 import type { AppLogger } from './logger.js';
@@ -17,8 +16,6 @@ Rules:
 - Extract only what is supported by evidence from the provided listing context and detail page text.
 - Do not invent values. If unknown, use null for scalar fields and [] for arrays.
 - Keep Czech content in Czech. Keep English content in English.
-- detail.jobDescription is extracted in a dedicated node and provided in the prompt.
-- Preserve detail.jobDescription as provided when it is present.
 - detail.summary may be null. Final detail.summary is derived deterministically in post-processing from structured fields and listing context.
 - Fill short fields first; fill long text fields last.
 - Put recruiter contact information into detail.recruiterContacts object:
@@ -50,15 +47,8 @@ Rules:
   - Always return salary.inferred = false (reserved for post-processing).
 `;
 
-const buildPrompt = (
-  listingRecord: SourceListingRecord,
-  detailText: string,
-  extractedJobDescription: string | null,
-): string => {
+const buildPrompt = (listingRecord: SourceListingRecord, detailText: string): string => {
   const listingContext = JSON.stringify(listingRecord, null, 2);
-  const descriptionSource = extractedJobDescription?.trim().length
-    ? extractedJobDescription
-    : '[not available]';
 
   return `${parserInstructions}
 
@@ -67,9 +57,6 @@ ${listingContext}
 
 Listing salary hint (list page salary text):
 ${listingRecord.salary ?? '[not available]'}
-
-Pre-extracted detail.jobDescription text:
-${descriptionSource}
 
 Detail page text (full cleaned body):
 ${detailText}`;
@@ -111,21 +98,6 @@ type StructuredInvokeResult = {
   raw?: RawLlmMessage;
   parsed?: unknown;
 };
-
-type HubPromptChain = {
-  invoke(input: Record<string, string>): Promise<unknown>;
-};
-
-type HubPromptRunnable = {
-  inputVariables?: string[];
-  pipe(input: unknown): HubPromptChain;
-};
-
-const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
-
-const isHubPromptRunnable = (value: unknown): value is HubPromptRunnable =>
-  isObjectRecord(value) && typeof value.pipe === 'function';
 
 const toNonNegativeInt = (value: unknown): number => {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -536,91 +508,7 @@ const buildDerivedSummary = (
   return trimToWholeWord(summaryParts.join('. '), derivedSummaryMaxChars);
 };
 
-const toRawLlmMessage = (value: unknown): RawLlmMessage => {
-  if (typeof value === 'string') {
-    return { content: value };
-  }
-
-  if (isObjectRecord(value)) {
-    return value as RawLlmMessage;
-  }
-
-  return {};
-};
-
-const extractTextPart = (value: unknown): string => {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (!isObjectRecord(value)) {
-    return '';
-  }
-
-  const text = value.text;
-  if (typeof text === 'string') {
-    return text;
-  }
-
-  return '';
-};
-
-const extractTextContent = (content: unknown): string => {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return '';
-  }
-
-  return content
-    .map((part) => extractTextPart(part))
-    .filter((part) => part.length > 0)
-    .join('\n')
-    .trim();
-};
-
-const hubPromptInputAliases = [
-  'text',
-  'raw_text',
-  'rawText',
-  'ad_text',
-  'adText',
-  'job_ad_text',
-  'jobAdText',
-  'detail_text',
-  'detailText',
-  'content',
-  'input',
-];
-
-const buildHubPromptInput = (
-  rawAdText: string,
-  inputVariables: string[] | undefined,
-): Record<string, string> => {
-  if (!inputVariables || inputVariables.length === 0) {
-    return { text: rawAdText };
-  }
-
-  const allAliases = new Set([...inputVariables, ...hubPromptInputAliases]);
-  const entries = Array.from(allAliases, (variable) => [variable, rawAdText] as const);
-  return Object.fromEntries(entries);
-};
-
 export type GeminiExtractorConfig = {
-  apiKey: string;
-  model: string;
-  temperature: number;
-  thinkingLevel: ThinkingLevel | null;
-  inputPriceUsdPerMillionTokens: number;
-  outputPriceUsdPerMillionTokens: number;
-  logger: AppLogger;
-};
-
-export type LangSmithJobDescriptionExtractorConfig = {
-  langsmithApiKey: string;
-  promptName: string;
   apiKey: string;
   model: string;
   temperature: number;
@@ -644,125 +532,6 @@ export type ExtractionResult = {
   detail: ExtractedJobDetail;
   telemetry: ExtractionTelemetry;
 };
-
-export type JobDescriptionExtractionResult = {
-  jobDescription: string | null;
-  telemetry: ExtractionTelemetry;
-};
-
-export const mergeExtractionTelemetry = (
-  left: ExtractionTelemetry,
-  right: ExtractionTelemetry,
-): ExtractionTelemetry => ({
-  llmCallDurationSeconds: left.llmCallDurationSeconds + right.llmCallDurationSeconds,
-  llmInputTokens: left.llmInputTokens + right.llmInputTokens,
-  llmOutputTokens: left.llmOutputTokens + right.llmOutputTokens,
-  llmTotalTokens: left.llmTotalTokens + right.llmTotalTokens,
-  llmInputCostUsd: left.llmInputCostUsd + right.llmInputCostUsd,
-  llmOutputCostUsd: left.llmOutputCostUsd + right.llmOutputCostUsd,
-  llmTotalCostUsd: left.llmTotalCostUsd + right.llmTotalCostUsd,
-});
-
-export class LangSmithJobDescriptionExtractor {
-  private readonly promptName: string;
-
-  private readonly modelName: string;
-
-  private readonly inputPriceUsdPerMillionTokens: number;
-
-  private readonly outputPriceUsdPerMillionTokens: number;
-
-  private readonly logger: AppLogger;
-
-  private readonly model: ChatGoogleGenerativeAI;
-
-  private readonly hubPromptPromise: Promise<HubPromptRunnable>;
-
-  constructor(config: LangSmithJobDescriptionExtractorConfig) {
-    this.promptName = config.promptName;
-    this.modelName = config.model;
-    this.inputPriceUsdPerMillionTokens = config.inputPriceUsdPerMillionTokens;
-    this.outputPriceUsdPerMillionTokens = config.outputPriceUsdPerMillionTokens;
-    this.logger = config.logger.child({ component: 'LangSmithJobDescriptionExtractor' });
-
-    this.model = new ChatGoogleGenerativeAI({
-      apiKey: config.apiKey,
-      model: config.model,
-      temperature: config.temperature,
-      maxRetries: 2,
-      thinkingConfig: config.thinkingLevel ? { thinkingLevel: config.thinkingLevel } : undefined,
-    });
-
-    this.hubPromptPromise = this.loadHubPrompt(config.langsmithApiKey, config.promptName);
-  }
-
-  private async loadHubPrompt(apiKey: string, promptName: string): Promise<HubPromptRunnable> {
-    const pulledPrompt = await hub.pull(promptName, {
-      apiKey,
-      includeModel: false,
-    });
-
-    if (!isHubPromptRunnable(pulledPrompt)) {
-      throw new Error(
-        `LangSmith Hub prompt "${promptName}" is not a runnable prompt template with pipe().`,
-      );
-    }
-
-    return pulledPrompt;
-  }
-
-  async extractFromRawAdText(rawAdText: string): Promise<JobDescriptionExtractionResult> {
-    const prompt = await this.hubPromptPromise;
-    const promptInput = buildHubPromptInput(rawAdText, prompt.inputVariables);
-
-    this.logger.debug(
-      {
-        promptName: this.promptName,
-        model: this.modelName,
-        rawAdTextChars: rawAdText.length,
-        inputVariables: prompt.inputVariables ?? [],
-      },
-      'Starting jobDescription extraction with LangSmith Hub prompt',
-    );
-
-    const startedAt = performance.now();
-    const response = await prompt.pipe(this.model).invoke(promptInput);
-    const llmCallDurationSeconds = (performance.now() - startedAt) / 1_000;
-
-    const rawMessage = toRawLlmMessage(response);
-    const extractedText = extractTextContent(rawMessage.content);
-    const jobDescription = normalizeJobDescription(extractedText);
-    const usage = resolveTokenUsage(rawMessage);
-
-    const llmInputCostUsd = tokensToUsd(usage.inputTokens, this.inputPriceUsdPerMillionTokens);
-    const llmOutputCostUsd = tokensToUsd(usage.outputTokens, this.outputPriceUsdPerMillionTokens);
-
-    this.logger.debug(
-      {
-        promptName: this.promptName,
-        llmCallDurationSeconds,
-        llmInputTokens: usage.inputTokens,
-        llmOutputTokens: usage.outputTokens,
-        llmTotalTokens: usage.totalTokens,
-        jobDescriptionChars: jobDescription?.length ?? 0,
-      },
-      'Completed jobDescription extraction with LangSmith Hub prompt',
-    );
-
-    return {
-      jobDescription,
-      telemetry: {
-        llmCallDurationSeconds,
-        llmInputTokens: usage.inputTokens,
-        llmOutputTokens: usage.outputTokens,
-        llmTotalTokens: usage.totalTokens,
-        llmInputCostUsd,
-        llmOutputCostUsd,
-        llmTotalCostUsd: llmInputCostUsd + llmOutputCostUsd,
-      },
-    };
-  }
-}
 
 export class GeminiJobDetailExtractor {
   private readonly modelName: string;
@@ -804,15 +573,13 @@ export class GeminiJobDetailExtractor {
   async extractFromDetailPage(
     listingRecord: SourceListingRecord,
     detailPageText: string,
-    extractedJobDescription: string | null,
   ): Promise<ExtractionResult> {
-    const prompt = buildPrompt(listingRecord, detailPageText, extractedJobDescription);
+    const prompt = buildPrompt(listingRecord, detailPageText);
     this.logger.debug(
       {
         sourceId: listingRecord.sourceId,
         source: listingRecord.source,
         detailTextChars: detailPageText.length,
-        extractedJobDescriptionChars: extractedJobDescription?.length ?? 0,
         model: this.modelName,
       },
       'Starting LLM detail extraction',
@@ -823,8 +590,7 @@ export class GeminiJobDetailExtractor {
     const llmCallDurationSeconds = (performance.now() - startedAt) / 1_000;
 
     const parsedDetail = modelOutputJobDetailSchema.parse(response.parsed);
-    const resolvedJobDescription =
-      normalizeJobDescription(extractedJobDescription) ?? parsedDetail.jobDescription;
+    const resolvedJobDescription = normalizeJobDescription(parsedDetail.jobDescription);
     const normalizedDetail = normalizedExtractedJobDetailSchema.parse({
       ...parsedDetail,
       summary: parsedDetail.summary,
