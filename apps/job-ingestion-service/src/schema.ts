@@ -24,7 +24,11 @@ const employmentTypeSchema = z.enum([
 ]);
 
 const workModeSchema = z.enum(['onsite', 'hybrid', 'remote', 'unknown']);
-const seniorityLevelSchema = z.enum(['medior', 'senior', 'junior', 'absolvent']);
+const seniorityLevelSchema = z
+  .enum(['medior', 'senior', 'junior', 'absolvent'])
+  .describe(
+    "Infer level: 'absolvent' (0 exp/fresh grad), 'junior' (<2y), 'medior' (standard/mid), 'senior' (5y+ or lead).",
+  );
 
 const compensationPeriodSchema = z
   .enum(['hour', 'day', 'month', 'year', 'project', 'unknown'])
