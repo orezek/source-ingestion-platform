@@ -6,13 +6,18 @@ import { envs } from './env-setup.js';
 
 // ------------------ 1. Definition of Schemas & Types ------------------ //
 
-// Input Interface matches .actor/input_schema.json
-interface Input {
-  startUrls: { url: string }[];
-  maxItems: number;
-  proxyConfiguration?: ProxyConfigurationOptions;
-  debugLog?: boolean;
-}
+const actorInputSchema = z.object({
+  startUrls: z
+    .array(
+      z.object({
+        url: z.string().url(),
+      }),
+    )
+    .default([{ url: 'https://www.jobs.cz/prace/' }]),
+  maxItems: z.coerce.number().int().positive(),
+  proxyConfiguration: z.custom<ProxyConfigurationOptions>().optional(),
+  debugLog: z.boolean().optional().default(false),
+});
 
 // Output Schema (Zod) for Validation
 const internalJobAdSchema = z.object({
@@ -39,11 +44,17 @@ function normalizeWhitespace(input: string): string {
     .trim();
 }
 
+const JOB_CARD_SELECTOR = 'article.SearchResultCard, article[data-jobad-id]';
+const SALARY_SELECTOR = 'span.Tag--success, [data-test="serp-salary"]';
+const NEXT_PAGE_SELECTOR = '.Pagination__button--next, [data-test="pagination-next"]';
+
 // ------------------ 2. Router & Handler Logic ------------------ //
 
 const router = createPlaywrightRouter();
+let enqueuedDetailRequests = 0;
+let storedDetailPages = 0;
 
-router.addHandler('DETAILS', async ({ request, page, log }) => {
+router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
   const routerDetailsLog = log.child({ prefix: 'DETAILS' });
   routerDetailsLog.debug(`Processing DETAILS page: ${request.url}`);
 
@@ -66,6 +77,10 @@ router.addHandler('DETAILS', async ({ request, page, log }) => {
 
   const safeResult = internalJobAdSchema.safeParse(result);
 
+  await Actor.setValue(htmlDetailPageKey, jobDetailHtml, {
+    contentType: 'text/html',
+  });
+
   if (safeResult.success) {
     routerDetailsLog.info(`✅ Saved job: ${result.sourceId} | ${result.jobTitle}`);
     await Dataset.pushData(safeResult.data);
@@ -75,9 +90,14 @@ router.addHandler('DETAILS', async ({ request, page, log }) => {
     });
     await Dataset.pushData({ ...result, _validationErrors: safeResult.error });
   }
-  await Actor.setValue(htmlDetailPageKey, jobDetailHtml, {
-    contentType: 'text/html',
-  });
+
+  storedDetailPages += 1;
+  if (storedDetailPages >= input.maxItems) {
+    routerDetailsLog.info(
+      `Reached maxItems (${input.maxItems}) after storing ${storedDetailPages} job detail pages. Stopping crawl.`,
+    );
+    await crawler.autoscaledPool?.abort();
+  }
 });
 
 router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) => {
@@ -85,13 +105,15 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
   routerListLog.info(`📂 Scanning List: ${request.url}`);
 
   try {
-    await page.waitForSelector('article.SearchResultCard', { timeout: 5000 });
+    await page.waitForSelector(JOB_CARD_SELECTOR, { timeout: 5000 });
   } catch (e) {
-    routerListLog.warning(`No job cards found on page ${request.url}. Ending pagination. ${e}`);
-    return;
+    routerListLog.warning(
+      `Timed out waiting for job cards on page ${request.url}. Letting Crawlee retry this page. ${e}`,
+    );
+    throw e;
   }
 
-  const jobCards = await page.locator('article.SearchResultCard').all();
+  const jobCards = await page.locator(JOB_CARD_SELECTOR).all();
   routerListLog.info(`Found ${jobCards.length} job cards.`);
 
   for (const card of jobCards) {
@@ -100,7 +122,7 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
     const idLocator = card.locator('a[data-jobad-id]');
     const statusLocator = card.locator('[data-test-ad-status]');
     const locationLocator = card.locator('li[data-test="serp-locality"]');
-    const salaryLocator = card.locator('span.Tag--success');
+    const salaryLocator = card.locator(SALARY_SELECTOR);
     const companyLocator = card.locator('span[translate="no"]');
 
     const getSafeText = async (loc: Locator) => {
@@ -124,8 +146,15 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
 
     if (!href || !jobId) continue;
 
+    if (enqueuedDetailRequests >= input.maxItems) {
+      routerListLog.info(
+        `Reached maxItems (${input.maxItems}) while enqueuing detail pages. Stopping pagination enqueue.`,
+      );
+      break;
+    }
+
     // Enqueue Detail Page
-    await crawler.requestQueue?.addRequest({
+    const enqueueResult = await crawler.requestQueue?.addRequest({
       url: new URL(href, request.url).toString(),
       label: 'DETAILS',
       userData: {
@@ -137,14 +166,21 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
         publishedInfoText: status,
       },
     });
+    if (enqueueResult && !enqueueResult.wasAlreadyPresent && !enqueueResult.wasAlreadyHandled) {
+      enqueuedDetailRequests += 1;
+    }
   }
 
   // Pagination
-  const nextButton = await page.locator('.Pagination__button--next');
-  if ((await nextButton.count()) > 0 && (await nextButton.isEnabled())) {
+  const nextButton = await page.locator(NEXT_PAGE_SELECTOR);
+  if (
+    enqueuedDetailRequests < input.maxItems &&
+    (await nextButton.count()) > 0 &&
+    (await nextButton.isEnabled())
+  ) {
     await enqueueLinks({
       label: 'LIST',
-      selector: '.Pagination__button--next',
+      selector: NEXT_PAGE_SELECTOR,
     });
   }
 });
@@ -153,11 +189,11 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
 
 await Actor.init();
 // Sanity Check for local run!
-const input = await Actor.getInput<Input>();
-if (!input) throw new Error('⚠️ Input is missing!');
-if (!input.maxItems) throw new Error("⚠️ Input 'maxItems' is required.");
+const rawInput = await Actor.getInput<unknown>();
+if (!rawInput) throw new Error('⚠️ Input is missing!');
+const input = actorInputSchema.parse(rawInput);
 
-const startUrls = input.startUrls || [{ url: 'https://www.jobs.cz/prace/' }];
+const startUrls = input.startUrls;
 
 // B. Configure Logging
 if (input.debugLog) {
@@ -182,7 +218,10 @@ const crawler = new PlaywrightCrawler({
   proxyConfiguration,
   headless: true,
   requestHandler: router,
-  maxRequestsPerCrawl: input.maxItems,
+  maxConcurrency: 1,
+  maxRequestsPerMinute: 30,
+  // Safety guard (maxItems is enforced by detail-page counting + abort logic above).
+  maxRequestsPerCrawl: Math.max(input.maxItems * 5, 50),
   launchContext: {
     launchOptions: {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],

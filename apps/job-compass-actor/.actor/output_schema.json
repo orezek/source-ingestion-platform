@@ -29,7 +29,7 @@
     "salary": {
       "type": ["string", "null"],
       "title": "Salary",
-      "description": "Salary as advertised on the server."
+      "description": "Salary as advertised on the site."
     },
     "publishedInfoText": {
       "type": "string",

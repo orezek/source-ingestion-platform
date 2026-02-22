@@ -14,7 +14,7 @@
         "overview": {
           "title": "Overview",
           "transformation": {
-            "fields": ["url", "title", "company"]
+            "fields": ["adUrl", "jobTitle", "companyName"]
           }
         }
       }
