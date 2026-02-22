@@ -101,7 +101,6 @@ export class JobParsingGraph {
           fileSizeBytes: loadedDetailPage.fileSizeBytes,
           rawHtmlChars: loadedDetailPage.rawHtmlChars,
           textContentChars: loadedDetailPage.textContentChars,
-          jobDescriptionSourceTextChars: loadedDetailPage.jobDescriptionSourceText?.length ?? 0,
         },
         'Loaded detail HTML file',
       );
@@ -120,8 +119,7 @@ export class JobParsingGraph {
       const jobDescriptionResult = await config.jobDescriptionExtractor.extractFromRawAdText(
         state.loadedDetailPage.textContent,
       );
-      const extractedJobDescription =
-        jobDescriptionResult.jobDescription ?? state.loadedDetailPage.jobDescriptionSourceText;
+      const extractedJobDescription = jobDescriptionResult.jobDescription;
 
       this.logger.debug(
         {
@@ -130,7 +128,7 @@ export class JobParsingGraph {
           llmCallDurationSeconds: jobDescriptionResult.telemetry.llmCallDurationSeconds,
           llmTotalTokens: jobDescriptionResult.telemetry.llmTotalTokens,
           llmTotalCostUsd: jobDescriptionResult.telemetry.llmTotalCostUsd,
-          fallbackToDeterministic: jobDescriptionResult.jobDescription === null,
+          emptyJobDescriptionFromHubPrompt: jobDescriptionResult.jobDescription === null,
         },
         'Extracted detail.jobDescription using LangSmith Hub prompt',
       );

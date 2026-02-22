@@ -7,8 +7,6 @@ import { load, type CheerioAPI } from 'cheerio';
 const gzipMagicNumberA = 0x1f;
 const gzipMagicNumberB = 0x8b;
 
-const contentBlockSelector = 'h1,h2,h3,h4,h5,h6,p,li,dt,dd,blockquote,pre,td,th';
-
 const nonContentSelectors = [
   'script',
   'style',
@@ -33,31 +31,6 @@ const nonContentSelectors = [
   '.share',
   '[role="navigation"]',
   '[aria-label*="cookie" i]',
-];
-
-const candidateRootSelectors = [
-  'main',
-  'article',
-  '[role="main"]',
-  '[itemprop="description"]',
-  '.job-detail',
-  '.jobdetail',
-  '.job-description',
-  '.position-description',
-  '.vacancy-detail',
-  '.offer-detail',
-];
-
-const jobsSectionHeadingPattern = /^pracovn[íi]\s+nab[ií]dka$/i;
-const jobsSectionStopPatterns = [
-  /^podobn[ée]\s+nab[ií]dky/i,
-  /^dal[sš][íi]\s+nab[ií]dky/i,
-  /^sd[ií]let\s+nab[ií]dku/i,
-  /^ulo[zž]enou?\s+nab[ií]dku/i,
-  /^kam\s+v[aá]m\s+m[uů][zž]eme\s+nab[ií]dku/i,
-  /^odpov[eě]zte\s+na\s+nab[ií]dku/i,
-  /^more\s+jobs/i,
-  /^related\s+jobs/i,
 ];
 
 const minimumDetailWords = 100;
@@ -86,19 +59,6 @@ const noiseSignalPatterns = [
   /cookies?/i,
 ];
 
-const lineNoisePatterns = [
-  /ulo[zž]enou?\s+nab[ií]dku/i,
-  /ulo[zž]en[ée]\s+nab[ií]dky/i,
-  /kam\s+v[aá]m\s+m[uů][zž]eme\s+nab[ií]dku/i,
-  /pou[zž][íi]v[aá]me\s+soubory\s+cookie/i,
-  /cookies?/i,
-  /^sign\s+in$/i,
-  /^sign\s+up$/i,
-  /^menu$/i,
-];
-
-const minimumUsefulJobDescriptionChars = 200;
-
 const isGzipBuffer = (buffer: Buffer): boolean =>
   buffer.length >= 2 && buffer[0] === gzipMagicNumberA && buffer[1] === gzipMagicNumberB;
 
@@ -109,98 +69,6 @@ const countPatternHits = (text: string, patterns: RegExp[]): number =>
 
 const pruneNonContentNodes = (dom: CheerioAPI): void => {
   dom(nonContentSelectors.join(',')).remove();
-};
-
-const extractLinesFromRoot = (dom: CheerioAPI, selector: string): string[] => {
-  const root = dom(selector).first();
-  if (root.length === 0) {
-    return [];
-  }
-
-  const blockElements = root.find(contentBlockSelector).toArray();
-  if (blockElements.length > 0) {
-    return blockElements
-      .map((element) => normalizeWhitespace(dom(element).text()))
-      .filter((line) => line.length > 0);
-  }
-
-  const fallback = normalizeWhitespace(root.text());
-  return fallback.length > 0 ? [fallback] : [];
-};
-
-const dedupeConsecutiveLines = (lines: string[]): string[] => {
-  const deduped: string[] = [];
-  let previousLine: string | null = null;
-
-  for (const line of lines) {
-    if (line === previousLine) {
-      continue;
-    }
-
-    deduped.push(line);
-    previousLine = line;
-  }
-
-  return deduped;
-};
-
-const stripLineNoise = (lines: string[]): string[] =>
-  lines.filter((line) => !lineNoisePatterns.some((pattern) => pattern.test(line)));
-
-const toTrimmedText = (lines: string[], maxChars: number): string =>
-  lines.join('\n').slice(0, maxChars).trim();
-
-const extractJobsTemplateDescription = (lines: string[], maxChars: number): string | null => {
-  const headingIndex = lines.findIndex((line) => jobsSectionHeadingPattern.test(line));
-  if (headingIndex < 0) {
-    return null;
-  }
-
-  const startIndex = Math.min(headingIndex + 1, lines.length);
-  let endIndex = lines.length;
-
-  for (let index = startIndex; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line && jobsSectionStopPatterns.some((pattern) => pattern.test(line))) {
-      endIndex = index;
-      break;
-    }
-  }
-
-  const sectionLines = lines.slice(startIndex, endIndex);
-  const text = toTrimmedText(sectionLines, maxChars);
-  return text.length >= minimumUsefulJobDescriptionChars ? text : null;
-};
-
-const extractDeterministicJobDescription = (rawHtml: string, maxChars: number): string | null => {
-  const dom = load(rawHtml);
-  pruneNonContentNodes(dom);
-
-  const bodyLines = stripLineNoise(dedupeConsecutiveLines(extractLinesFromRoot(dom, 'body')));
-  const jobsTemplateDescription = extractJobsTemplateDescription(bodyLines, maxChars);
-  if (jobsTemplateDescription !== null) {
-    return jobsTemplateDescription;
-  }
-
-  let bestCandidate = '';
-
-  for (const selector of candidateRootSelectors) {
-    const candidateLines = stripLineNoise(
-      dedupeConsecutiveLines(extractLinesFromRoot(dom, selector)),
-    );
-    const candidateText = toTrimmedText(candidateLines, maxChars);
-
-    if (candidateText.length > bestCandidate.length) {
-      bestCandidate = candidateText;
-    }
-  }
-
-  if (bestCandidate.length >= minimumUsefulJobDescriptionChars) {
-    return bestCandidate;
-  }
-
-  const bodyText = toTrimmedText(bodyLines, maxChars);
-  return bodyText.length >= minimumUsefulJobDescriptionChars ? bodyText : null;
 };
 
 const bufferToUtf8 = (buffer: Buffer): string => {
@@ -214,7 +82,6 @@ const bufferToUtf8 = (buffer: Buffer): string => {
 export type LoadedDetailPage = {
   rawHtml: string;
   textContent: string;
-  jobDescriptionSourceText: string | null;
   htmlSha256: string;
   wasGzipCompressed: boolean;
   fileSizeBytes: number;
@@ -303,12 +170,10 @@ export const loadDetailPage = async (
   }
 
   const textContent = mergedText.slice(0, maxDetailChars);
-  const jobDescriptionSourceText = extractDeterministicJobDescription(rawHtml, maxDetailChars);
 
   return {
     rawHtml,
     textContent,
-    jobDescriptionSourceText,
     htmlSha256,
     wasGzipCompressed,
     fileSizeBytes: fileBuffer.length,
