@@ -13,6 +13,70 @@ const unknownToNullableString = z
   .union([z.string(), z.number(), z.boolean(), z.null(), z.undefined()])
   .transform((value) => toNullableString(value));
 
+const llmNullishTextPattern = /^(?:n\/a|n\.a\.|none|null|undefined|not\s+available)$/i;
+
+const normalizeDetailNullableText = (value: string | null): string | null => {
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  return llmNullishTextPattern.test(trimmed) ? null : trimmed;
+};
+
+const normalizeListItemText = (value: string): string | null => {
+  const collapsedWhitespace = value.replace(/\s+/g, ' ').trim();
+  if (collapsedWhitespace.length === 0) {
+    return null;
+  }
+
+  return llmNullishTextPattern.test(collapsedWhitespace) ? null : collapsedWhitespace;
+};
+
+const dedupeStringsCaseInsensitive = <T extends string>(items: T[]): T[] => {
+  const seen = new Set<string>();
+  const deduped: T[] = [];
+
+  for (const item of items) {
+    const key = item.toLocaleLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  return deduped;
+};
+
+const dedupeStringsExact = <T extends string>(items: T[]): T[] => {
+  const seen = new Set<T>();
+  const deduped: T[] = [];
+
+  for (const item of items) {
+    if (seen.has(item)) {
+      continue;
+    }
+
+    seen.add(item);
+    deduped.push(item);
+  }
+
+  return deduped;
+};
+
+const normalizeStringArray = (items: string[]): string[] =>
+  dedupeStringsCaseInsensitive(
+    items
+      .map((item) => normalizeListItemText(item))
+      .filter((item): item is string => item !== null),
+  );
+
 const employmentTypeSchema = z.enum([
   'full-time',
   'part-time',
@@ -134,15 +198,24 @@ export const extractedJobDetailSchema = z.object({
     .describe(
       'Role description content only (responsibilities, expectations, scope, context). Exclude unrelated site chrome or marketing text when possible. Use null if unavailable.',
     ),
-  responsibilities: z.array(z.string()).default([]),
-  requirements: z.array(z.string()).default([]),
-  niceToHave: z.array(z.string()).default([]),
-  benefits: z.array(z.string()).default([]),
+  responsibilities: z
+    .array(z.string())
+    .default([])
+    .describe('List of specific day-to-day duties. Split compound sentences.'),
+  requirements: z
+    .array(z.string())
+    .default([])
+    .describe('Hard skills, education, and experience requirements.'),
+  niceToHave: z.array(z.string()).default([]).describe("Optional or 'advantage' skills."),
+  benefits: z
+    .array(z.string())
+    .default([])
+    .describe('Perks, hardware, holidays, or monetary bonuses.'),
   techStack: z
     .array(z.string())
     .default([])
     .describe(
-      'List only directly relevant technologies/tools/platforms for the role (languages, frameworks, databases, cloud, infrastructure, developer tools). Exclude generic office software (e.g. Word, Excel, PowerPoint) and broad non-technical business tools unless the role explicitly centers on them. Deduplicate.',
+      'Specific technologies, languages, frameworks (e.g. Java, SQL, React). Exclude generic tools like Word/Excel/Outlook unless critical.',
     ),
   seniorityLevel: seniorityLevelSchema
     .nullable()
@@ -200,6 +273,71 @@ export const extractedJobDetailSchema = z.object({
 });
 
 export type ExtractedJobDetail = z.infer<typeof extractedJobDetailSchema>;
+
+export const normalizedExtractedJobDetailSchema = extractedJobDetailSchema.transform((detail) => {
+  const normalizedLanguageRequirements = detail.languageRequirements
+    .map((item) => ({
+      language: normalizeListItemText(item.language),
+      level: normalizeDetailNullableText(item.level),
+    }))
+    .filter((item): item is { language: string; level: string | null } => item.language !== null)
+    .filter((item, index, items) => {
+      const normalizedKey = `${item.language.toLocaleLowerCase()}|${item.level?.toLocaleLowerCase() ?? ''}`;
+      return (
+        items.findIndex(
+          (candidate) =>
+            `${candidate.language.toLocaleLowerCase()}|${candidate.level?.toLocaleLowerCase() ?? ''}` ===
+            normalizedKey,
+        ) === index
+      );
+    });
+
+  const normalizedLocations = detail.locations
+    .map((location) => ({
+      city: normalizeDetailNullableText(location.city),
+      region: normalizeDetailNullableText(location.region),
+      country: normalizeDetailNullableText(location.country),
+      addressText: normalizeDetailNullableText(location.addressText),
+    }))
+    .filter(
+      (location) =>
+        location.city !== null ||
+        location.region !== null ||
+        location.country !== null ||
+        location.addressText !== null,
+    );
+
+  return {
+    ...detail,
+    canonicalTitle: normalizeDetailNullableText(detail.canonicalTitle),
+    summary: normalizeDetailNullableText(detail.summary),
+    jobDescription: normalizeDetailNullableText(detail.jobDescription),
+    responsibilities: normalizeStringArray(detail.responsibilities),
+    requirements: normalizeStringArray(detail.requirements),
+    niceToHave: normalizeStringArray(detail.niceToHave),
+    benefits: normalizeStringArray(detail.benefits),
+    techStack: normalizeStringArray(detail.techStack),
+    employmentTypes: dedupeStringsExact(detail.employmentTypes),
+    workModes: dedupeStringsExact(detail.workModes),
+    locations: normalizedLocations,
+    salary: {
+      ...detail.salary,
+      currency: normalizeDetailNullableText(detail.salary.currency),
+    },
+    languageRequirements: normalizedLanguageRequirements,
+    hiringProcess: normalizeStringArray(detail.hiringProcess),
+    travelRequirements: normalizeDetailNullableText(detail.travelRequirements),
+    startDateText: normalizeDetailNullableText(detail.startDateText),
+    applicationDeadlineText: normalizeDetailNullableText(detail.applicationDeadlineText),
+    applyUrl: normalizeDetailNullableText(detail.applyUrl),
+    recruiterContacts: {
+      contactName: normalizeDetailNullableText(detail.recruiterContacts.contactName),
+      contactEmail: normalizeDetailNullableText(detail.recruiterContacts.contactEmail),
+      contactPhone: normalizeDetailNullableText(detail.recruiterContacts.contactPhone),
+    },
+    companyDescription: normalizeDetailNullableText(detail.companyDescription),
+  };
+});
 
 export const rawDetailPageSchema = z.object({
   text: z.string(),

@@ -6,6 +6,7 @@ import type { AppLogger } from './logger.js';
 import {
   extractedJobDetailSchema,
   type ExtractedJobDetail,
+  normalizedExtractedJobDetailSchema,
   type SourceListingRecord,
 } from './schema.js';
 
@@ -628,7 +629,7 @@ export class GeminiJobDetailExtractor {
       parsedDetail.summary,
       resolvedJobDescription,
     );
-    const detail = extractedJobDetailSchema.parse({
+    const detail = normalizedExtractedJobDetailSchema.parse({
       ...parsedDetail,
       summary: resolvedSummary,
       jobDescription: resolvedJobDescription,
