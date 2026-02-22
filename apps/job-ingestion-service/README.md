@@ -16,7 +16,7 @@ scrapped_jobs/
 The parser is implemented with `@langchain/langgraph` and runs these nodes per record:
 
 1. `loadDetailPage`: reads `htmlDetailPageKey`, handles gzip, builds cleaned plain text with Cheerio, and checks page completeness.
-2. `extractDetail`: calls Gemini with listing context + detail text and extracts structured fields.
+2. `extractDetail`: pulls `job-ad-extractor` from LangSmith Hub (`langchain/hub/node`) and runs Gemini structured extraction with the Zod schema using listing context + detail text.
    - `seniorityLevel` is inferred from whole ad context when not explicitly stated.
 3. `merge`: merges listing + detail into one Zod-validated structured document.
 
@@ -112,6 +112,7 @@ Copy `.env.example` to `.env` and configure:
 - `LOG_LEVEL` for structured pino logs (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `silent`)
 - `GEMINI_API_KEY` for model access
 - `LANGSMITH_API_KEY` to authenticate prompt pulls from LangSmith Hub
+- `LANGSMITH_PROMPT_NAME` (default `job-ad-extractor`)
 - `GEMINI_MODEL` (default `gemini-3-flash-preview`)
 - `GEMINI_THINKING_LEVEL` (`LOW`, `MEDIUM`, `HIGH`) to control reasoning depth vs latency
 - `DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS` minimum required relevant text length for processing a detail page

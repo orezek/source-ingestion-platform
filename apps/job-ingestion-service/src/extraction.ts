@@ -1,4 +1,5 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import * as hub from 'langchain/hub/node';
 import { z } from 'zod';
 
 import type { AppLogger } from './logger.js';
@@ -8,59 +9,6 @@ import {
   normalizedExtractedJobDetailSchema,
   type SourceListingRecord,
 } from './schema.js';
-
-const parserInstructions = `You extract job ad detail information for a unified schema.
-
-Rules:
-- Input detail pages may be rendered with jobs.cz template OR arbitrary client/company templates.
-- Extract only what is supported by evidence from the provided listing context and detail page text.
-- Do not invent values. If unknown, use null for scalar fields and [] for arrays.
-- Keep Czech content in Czech. Keep English content in English.
-- detail.summary may be null. Final detail.summary is derived deterministically in post-processing from structured fields and listing context.
-- Fill short fields first; fill long text fields last.
-- Put recruiter contact information into detail.recruiterContacts object:
-  - recruiterContacts.contactName
-  - recruiterContacts.contactEmail
-  - recruiterContacts.contactPhone
-- For detail.workModes:
-  - Default to ["unknown"] unless the ad explicitly states remote, hybrid, or onsite.
-  - Only infer onsite when there is an explicit place-of-work statement and no remote/hybrid hints.
-  - Do not assume onsite just because a location or office address is present.
-- For detail.seniorityLevel:
-  - Keep null unless there is explicit evidence (e.g. junior/senior keyword, medior/mid/intermediate label) or at least 2 strong signals.
-  - Strong signals include explicit years-of-experience requirements and leadership scope signals.
-  - Do not infer "medior" from a generic role title alone.
-- For detail.techStack:
-  - Include only explicitly named technologies, languages, frameworks, databases, tools, protocols, or standards.
-  - Exclude soft skills, personality traits, and generic job categories.
-  - Exclude generic office tools (e.g. Word/Excel/Outlook) unless they are explicitly critical to the role.
-  - Deduplicate and prefer canonical names; avoid emitting both generic and versioned variants of the same technology unless both are explicitly important.
-- For detail.salary:
-  - Use evidence from both the listing JSON context and the detail page text.
-  - The list-page salary text may be present in listing JSON field "salary" even when the detail page hides salary.
-  - Fill salary.min and salary.max as numeric values only (no units, no separators text).
-  - Convert shorthand amounts like "30k" to 30000.
-  - If salary is fixed, set both salary.min and salary.max to the same value.
-  - Infer salary.currency from context (e.g. "Kč" => "CZK"); prefer ISO codes.
-  - Normalize salary.period to one of: hour, day, month, year, project, unknown.
-  - If period is ambiguous but likely monthly, use "month".
-  - Always return salary.inferred = false (reserved for post-processing).
-`;
-
-const buildPrompt = (listingRecord: SourceListingRecord, detailText: string): string => {
-  const listingContext = JSON.stringify(listingRecord, null, 2);
-
-  return `${parserInstructions}
-
-Listing JSON context:
-${listingContext}
-
-Listing salary hint (list page salary text):
-${listingRecord.salary ?? '[not available]'}
-
-Detail page text (full cleaned body):
-${detailText}`;
-};
 
 const modelOutputJobDetailSchema = extractedJobDetailSchema.extend({
   seniorityLevel: z
@@ -97,6 +45,132 @@ type RawLlmMessage = {
 type StructuredInvokeResult = {
   raw?: RawLlmMessage;
   parsed?: unknown;
+};
+
+type HubPromptChain = {
+  invoke(input: Record<string, string>): Promise<StructuredInvokeResult>;
+};
+
+type HubPromptRunnable = {
+  inputVariables?: string[];
+  pipe(input: unknown): HubPromptChain;
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isHubPromptRunnable = (value: unknown): value is HubPromptRunnable =>
+  isObjectRecord(value) && typeof value.pipe === 'function';
+
+type StructuredPromptContext = {
+  detailText: string;
+  listingJson: string;
+  listingSalaryHint: string;
+  combinedInput: string;
+};
+
+const buildStructuredPromptContext = (
+  listingRecord: SourceListingRecord,
+  detailText: string,
+): StructuredPromptContext => {
+  const listingJson = JSON.stringify(listingRecord, null, 2);
+  const listingSalaryHint = listingRecord.salary ?? '[not available]';
+  const combinedInput = [
+    'Listing JSON context:',
+    listingJson,
+    '',
+    'Listing salary hint (list page salary text):',
+    listingSalaryHint,
+    '',
+    'Detail page text (full cleaned body):',
+    detailText,
+  ].join('\n');
+
+  return {
+    detailText,
+    listingJson,
+    listingSalaryHint,
+    combinedInput,
+  };
+};
+
+const resolveHubPromptVariableValue = (
+  variableName: string,
+  promptContext: StructuredPromptContext,
+): string => {
+  const normalized = variableName.trim().toLowerCase();
+
+  if (normalized.length === 0) {
+    return promptContext.combinedInput;
+  }
+
+  if (
+    normalized.includes('salary') &&
+    (normalized.includes('listing') || normalized.includes('hint'))
+  ) {
+    return promptContext.listingSalaryHint;
+  }
+
+  if (normalized.includes('listing')) {
+    return promptContext.listingJson;
+  }
+
+  if (
+    normalized.includes('detail') ||
+    normalized.includes('job_ad') ||
+    normalized.includes('jobad') ||
+    normalized.includes('raw_ad') ||
+    normalized.includes('ad_text')
+  ) {
+    return promptContext.detailText;
+  }
+
+  if (
+    normalized === 'input' ||
+    normalized === 'content' ||
+    normalized === 'context' ||
+    normalized === 'prompt'
+  ) {
+    return promptContext.combinedInput;
+  }
+
+  if (normalized === 'text' || normalized.endsWith('_text') || normalized.endsWith('text')) {
+    return promptContext.detailText;
+  }
+
+  return promptContext.combinedInput;
+};
+
+const buildHubPromptInput = (
+  listingRecord: SourceListingRecord,
+  detailText: string,
+  inputVariables: string[] | undefined,
+): Record<string, string> => {
+  const promptContext = buildStructuredPromptContext(listingRecord, detailText);
+
+  if (inputVariables && inputVariables.length > 0) {
+    return Object.fromEntries(
+      inputVariables.map((variable) => [
+        variable,
+        resolveHubPromptVariableValue(variable, promptContext),
+      ]),
+    );
+  }
+
+  return {
+    input: promptContext.combinedInput,
+    context: promptContext.combinedInput,
+    content: promptContext.combinedInput,
+    listing_json: promptContext.listingJson,
+    listingJson: promptContext.listingJson,
+    listing_salary_hint: promptContext.listingSalaryHint,
+    listingSalaryHint: promptContext.listingSalaryHint,
+    detail_text: promptContext.detailText,
+    detailText: promptContext.detailText,
+    job_ad_text: promptContext.detailText,
+    jobAdText: promptContext.detailText,
+    text: promptContext.detailText,
+  };
 };
 
 const toNonNegativeInt = (value: unknown): number => {
@@ -509,6 +583,8 @@ const buildDerivedSummary = (
 };
 
 export type GeminiExtractorConfig = {
+  langsmithApiKey: string;
+  langsmithPromptName: string;
   apiKey: string;
   model: string;
   temperature: number;
@@ -534,6 +610,8 @@ export type ExtractionResult = {
 };
 
 export class GeminiJobDetailExtractor {
+  private readonly promptName: string;
+
   private readonly modelName: string;
 
   private readonly inputPriceUsdPerMillionTokens: number;
@@ -543,10 +621,13 @@ export class GeminiJobDetailExtractor {
   private readonly logger: AppLogger;
 
   private readonly structuredModel: {
-    invoke(input: string): Promise<StructuredInvokeResult>;
+    invoke(input: unknown): Promise<StructuredInvokeResult>;
   };
 
+  private readonly hubPromptPromise: Promise<HubPromptRunnable>;
+
   constructor(config: GeminiExtractorConfig) {
+    this.promptName = config.langsmithPromptName;
     this.modelName = config.model;
     this.inputPriceUsdPerMillionTokens = config.inputPriceUsdPerMillionTokens;
     this.outputPriceUsdPerMillionTokens = config.outputPriceUsdPerMillionTokens;
@@ -564,6 +645,23 @@ export class GeminiJobDetailExtractor {
       name: 'extracted_job_detail',
       includeRaw: true,
     });
+
+    this.hubPromptPromise = this.loadHubPrompt(config.langsmithApiKey, config.langsmithPromptName);
+  }
+
+  private async loadHubPrompt(apiKey: string, promptName: string): Promise<HubPromptRunnable> {
+    const pulledPrompt = await hub.pull(promptName, {
+      apiKey,
+      includeModel: false,
+    });
+
+    if (!isHubPromptRunnable(pulledPrompt)) {
+      throw new Error(
+        `LangSmith Hub prompt "${promptName}" is not a runnable prompt template with pipe().`,
+      );
+    }
+
+    return pulledPrompt;
   }
 
   getModelName(): string {
@@ -574,19 +672,22 @@ export class GeminiJobDetailExtractor {
     listingRecord: SourceListingRecord,
     detailPageText: string,
   ): Promise<ExtractionResult> {
-    const prompt = buildPrompt(listingRecord, detailPageText);
+    const prompt = await this.hubPromptPromise;
+    const promptInput = buildHubPromptInput(listingRecord, detailPageText, prompt.inputVariables);
     this.logger.debug(
       {
         sourceId: listingRecord.sourceId,
         source: listingRecord.source,
         detailTextChars: detailPageText.length,
         model: this.modelName,
+        promptName: this.promptName,
+        inputVariables: prompt.inputVariables ?? [],
       },
       'Starting LLM detail extraction',
     );
 
     const startedAt = performance.now();
-    const response = await this.structuredModel.invoke(prompt);
+    const response = await prompt.pipe(this.structuredModel).invoke(promptInput);
     const llmCallDurationSeconds = (performance.now() - startedAt) / 1_000;
 
     const parsedDetail = modelOutputJobDetailSchema.parse(response.parsed);
@@ -632,6 +733,7 @@ export class GeminiJobDetailExtractor {
         summaryChars: detail.summary?.length ?? 0,
         jobDescriptionChars: detail.jobDescription?.length ?? 0,
         seniorityLevel: detail.seniorityLevel,
+        promptName: this.promptName,
         llmTotalCostUsd: llmInputCostUsd + llmOutputCostUsd,
       },
       'Completed LLM detail extraction',
