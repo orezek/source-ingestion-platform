@@ -15,9 +15,7 @@ scrapped_jobs/
 
 The parser is implemented with `@langchain/langgraph` and runs these nodes per record:
 
-1. `loadDetailPage`: reads `htmlDetailPageKey`, handles gzip, builds cleaned text.
-   - Also derives deterministic `jobDescription` source text from detail HTML with Cheerio.
-   - If the page matches jobs.cz template, it prioritizes the section headed `Pracovní nabídka`.
+1. `loadDetailPage`: reads `htmlDetailPageKey`, handles gzip, builds cleaned plain text with Cheerio, and checks page completeness.
 2. `extractJobDescription`: pulls `job-description-extractor` from LangSmith Hub (`langchain/hub/node`) and runs it on raw ad text.
 3. `extractDetail`: calls Gemini with listing context + detail text and extracts structured fields.
    - `seniorityLevel` is inferred from whole ad context when not explicitly stated.
@@ -83,6 +81,14 @@ High-level shape:
     };
     companyDescription: string | null;
   };
+  rawDetailPage: {
+    text: string; // Cheerio-cleaned plain text from the details page (same source used for LLM input)
+    charCount: number; // stored text length (post-truncation)
+    tokenCountApprox: number; // estimated as ceil(charCount / 4)
+    tokenCountMethod: "chars_div_4";
+    wasTruncated: boolean; // true when original cleaned text exceeded GEMINI_MAX_DETAIL_CHARS
+    fullCharCount: number; // cleaned text length before truncation
+  };
   ingestion: {
     datasetFileName: string;
     datasetRecordIndex: number;
@@ -122,6 +128,7 @@ Copy `.env.example` to `.env` and configure:
 - `MONGODB_JOBS_COLLECTION` for structured document output
 
 Default token pricing currently reflects Gemini 3 Flash preview text pricing from Google AI pricing docs.
+`rawDetailPage.tokenCountApprox` is a local approximation (`ceil(charCount / 4)`) for quick sizing/cost heuristics.
 
 ## Run
 

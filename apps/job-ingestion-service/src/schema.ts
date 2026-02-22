@@ -100,6 +100,17 @@ export const extractedJobDetailSchema = z.object({
 
 export type ExtractedJobDetail = z.infer<typeof extractedJobDetailSchema>;
 
+export const rawDetailPageSchema = z.object({
+  text: z.string(),
+  charCount: z.number().int().nonnegative(),
+  tokenCountApprox: z.number().int().nonnegative(),
+  tokenCountMethod: z.enum(['chars_div_4']),
+  wasTruncated: z.boolean(),
+  fullCharCount: z.number().int().nonnegative(),
+});
+
+export type RawDetailPage = z.infer<typeof rawDetailPageSchema>;
+
 export const unifiedJobAdSchema = z.object({
   id: z.string(),
   source: z.string(),
@@ -115,6 +126,7 @@ export const unifiedJobAdSchema = z.object({
     publishedInfoText: z.string().nullable(),
   }),
   detail: extractedJobDetailSchema,
+  rawDetailPage: rawDetailPageSchema,
   ingestion: z.object({
     datasetFileName: z.string(),
     datasetRecordIndex: z.number().int().nonnegative(),

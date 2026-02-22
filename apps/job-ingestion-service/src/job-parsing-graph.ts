@@ -32,6 +32,8 @@ const JobParsingGraphState = Annotation.Root({
 
 type JobParsingGraphStateType = typeof JobParsingGraphState.State;
 
+const approximateTokenCountFromChars = (charCount: number): number => Math.ceil(charCount / 4);
+
 const buildDocument = (
   state: JobParsingGraphStateType,
   parserVersion: string,
@@ -55,6 +57,14 @@ const buildDocument = (
       publishedInfoText: listingRecord.publishedInfoText,
     },
     detail: extractedDetail,
+    rawDetailPage: {
+      text: loadedDetailPage.textContent,
+      charCount: loadedDetailPage.textContentChars,
+      tokenCountApprox: approximateTokenCountFromChars(loadedDetailPage.textContentChars),
+      tokenCountMethod: 'chars_div_4',
+      wasTruncated: loadedDetailPage.wasTextContentTruncated,
+      fullCharCount: loadedDetailPage.fullTextContentChars,
+    },
     ingestion: {
       datasetFileName: inputRecord.datasetFileName,
       datasetRecordIndex: inputRecord.datasetRecordIndex,
@@ -101,6 +111,8 @@ export class JobParsingGraph {
           fileSizeBytes: loadedDetailPage.fileSizeBytes,
           rawHtmlChars: loadedDetailPage.rawHtmlChars,
           textContentChars: loadedDetailPage.textContentChars,
+          fullTextContentChars: loadedDetailPage.fullTextContentChars,
+          wasTextContentTruncated: loadedDetailPage.wasTextContentTruncated,
         },
         'Loaded detail HTML file',
       );
