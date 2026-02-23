@@ -28,3 +28,10 @@ commitlint.config.js
 # --- Docker Specifics ---
 docker-compose.yml
 Dockerfile*
+
+# --- Terraform local artifacts ---
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/crash.log
+**/crash.*.log
