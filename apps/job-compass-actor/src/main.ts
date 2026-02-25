@@ -166,6 +166,28 @@ type CrawlRunSummaryMongoConfig = {
   collectionName: string;
 };
 
+type IngestionTriggerConfig = {
+  enabled: boolean;
+  url: string;
+  timeoutMs: number;
+};
+
+type IngestionTriggerResult = {
+  enabled: boolean;
+  attempted: boolean;
+  skippedReason?: string;
+  ok?: boolean;
+  responseStatus?: number;
+  accepted?: boolean;
+  deduplicated?: boolean;
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+  responseBody?: unknown;
+};
+
 function serializeErrorForSummary(error: unknown): {
   name: string;
   message: string;
@@ -252,6 +274,99 @@ async function upsertRunSummaryToMongoBestEffort(
       mongoDbName: config.dbName,
       mongoCollection: config.collectionName,
     });
+  }
+}
+
+async function triggerIngestionStartBestEffort(
+  config: IngestionTriggerConfig,
+  payload: { source: string; crawlRunId: string },
+): Promise<IngestionTriggerResult> {
+  if (!config.enabled) {
+    return {
+      enabled: false,
+      attempted: false,
+      skippedReason: 'disabled',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    const response = await fetch(config.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    let responseBody: unknown = null;
+    const responseText = await response.text();
+    if (responseText) {
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        responseBody = responseText;
+      }
+    }
+
+    const result: IngestionTriggerResult = {
+      enabled: true,
+      attempted: true,
+      ok: response.ok,
+      responseStatus: response.status,
+      responseBody,
+    };
+
+    if (responseBody && typeof responseBody === 'object') {
+      const record = responseBody as Record<string, unknown>;
+      if (typeof record.accepted === 'boolean') {
+        result.accepted = record.accepted;
+      }
+      if (typeof record.deduplicated === 'boolean') {
+        result.deduplicated = record.deduplicated;
+      }
+    }
+
+    if (response.ok) {
+      log.info('Triggered ingestion service after crawl completion', {
+        source: payload.source,
+        crawlRunId: payload.crawlRunId,
+        ingestionTriggerUrl: config.url,
+        responseStatus: response.status,
+        accepted: result.accepted,
+        deduplicated: result.deduplicated,
+      });
+    } else {
+      log.warning('Ingestion trigger request returned non-OK response (best effort)', {
+        source: payload.source,
+        crawlRunId: payload.crawlRunId,
+        ingestionTriggerUrl: config.url,
+        responseStatus: response.status,
+        responseBody,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    const normalizedError = serializeErrorForSummary(error);
+    log.warning('Failed to trigger ingestion service after crawl completion (best effort)', {
+      source: payload.source,
+      crawlRunId: payload.crawlRunId,
+      ingestionTriggerUrl: config.url,
+      timeoutMs: config.timeoutMs,
+      error,
+    });
+    return {
+      enabled: true,
+      attempted: true,
+      ok: false,
+      error: normalizedError,
+    };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 
@@ -893,6 +1008,11 @@ const mongoRunSummaryConfig: CrawlRunSummaryMongoConfig = {
   dbName: envs.MONGODB_DB_NAME,
   collectionName: envs.MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION,
 };
+const ingestionTriggerConfig: IngestionTriggerConfig = {
+  enabled: envs.ENABLE_INGESTION_TRIGGER,
+  url: envs.INGESTION_TRIGGER_URL,
+  timeoutMs: envs.INGESTION_TRIGGER_TIMEOUT_MS,
+};
 if (!envs.MONGODB_URI) {
   throw new Error(
     'MONGODB_URI is required for incremental crawl reconciliation (crawl state collection).',
@@ -1127,6 +1247,18 @@ const runStopReason = crawlerRunError
       ? 'max_items_reached'
       : 'completed';
 
+const shouldTriggerIngestion = runStatus === 'succeeded' || runStatus === 'completed_with_errors';
+const ingestionTrigger = shouldTriggerIngestion
+  ? await triggerIngestionStartBestEffort(ingestionTriggerConfig, {
+      source: 'jobs.cz',
+      crawlRunId,
+    })
+  : ({
+      enabled: ingestionTriggerConfig.enabled,
+      attempted: false,
+      skippedReason: 'run_failed',
+    } satisfies IngestionTriggerResult);
+
 const runSummary = {
   crawlRunId,
   source: 'jobs.cz',
@@ -1201,6 +1333,7 @@ const runSummary = {
     recordsDir: sharedRunOutputPaths.recordsDir,
     datasetJsonPath: localSharedDatasetJsonPath,
   },
+  ingestionTrigger,
   crawlState: {
     mongoDbName: envs.MONGODB_DB_NAME,
     mongoCollection: envs.MONGODB_CRAWL_JOBS_COLLECTION,

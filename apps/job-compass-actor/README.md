@@ -74,6 +74,13 @@ Optional MongoDB sink for run summaries (best effort; crawler still succeeds if 
 - `MONGODB_DB_NAME=jobCompass` (default)
 - `MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION=crawlRunSummaryCollection` (default)
 
+Optional ingestion trigger (best effort; runs after crawl finalization for `succeeded` and
+`completed_with_errors`):
+
+- `ENABLE_INGESTION_TRIGGER=true`
+- `INGESTION_TRIGGER_URL=http://127.0.0.1:3010/ingestion/start` (default)
+- `INGESTION_TRIGGER_TIMEOUT_MS=10000` (default)
+
 ## Validate
 
 From the repository root:
