@@ -14,6 +14,7 @@ import { type z } from 'zod';
 export function loadEnv<T extends z.ZodTypeAny>(schema: T, importMetaUrl: string): z.infer<T> {
   // Resolve the app directory from the caller path.
   const appEnvDir = path.dirname(new URL(importMetaUrl).pathname);
+  const originalProcessEnv = { ...process.env };
 
   // Use NODE_ENV if defined; default to development.
   const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -34,6 +35,9 @@ export function loadEnv<T extends z.ZodTypeAny>(schema: T, importMetaUrl: string
       });
     }
   });
+
+  // Preserve runtime-provided environment variables (CLI/CI/container) over dotenv files.
+  Object.assign(process.env, originalProcessEnv);
 
   // Validate loaded values against the provided schema.
   const parsedEnv = schema.safeParse(process.env);
