@@ -1,10 +1,24 @@
 import { createHash, randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { PlaywrightCrawler, Dataset, createPlaywrightRouter, log, type LogLevel } from 'crawlee';
 import type { Locator } from 'playwright';
 import { Actor, type ProxyConfigurationOptions } from 'apify';
 import { MongoClient } from 'mongodb';
 import { envs } from './env-setup.js';
+import {
+  CrawlStateRepository,
+  type CrawlDetailSnapshot,
+  type CrawlListingRecord,
+} from './crawl-state.js';
+import {
+  buildSharedRunOutputPaths,
+  prepareSharedRunOutput,
+  writeSharedDatasetJson,
+  writeSharedDetailHtml,
+  type SharedRunOutputPaths,
+} from './local-shared-output.js';
 
 // ------------------ 1. Definition of Schemas & Types ------------------ //
 
@@ -135,7 +149,7 @@ type SeedListSummary = {
   parsedResultsText: string | null;
 };
 
-type CrawlRunStatus = 'running' | 'succeeded' | 'failed';
+type CrawlRunStatus = 'running' | 'succeeded' | 'completed_with_errors' | 'failed';
 
 type CrawlRunSummaryDocument = {
   _id: string;
@@ -261,7 +275,7 @@ let listPagesVisited = 0;
 let detailPagesVisited = 0;
 let totalJobCardsSeen = 0;
 let cardsSkippedMissingHrefOrId = 0;
-let duplicateOrAlreadyHandledDetailRequests = 0;
+const duplicateOrAlreadyHandledDetailRequests = 0;
 let paginationNextPagesEnqueued = 0;
 let detailsValidationSucceeded = 0;
 let detailsValidationFailed = 0;
@@ -273,7 +287,21 @@ let maxDetailRenderWaitMs = 0;
 let maxItemsAbortTriggered = false;
 let maxItemsEnqueueGuardTriggered = false;
 let failedRequests = 0;
+let failedListRequests = 0;
+let failedDetailRequests = 0;
 const failedRequestUrls: string[] = [];
+let listListingsCollectedUnique = 0;
+let listListingsDuplicateSourceIds = 0;
+let reconcileNewJobsCount = 0;
+let reconcileExistingJobsCount = 0;
+let inactiveMarkedCount = 0;
+let inactiveMarkingSkipped = false;
+let inactiveMarkingSkipReason: string | null = null;
+let activeJobsCountBeforeReconcile = 0;
+let detailStateSnapshotsApplied = 0;
+let localSharedHtmlFilesWritten = 0;
+let localSharedDatasetRecordsWritten = 0;
+let localSharedDatasetJsonPath: string | null = null;
 const detailRenderTypeCounts: Record<DetailRenderType, number> = {
   'jobscz-template': 0,
   widget: 0,
@@ -286,6 +314,10 @@ const detailRenderSignalCounts: Record<DetailRenderSignal, number> = {
   vacancy_detail_text: 0,
 };
 const seedListSummaries = new Map<string, SeedListSummary>();
+const collectedListingsBySourceId = new Map<string, CrawlListingRecord>();
+const sharedDatasetRecords: z.infer<typeof internalJobAdSchema>[] = [];
+const detailSnapshotsForState: CrawlDetailSnapshot[] = [];
+let sharedRunOutputPaths: SharedRunOutputPaths | null = null;
 
 const isCareerWidgetHostedDetailPage = async (page: { evaluate<T>(fn: () => T): Promise<T> }) =>
   page.evaluate(() => {
@@ -630,9 +662,30 @@ router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
     contentType: 'text/html',
   });
   htmlSnapshotsSaved += 1;
+  if (sharedRunOutputPaths) {
+    await writeSharedDetailHtml(sharedRunOutputPaths, htmlDetailPageKey, jobDetailHtml);
+    localSharedHtmlFilesWritten += 1;
+  }
 
   if (safeResult.success) {
     detailsValidationSucceeded += 1;
+    sharedDatasetRecords.push(safeResult.data);
+    detailSnapshotsForState.push({
+      sourceId: safeResult.data.sourceId,
+      requestedDetailUrl: safeResult.data.requestedDetailUrl,
+      finalDetailUrl: safeResult.data.finalDetailUrl,
+      finalDetailHost: safeResult.data.finalDetailHost,
+      detailRedirected: safeResult.data.detailRedirected,
+      detailRenderType: safeResult.data.detailRenderType,
+      detailRenderSignal: safeResult.data.detailRenderSignal,
+      detailRenderTextChars: safeResult.data.detailRenderTextChars,
+      detailRenderWaitMs: safeResult.data.detailRenderWaitMs,
+      detailRenderComplete: safeResult.data.detailRenderComplete,
+      htmlDetailPageKey: safeResult.data.htmlDetailPageKey,
+      detailHtmlByteSize: safeResult.data.detailHtmlByteSize,
+      detailHtmlSha256: safeResult.data.detailHtmlSha256,
+      scrapedAt: safeResult.data.scrapedAt.toISOString(),
+    });
     routerDetailsLog.info(`✅ Saved job: ${result.sourceId} | ${result.jobTitle}`, {
       sourceId: result.sourceId,
       requestedDetailUrl,
@@ -677,7 +730,7 @@ router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
   }
 });
 
-router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) => {
+router.addHandler('LIST', async ({ request, enqueueLinks, page, log }) => {
   const routerListLog = log.child({ prefix: 'LIST' });
   listPagesVisited += 1;
   routerListLog.info(`📂 Scanning List: ${request.url}`);
@@ -769,38 +822,37 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log, crawler }) 
       continue;
     }
 
-    if (enqueuedDetailRequests >= input.maxItems) {
+    if (collectedListingsBySourceId.size >= input.maxItems) {
       maxItemsEnqueueGuardTriggered = true;
       routerListLog.info(
-        `Reached maxItems (${input.maxItems}) while enqueuing detail pages. Stopping pagination enqueue.`,
+        `Reached maxItems (${input.maxItems}) while collecting listing records. Stopping pagination scan.`,
       );
       break;
     }
 
-    // Enqueue Detail Page
-    const enqueueResult = await crawler.requestQueue?.addRequest({
-      url: new URL(href, request.url).toString(),
-      label: 'DETAILS',
-      userData: {
-        jobTitle: title || 'Unknown',
-        jobId,
-        companyName: company,
-        location,
-        salary,
-        publishedInfoText: status,
-      },
-    });
-    if (enqueueResult && !enqueueResult.wasAlreadyPresent && !enqueueResult.wasAlreadyHandled) {
-      enqueuedDetailRequests += 1;
+    const listingRecord: CrawlListingRecord = {
+      source: 'jobs.cz',
+      sourceId: jobId,
+      adUrl: new URL(href, request.url).toString(),
+      jobTitle: title || 'Unknown',
+      companyName: company,
+      location,
+      salary,
+      publishedInfoText: status,
+    };
+
+    if (collectedListingsBySourceId.has(jobId)) {
+      listListingsDuplicateSourceIds += 1;
     } else {
-      duplicateOrAlreadyHandledDetailRequests += 1;
+      collectedListingsBySourceId.set(jobId, listingRecord);
+      listListingsCollectedUnique = collectedListingsBySourceId.size;
     }
   }
 
   // Pagination
   const nextButton = await page.locator(NEXT_PAGE_SELECTOR);
   if (
-    enqueuedDetailRequests < input.maxItems &&
+    collectedListingsBySourceId.size < input.maxItems &&
     (await nextButton.count()) > 0 &&
     (await nextButton.isEnabled())
   ) {
@@ -832,12 +884,29 @@ const crawlRunId = randomUUID();
 const startUrls = input.startUrls;
 const runStartedAt = new Date();
 const runStartedAtMs = Date.now();
+const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const localSharedScrapedJobsDir = path.resolve(appRootDir, envs.LOCAL_SHARED_SCRAPED_JOBS_DIR);
+sharedRunOutputPaths = buildSharedRunOutputPaths(localSharedScrapedJobsDir, crawlRunId);
 const mongoRunSummaryConfig: CrawlRunSummaryMongoConfig = {
   enabled: envs.ENABLE_MONGO_RUN_SUMMARY_WRITE,
   mongoUri: envs.MONGODB_URI,
   dbName: envs.MONGODB_DB_NAME,
   collectionName: envs.MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION,
 };
+if (!envs.MONGODB_URI) {
+  throw new Error(
+    'MONGODB_URI is required for incremental crawl reconciliation (crawl state collection).',
+  );
+}
+const crawlStateRepo = new CrawlStateRepository({
+  mongoUri: envs.MONGODB_URI,
+  dbName: envs.MONGODB_DB_NAME,
+  collectionName: envs.MONGODB_CRAWL_JOBS_COLLECTION,
+});
+
+await prepareSharedRunOutput(sharedRunOutputPaths);
+await crawlStateRepo.connect();
+await crawlStateRepo.ensureIndexes();
 
 for (const startUrl of startUrls) {
   if (!seedListSummaries.has(startUrl.url)) {
@@ -869,34 +938,39 @@ log.debug('Environment configured for actor run.', {
 // C. Configure Proxy (Store Standard)
 const proxyConfiguration = await Actor.createProxyConfiguration(input.proxyConfiguration);
 
-// D. Initialize Crawler
-const crawler = new PlaywrightCrawler({
-  proxyConfiguration,
-  headless: true,
-  requestHandler: router,
-  failedRequestHandler: async ({ request, error }) => {
-    failedRequests += 1;
-    failedRequestUrls.push(request.url);
-    log.error('Failed request after retries', {
-      url: request.url,
-      label: request.label,
-      sourceId:
-        typeof request.userData?.jobId === 'string'
-          ? request.userData.jobId
-          : request.userData?.jobId,
-      error,
-    });
-  },
-  maxConcurrency: 1,
-  maxRequestsPerMinute: 30,
-  // Safety guard (maxItems is enforced by detail-page counting + abort logic above).
-  maxRequestsPerCrawl: Math.max(input.maxItems * 5, 50),
-  launchContext: {
-    launchOptions: {
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+// D. Initialize Crawlers (list phase, then detail phase for new jobs only)
+const createCrawler = (maxRequestsPerCrawlSafetyCap: number) =>
+  new PlaywrightCrawler({
+    proxyConfiguration,
+    headless: true,
+    requestHandler: router,
+    failedRequestHandler: async ({ request, error }) => {
+      failedRequests += 1;
+      failedRequestUrls.push(request.url);
+      if (request.label === 'LIST') {
+        failedListRequests += 1;
+      } else if (request.label === 'DETAILS') {
+        failedDetailRequests += 1;
+      }
+      log.error('Failed request after retries', {
+        url: request.url,
+        label: request.label,
+        sourceId:
+          typeof request.userData?.jobId === 'string'
+            ? request.userData.jobId
+            : request.userData?.jobId,
+        error,
+      });
     },
-  },
-});
+    maxConcurrency: 1,
+    maxRequestsPerMinute: 30,
+    maxRequestsPerCrawl: maxRequestsPerCrawlSafetyCap,
+    launchContext: {
+      launchOptions: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      },
+    },
+  });
 
 log.info(`🚀 Starting scraper with limit: ${input.maxItems} items.`);
 
@@ -916,14 +990,19 @@ await upsertRunSummaryToMongoBestEffort(
       maxRequestsPerMinute: 30,
       debugLog: input.debugLog ?? false,
       proxyConfigured: Boolean(input.proxyConfiguration),
+      localSharedScrapedJobsDir,
     },
   },
   'start',
 );
 
 let crawlerRunError: unknown = null;
+let listPhaseCompleted = false;
+let detailPhaseStarted = false;
+let detailPhaseCompleted = false;
 try {
-  await crawler.run(
+  const listCrawler = createCrawler(Math.max(input.maxItems * 5, 50));
+  await listCrawler.run(
     startUrls.map((req) => ({
       ...req,
       label: 'LIST',
@@ -933,6 +1012,77 @@ try {
       },
     })),
   );
+  listPhaseCompleted = true;
+
+  const reconcileObservedAtIso = new Date().toISOString();
+  const reconcileResult = await crawlStateRepo.reconcileListings({
+    source: 'jobs.cz',
+    crawlRunId,
+    observedAtIso: reconcileObservedAtIso,
+    listings: Array.from(collectedListingsBySourceId.values()),
+    forceSkipInactiveMarking: failedListRequests > 0,
+    forceSkipInactiveMarkingReason: failedListRequests > 0 ? 'failed_list_requests' : undefined,
+    massInactivationGuardMinActiveCount: envs.CRAWL_INACTIVE_GUARD_MIN_ACTIVE_COUNT,
+    massInactivationGuardMinSeenRatio: envs.CRAWL_INACTIVE_GUARD_MIN_SEEN_RATIO,
+  });
+
+  reconcileNewJobsCount = reconcileResult.newListings.length;
+  reconcileExistingJobsCount = reconcileResult.existingCount;
+  activeJobsCountBeforeReconcile = reconcileResult.activeBeforeCount;
+  inactiveMarkedCount = reconcileResult.inactiveMarkedCount;
+  inactiveMarkingSkipped = reconcileResult.inactiveMarkingSkipped;
+  inactiveMarkingSkipReason = reconcileResult.inactiveMarkingSkipReason;
+  enqueuedDetailRequests = reconcileResult.newListings.length;
+
+  log.info('Reconciled listings against crawl state collection', {
+    crawlRunId,
+    totalSeen: reconcileResult.totalSeen,
+    newJobs: reconcileNewJobsCount,
+    existingJobs: reconcileExistingJobsCount,
+    activeJobsCountBeforeReconcile,
+    inactiveMarkedCount,
+    inactiveMarkingSkipped,
+    inactiveMarkingSkipReason,
+    failedListRequests,
+    mongoDbName: envs.MONGODB_DB_NAME,
+    mongoCollection: envs.MONGODB_CRAWL_JOBS_COLLECTION,
+  });
+
+  if (reconcileResult.newListings.length > 0) {
+    detailPhaseStarted = true;
+    const detailCrawler = createCrawler(Math.max(reconcileResult.newListings.length * 5, 50));
+    await detailCrawler.run(
+      reconcileResult.newListings.map((listing) => ({
+        url: listing.adUrl,
+        label: 'DETAILS',
+        userData: {
+          jobTitle: listing.jobTitle,
+          jobId: listing.sourceId,
+          companyName: listing.companyName,
+          location: listing.location,
+          salary: listing.salary,
+          publishedInfoText: listing.publishedInfoText,
+        },
+      })),
+    );
+    detailPhaseCompleted = true;
+  } else {
+    detailPhaseCompleted = true;
+    log.info('Skipping detail crawl phase because no new jobs were discovered in reconciliation', {
+      crawlRunId,
+    });
+  }
+
+  if (detailSnapshotsForState.length > 0) {
+    detailStateSnapshotsApplied = await crawlStateRepo.updateDetailSnapshots({
+      source: 'jobs.cz',
+      detailSnapshots: detailSnapshotsForState,
+      updatedAtIso: new Date().toISOString(),
+    });
+  }
+
+  localSharedDatasetRecordsWritten = sharedDatasetRecords.length;
+  localSharedDatasetJsonPath = await writeSharedDatasetJson(sharedRunOutputPaths, sharedDatasetRecords);
 } catch (error) {
   crawlerRunError = error;
   log.error('Crawler run failed before completion', {
@@ -960,14 +1110,19 @@ const averageDetailRenderWaitMs =
 const averageDetailHtmlByteSize =
   htmlSnapshotsSaved > 0 ? Math.round(totalDetailHtmlBytes / htmlSnapshotsSaved) : 0;
 
-const runStatus: CrawlRunStatus = crawlerRunError ? 'failed' : 'succeeded';
+const runHadNonFatalErrors = failedRequests > 0 || detailsValidationFailed > 0;
+const runStatus: CrawlRunStatus = crawlerRunError
+  ? 'failed'
+  : runHadNonFatalErrors
+    ? 'completed_with_errors'
+    : 'succeeded';
 const runStopReason = crawlerRunError
   ? 'crawler_error'
-  : maxItemsAbortTriggered
+  : reconcileNewJobsCount === 0
+    ? 'no_new_jobs'
+    : maxItemsAbortTriggered
     ? 'max_items_reached'
-    : storedDetailPages < input.maxItems
-      ? 'pagination_exhausted_or_no_more_requests'
-      : 'completed';
+    : 'completed';
 
 const runSummary = {
   crawlRunId,
@@ -988,24 +1143,40 @@ const runSummary = {
   },
   outcome: {
     stopReason: runStopReason,
+    listPhaseCompleted,
+    detailPhaseStarted,
+    detailPhaseCompleted,
     maxItemsAbortTriggered,
     maxItemsEnqueueGuardTriggered,
     failedRequests,
+    failedListRequests,
+    failedDetailRequests,
+    inactiveMarkingSkipped,
+    inactiveMarkingSkipReason,
   },
   counters: {
     listPagesVisited,
     paginationNextPagesEnqueued,
     totalJobCardsSeen,
     cardsSkippedMissingHrefOrId,
+    listListingsCollectedUnique,
+    listListingsDuplicateSourceIds,
+    reconcileNewJobsCount,
+    reconcileExistingJobsCount,
+    activeJobsCountBeforeReconcile,
+    inactiveMarkedCount,
     detailsEnqueuedUnique: enqueuedDetailRequests,
     duplicateOrAlreadyHandledDetailRequests,
     detailPagesVisited,
     htmlSnapshotsSaved,
+    localSharedHtmlFilesWritten,
+    localSharedDatasetRecordsWritten,
     datasetRecordsStored: storedDetailPages,
     detailsValidationSucceeded,
     detailsValidationFailed,
     detailRedirects,
     dynamicRenderedPagesCount,
+    detailStateSnapshotsApplied,
   },
   listPageResults: {
     parsedSeedCountsFound: parsedListingResultsCounts.length,
@@ -1020,6 +1191,16 @@ const runSummary = {
     maxDetailRenderWaitMs,
     averageDetailHtmlByteSize,
     totalDetailHtmlBytes,
+  },
+  localSharedOutput: {
+    baseDir: sharedRunOutputPaths.baseDir,
+    runDir: sharedRunOutputPaths.runDir,
+    recordsDir: sharedRunOutputPaths.recordsDir,
+    datasetJsonPath: localSharedDatasetJsonPath,
+  },
+  crawlState: {
+    mongoDbName: envs.MONGODB_DB_NAME,
+    mongoCollection: envs.MONGODB_CRAWL_JOBS_COLLECTION,
   },
   failedRequestUrls,
   error: crawlerRunError ? serializeErrorForSummary(crawlerRunError) : null,
@@ -1038,12 +1219,17 @@ await upsertRunSummaryToMongoBestEffort(
     finishedAt: runSummary.finishedAt,
     stopReason: runSummary.outcome.stopReason,
     parsedListingResultsCountTotal: runSummary.listPageResults.parsedListingResultsCountTotal,
+    newJobsCount: runSummary.counters.reconcileNewJobsCount,
+    existingJobsCount: runSummary.counters.reconcileExistingJobsCount,
+    inactiveMarkedCount: runSummary.counters.inactiveMarkedCount,
     datasetRecordsStored: runSummary.counters.datasetRecordsStored,
     failedRequests: runSummary.outcome.failedRequests,
     runSummary,
   },
   'final',
 );
+
+await crawlStateRepo.close();
 
 if (crawlerRunError) {
   throw crawlerRunError;

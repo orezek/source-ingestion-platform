@@ -20,6 +20,10 @@ const envSchema = z.object({
   CRAWLEE_LOG_LEVEL: crawleeLogLevels.describe(
     'Crawlee logger constant for setting up logging levels.',
   ),
+  LOCAL_SHARED_SCRAPED_JOBS_DIR: z.string().default('../job-ingestion-service/scrapped_jobs'),
+  MONGODB_CRAWL_JOBS_COLLECTION: z.string().default('crawlJobsCollection'),
+  CRAWL_INACTIVE_GUARD_MIN_ACTIVE_COUNT: z.coerce.number().int().nonnegative().default(100),
+  CRAWL_INACTIVE_GUARD_MIN_SEEN_RATIO: z.coerce.number().min(0).max(1).default(0.5),
   ENABLE_MONGO_RUN_SUMMARY_WRITE: toBoolean.default(false),
   MONGODB_URI: z.string().optional(),
   MONGODB_DB_NAME: z.string().default('jobCompass'),
