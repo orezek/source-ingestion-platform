@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { loadEnv } from '@repo/env-config';
 import { z } from 'zod';
@@ -77,11 +77,15 @@ export const envSchema = z.object({
   GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(0.5),
   GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS: z.coerce.number().nonnegative().default(3),
   OUTPUT_JSON_PATH: z.string().default('output/normalized-jobs.json'),
+  CRAWL_RUNS_SUBDIR: z.string().default('runs'),
+  INGESTION_API_HOST: z.string().default('127.0.0.1'),
+  INGESTION_API_PORT: z.coerce.number().int().min(1).max(65_535).default(3010),
   ENABLE_MONGO_WRITE: toBoolean.default(false),
   MONGODB_URI: z.string().optional(),
   MONGODB_DB_NAME: z.string().default('jobcompass'),
   MONGODB_JOBS_COLLECTION: z.string().default('ingestionCollection'),
   MONGODB_RUN_SUMMARIES_COLLECTION: z.string().default('ingestionRunSummaryCollection'),
+  MONGODB_INGESTION_TRIGGERS_COLLECTION: z.string().default('ingestionTriggerCollection'),
   PARSER_VERSION: z.string().default('job-ingestion-service-v0.5.0'),
 });
 
@@ -126,11 +130,11 @@ const ingestionRunSummarySchema = z.object({
 type IngestionRunSummary = z.infer<typeof ingestionRunSummarySchema>;
 
 export const envs: EnvSchema = loadEnv(envSchema, import.meta.url);
-const logger = createLogger(envs.LOG_LEVEL, { pretty: envs.LOG_PRETTY });
+export const logger = createLogger(envs.LOG_LEVEL, { pretty: envs.LOG_PRETTY });
 
-const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const inputRootDir = path.resolve(appRootDir, envs.INPUT_ROOT_DIR);
-const outputJsonPath = path.resolve(appRootDir, envs.OUTPUT_JSON_PATH);
+export const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const inputRootDir = path.resolve(appRootDir, envs.INPUT_ROOT_DIR);
+export const outputJsonPath = path.resolve(appRootDir, envs.OUTPUT_JSON_PATH);
 
 const percentile = (values: number[], ratio: number): number => {
   if (values.length === 0) {
@@ -192,6 +196,7 @@ const buildRunSummaryDocument = (input: {
   failed: number;
   mongoWritesStructured: number;
   workerCount: number;
+  sampleSize: number | null;
 }): IngestionRunSummary =>
   ingestionRunSummarySchema.parse({
     id: input.runId,
@@ -202,7 +207,7 @@ const buildRunSummaryDocument = (input: {
     parserVersion: envs.PARSER_VERSION,
     extractorModel: envs.GEMINI_MODEL,
     langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
-    sampleSize: envs.INGESTION_SAMPLE_SIZE ?? 'all',
+    sampleSize: input.sampleSize ?? 'all',
     concurrency: input.workerCount,
     jobsProcessed: input.structuredParsed.length,
     jobsSkippedIncomplete: input.skippedIncomplete,
@@ -218,8 +223,15 @@ const buildRunSummaryDocument = (input: {
     avgLlmCallDurationSeconds: input.stats.avgLlmCallDurationSeconds,
   });
 
+type ParseRecordsOptions = {
+  runId: string;
+  inputRootDir: string;
+  recordsDirName: string;
+  sampleSize: number | null;
+};
+
 const parseRecords = async (
-  runId: string,
+  options: ParseRecordsOptions,
 ): Promise<{
   structuredParsed: UnifiedJobAd[];
   failed: number;
@@ -227,6 +239,7 @@ const parseRecords = async (
   stats: ParseRunStats;
   workerCount: number;
 }> => {
+  const { runId, inputRootDir: recordsInputRootDir, recordsDirName, sampleSize } = options;
   if (!envs.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is required to run detail-page extraction.');
   }
@@ -240,9 +253,9 @@ const parseRecords = async (
     logger.child({ component: 'InputProvider' }),
   );
   const inputRecords = await inputProvider.loadInputRecords({
-    inputRootDir,
-    recordsDirName: envs.INPUT_RECORDS_DIR_NAME,
-    sampleSize: envs.INGESTION_SAMPLE_SIZE,
+    inputRootDir: recordsInputRootDir,
+    recordsDirName,
+    sampleSize,
   });
 
   const extractor = new GeminiJobDetailExtractor({
@@ -274,7 +287,7 @@ const parseRecords = async (
   logger.info(
     {
       inputRecords: inputRecords.length,
-      sampleSize: envs.INGESTION_SAMPLE_SIZE ?? 'all',
+      sampleSize: sampleSize ?? 'all',
       model: envs.GEMINI_MODEL,
       langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
       concurrency: workerCount,
@@ -339,15 +352,52 @@ const parseRecords = async (
   return { structuredParsed, failed, skippedIncomplete, stats, workerCount };
 };
 
-async function main(): Promise<void> {
-  const runId = randomUUID();
+export type IngestionRunStatus = 'succeeded' | 'completed_with_errors';
+
+export type RunIngestionWorkflowOptions = {
+  runId?: string;
+  inputRootDirOverride?: string;
+  recordsDirNameOverride?: string;
+  sampleSizeOverride?: number | null;
+  outputJsonPathOverride?: string;
+};
+
+export type RunIngestionWorkflowResult = {
+  runId: string;
+  status: IngestionRunStatus;
+  runSummaryDocument: IngestionRunSummary;
+  structuredParsed: UnifiedJobAd[];
+  failed: number;
+  skippedIncomplete: number;
+  stats: ParseRunStats;
+  workerCount: number;
+  outputJsonPath: string;
+  mongoWritesStructured: number;
+  mongoWritesRunSummary: number;
+};
+
+export const runIngestionWorkflow = async (
+  options: RunIngestionWorkflowOptions = {},
+): Promise<RunIngestionWorkflowResult> => {
+  const runId = options.runId ?? randomUUID();
   const runStartedAtIso = new Date().toISOString();
+  const resolvedInputRootDir = options.inputRootDirOverride
+    ? path.resolve(options.inputRootDirOverride)
+    : inputRootDir;
+  const resolvedOutputJsonPath = options.outputJsonPathOverride
+    ? path.resolve(options.outputJsonPathOverride)
+    : outputJsonPath;
+  const resolvedRecordsDirName = options.recordsDirNameOverride ?? envs.INPUT_RECORDS_DIR_NAME;
+  const resolvedSampleSize =
+    options.sampleSizeOverride !== undefined
+      ? options.sampleSizeOverride
+      : envs.INGESTION_SAMPLE_SIZE;
 
   logger.info(
     {
       runId,
-      inputRootDir,
-      outputJsonPath,
+      inputRootDir: resolvedInputRootDir,
+      outputJsonPath: resolvedOutputJsonPath,
       enableMongoWrite: envs.ENABLE_MONGO_WRITE,
       mongoDbName: envs.MONGODB_DB_NAME,
       mongoCollectionStructured: envs.MONGODB_JOBS_COLLECTION,
@@ -362,11 +412,15 @@ async function main(): Promise<void> {
   );
 
   const startedAt = performance.now();
-  const { structuredParsed, failed, skippedIncomplete, stats, workerCount } =
-    await parseRecords(runId);
+  const { structuredParsed, failed, skippedIncomplete, stats, workerCount } = await parseRecords({
+    runId,
+    inputRootDir: resolvedInputRootDir,
+    recordsDirName: resolvedRecordsDirName,
+    sampleSize: resolvedSampleSize,
+  });
 
   await writeOutputToFile(
-    outputJsonPath,
+    resolvedOutputJsonPath,
     structuredParsed,
     logger.child({ component: 'FileRepository' }),
   );
@@ -402,6 +456,7 @@ async function main(): Promise<void> {
     failed,
     mongoWritesStructured: mongoWrittenStructured,
     workerCount,
+    sampleSize: resolvedSampleSize,
   });
 
   if (envs.ENABLE_MONGO_WRITE && envs.MONGODB_URI) {
@@ -422,7 +477,7 @@ async function main(): Promise<void> {
       parsedStructured: structuredParsed.length,
       failed,
       skippedIncomplete,
-      outputJsonPath,
+      outputJsonPath: resolvedOutputJsonPath,
       mongoWritesStructured: mongoWrittenStructured,
       mongoWritesRunSummary: mongoWrittenRunSummary,
       runDurationSeconds,
@@ -455,9 +510,38 @@ async function main(): Promise<void> {
     },
     'Parse run summary',
   );
+
+  return {
+    runId,
+    status: failed > 0 || skippedIncomplete > 0 ? 'completed_with_errors' : 'succeeded',
+    runSummaryDocument,
+    structuredParsed,
+    failed,
+    skippedIncomplete,
+    stats,
+    workerCount,
+    outputJsonPath: resolvedOutputJsonPath,
+    mongoWritesStructured: mongoWrittenStructured,
+    mongoWritesRunSummary: mongoWrittenRunSummary,
+  };
+};
+
+async function main(): Promise<void> {
+  await runIngestionWorkflow();
 }
 
-void main().catch((error) => {
-  logger.fatal({ err: error }, 'Unhandled fatal error in ingestion runner');
-  process.exitCode = 1;
-});
+const isEntrypoint = (importMetaUrl: string): boolean => {
+  const argvPath = process.argv[1];
+  if (!argvPath) {
+    return false;
+  }
+
+  return importMetaUrl === pathToFileURL(argvPath).href;
+};
+
+if (isEntrypoint(import.meta.url)) {
+  void main().catch((error) => {
+    logger.fatal({ err: error }, 'Unhandled fatal error in ingestion runner');
+    process.exitCode = 1;
+  });
+}

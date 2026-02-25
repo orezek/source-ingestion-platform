@@ -13,7 +13,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/app.js",
+    "start-server": "node dist/server.js",
     "dev": "tsx watch src/app.ts",
+    "dev-server": "tsx watch src/server.ts",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit"
   },
@@ -22,6 +24,7 @@
     "@langchain/langgraph": "catalog:",
     "@repo/env-config": "workspace:*",
     "cheerio": "catalog:",
+    "fastify": "catalog:",
     "langchain": "catalog:",
     "mongodb": "catalog:",
     "pino": "catalog:",

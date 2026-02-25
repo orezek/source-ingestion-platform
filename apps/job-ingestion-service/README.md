@@ -123,8 +123,11 @@ Copy `.env.example` to `.env` and configure:
 - `INGESTION_SAMPLE_SIZE` for cost-controlled test runs (positive integer, `all`, or empty/unset to process all records)
 - `ENABLE_MONGO_WRITE=true` + `MONGODB_URI` for Atlas persistence
 - `OUTPUT_JSON_PATH` for structured output file
+- `CRAWL_RUNS_SUBDIR` for crawl-run local handoff directories under `INPUT_ROOT_DIR` (default `runs`)
+- `INGESTION_API_HOST` and `INGESTION_API_PORT` for the Fastify ingestion trigger API
 - `MONGODB_JOBS_COLLECTION` for structured document output
 - `MONGODB_RUN_SUMMARIES_COLLECTION` for one summary document per ingestion run (linked via `runId`)
+- `MONGODB_INGESTION_TRIGGERS_COLLECTION` for idempotent ingestion trigger request state (`source + crawlRunId`)
 
 Default token pricing currently reflects Gemini 3 Flash preview text pricing from Google AI pricing docs.
 `rawDetailPage.tokenCountApprox` is a local approximation (`ceil(charCount / 4)`) for quick sizing/cost heuristics.
@@ -137,9 +140,27 @@ When Mongo persistence is enabled, each run writes:
 
 ## Run
 
+CLI (existing batch mode):
+
 ```bash
 pnpm -C apps/job-ingestion-service dev
 ```
+
+Fastify API (idempotent crawl-run trigger endpoint):
+
+```bash
+pnpm -C apps/job-ingestion-service dev-server
+```
+
+Start endpoint:
+
+- `POST /ingestion/start`
+- body: `{ "source": "jobs.cz", "crawlRunId": "<crawl-run-id>" }`
+- behavior: idempotent by `source + crawlRunId`
+- input source (MVP): local crawl artifacts in `INPUT_ROOT_DIR/<CRAWL_RUNS_SUBDIR>/<crawlRunId>/`
+  - expected files: `dataset.json` and `records/*.html`
+
+Trigger states are persisted to `MONGODB_INGESTION_TRIGGERS_COLLECTION` and return `running`, `succeeded`, `completed_with_errors`, or `failed`.
 
 ## Validate
 
