@@ -991,15 +991,31 @@ router.addHandler('LIST', async ({ request, enqueueLinks, page, log }) => {
 
 await Actor.init();
 // Sanity Check for local run!
+const actorAppRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const defaultLocalInputPath = path.join(
+  actorAppRootDir,
+  'storage',
+  'key_value_stores',
+  'default',
+  'INPUT.json',
+);
 const rawInput = await Actor.getInput<unknown>();
-if (!rawInput) throw new Error('⚠️ Input is missing!');
+if (!rawInput) {
+  throw new Error(
+    [
+      'Input is missing (Actor.getInput() returned null).',
+      `Local Apify input expected at: ${defaultLocalInputPath}`,
+      'If using temp storage, create key_value_stores/default/INPUT.json under CRAWLEE_STORAGE_DIR.',
+    ].join(' '),
+  );
+}
 const input = actorInputSchema.parse(rawInput);
 
 const crawlRunId = randomUUID();
 const startUrls = input.startUrls;
 const runStartedAt = new Date();
 const runStartedAtMs = Date.now();
-const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const appRootDir = actorAppRootDir;
 const localSharedScrapedJobsDir = path.resolve(appRootDir, envs.LOCAL_SHARED_SCRAPED_JOBS_DIR);
 sharedRunOutputPaths = buildSharedRunOutputPaths(localSharedScrapedJobsDir, crawlRunId);
 const mongoRunSummaryConfig: CrawlRunSummaryMongoConfig = {
