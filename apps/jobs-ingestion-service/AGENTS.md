@@ -1,4 +1,4 @@
-# App Template Agent Instructions
+# Jobs Ingestion Service Agent Instructions
 
 These instructions are app-local extensions of the repository root rules.
 
@@ -25,12 +25,100 @@ These instructions are app-local extensions of the repository root rules.
 - Keep ESLint flat config extending `@repo/eslint-config`.
 - Keep env loading type-safe through `@repo/env-config` + schema validation.
 
-## Template-Maintenance Rule
+## App Purpose & Boundaries
 
-- If this file is located at `apps/app-template/AGENTS.md`, keep the app reusable as a scaffold template and do not delete `apps/app-template`.
+- This app is the ingestion/parsing service for crawler outputs.
+- It is responsible for:
+  - receiving ingestion triggers via Fastify (`POST /ingestion/start`),
+  - reading crawl artifacts from shared local storage,
+  - running the LangGraph extraction pipeline,
+  - writing normalized job documents to MongoDB (`normalized_job_ads`),
+  - writing ingestion summaries / trigger tracking,
+  - pruning non-success jobs from `crawl_job_states` so the crawler retries them next run.
+- It is **not** responsible for crawling list/detail pages (that belongs to `jobs-crawler-actor`).
 
-## When Updating This Template
+## Modes of Operation
 
-- Ensure changes are template-safe and reusable by newly scaffolded apps.
-- If this file is located in `apps/app-template`, update `apps/app-template/README.md` when behavior or usage changes.
-- Avoid adding app-specific business logic that would not generalize to new apps.
+### 1) Fastify Trigger Mode (MVP default integration path)
+
+- Start the server (`start-server`) and let the crawler trigger ingestion.
+- Trigger endpoint is idempotent and keyed by `{ source, crawlRunId }`.
+- Trigger request tracking is stored in `ingestion_trigger_requests`.
+
+### 2) CLI Batch Mode (maintenance/debug)
+
+- The app can run directly in batch mode (`start`) against an input root.
+- This is useful for local debugging/reprocessing, but it bypasses trigger idempotency tracking.
+
+## Shared Local Handoff Contract (Crawler -> Ingestion)
+
+- Crawler writes per-run artifacts into:
+  - `apps/jobs-ingestion-service/scrapped_jobs/runs/<crawlRunId>/`
+- This service reads:
+  - `dataset.json`
+  - `records/*.html`
+- The trigger payload includes only `{ source, crawlRunId }`; HTML is not sent over HTTP.
+- The crawler is expected to use a full production scan when writing into production collections; sample runs should use a dev DB (same collection names) to avoid corrupting `crawl_job_states`.
+
+## Parsing / Extraction Pipeline (Current Behavior)
+
+- `loadDetailPage` is deterministic and performs:
+  - file read + gzip detection/decompression
+  - Cheerio DOM parsing + non-content pruning
+  - completeness validation
+  - text extraction for downstream LLM processing
+- The structured extraction is performed downstream in the LangGraph pipeline.
+
+## Detail Page Completeness Gate (Important)
+
+- Completeness validation is **structural-first**:
+  - it prefers known job content containers (e.g. `.cp-detail__content`, `#capybara-position-detail`, `.job-detail*`, `.m-detail*`)
+  - selects the **best** candidate container (not first match)
+- If a valid primary content container is found and passes min chars/words, the page is accepted.
+- Keyword/noise heuristics are still retained as a fallback for unknown templates.
+
+## Raw Text Quality Rule (Current MVP)
+
+- Keep only one processed text copy in the pipeline output (`textContent`) plus raw HTML dump.
+- When a valid primary job content container exists, `textContent` uses the primary container text (not whole-body merged text) to reduce cookie/legal/footer noise.
+- `rawHtml` remains the audit/reprocessing source of truth.
+
+## Mongo Collection Responsibilities (Current Naming)
+
+- `normalized_job_ads`
+  - parsed/normalized job documents (final ingestion output)
+- `ingestion_run_summaries`
+  - run-level summaries, metrics, rates, and skipped/failed audit arrays
+- `ingestion_trigger_requests`
+  - idempotent trigger lifecycle tracking for `POST /ingestion/start`
+- `crawl_job_states` (shared with crawler)
+  - crawler state; this service may prune non-success jobs after ingestion
+
+## Crawler State Alignment Behavior (Critical)
+
+- To avoid jobs getting stuck in crawler state when ingestion skips/fails them:
+  - non-success jobs (`skippedIncomplete`, `failed`) are removed from `crawl_job_states`
+  - this ensures the next crawler run treats them as new and retries detail scraping
+- This is an intentional MVP simplification (no ingestion status is stored in `crawl_job_states`).
+
+## Ingestion Summary Expectations
+
+- `ingestion_run_summaries` should preserve enough observability to debug non-success runs:
+  - `jobsTotal`, `jobsProcessed`, `jobsSkippedIncomplete`, `jobsFailed`
+  - success/non-success rates
+  - `skippedIncompleteJobs[]`
+  - `failedJobs[]`
+- Timestamps are stored in UTC ISO 8601 (`...Z`) for consistency across services and environments.
+
+## Local Operations / Troubleshooting
+
+- API listen port is controlled by `INGESTION_API_PORT` (default `3010`).
+- If the port is in use, startup now fails fast with a clear error (`EADDRINUSE` path).
+- When testing locally, align the crawler trigger URL with the server port:
+  - actor `INGESTION_TRIGGER_URL=http://127.0.0.1:<port>/ingestion/start`
+
+## Testing Guidance
+
+- Prefer isolated temp collections / dev DBs for integration tests.
+- Preserve shared run artifacts only when needed for debugging; otherwise clean test artifacts after verification.
+- When changing parser/completeness behavior, validate against a real saved run (not only synthetic HTML) and compare skipped counts before/after.
