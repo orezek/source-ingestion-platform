@@ -5,7 +5,7 @@ All notable changes to `apps/jobs-ingestion-service` should be documented in thi
 This app has two relevant version identifiers:
 
 - package version (`package.json`): currently `1.0.0`
-- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.7.0`
+- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.8.0`
 
 The parser version is the operational identifier used in `normalized_job_ads` and `ingestion_run_summaries`.
 
@@ -15,8 +15,20 @@ The parser version is the operational identifier used in `normalized_job_ads` an
 
 - Added detailed README and app-specific architecture spec for operators and contributors.
 - Added app-level changelog with parser-version notes.
+- Formalized MVP run-profile conventions (`prod_full`, `dev_sample`) in env examples and operator docs.
 
-## [jobs-ingestion-service-v0.7.0] - Current Parser Baseline
+## [jobs-ingestion-service-v0.8.0] - Current Parser Baseline
+
+### Added
+
+- Top-level `crawlRunId` field in `normalized_job_ads` for crawler-run traceability (when known).
+
+### Changed
+
+- `loadDetailPage` internals refactored into smaller deterministic helpers for readability and maintainability without changing external behavior.
+- Ingestion trigger flow now propagates `crawlRunId` into normalized documents in Fastify-triggered runs.
+
+## [jobs-ingestion-service-v0.7.0]
 
 ### Fixed
 

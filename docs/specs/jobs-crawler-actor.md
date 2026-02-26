@@ -17,6 +17,25 @@ It is optimized for:
 - observability via run summaries and detail render metadata
 - local handoff to `jobs-ingestion-service`
 
+## Fixed MVP Crawl Scope (Current Product Dataset)
+
+The current MVP intentionally targets a fixed Jobs.cz scope to create a stable dataset for ETL reliability, analytics, RAG/CAG experimentation, and UI/dashboard development.
+
+Current fixed scope:
+
+- locality: Praha
+- radius: `0 km`
+- categories:
+  - `IS/IT: Správa systémů a HW`
+  - `IS/IT: Vývoj aplikací a systémů`
+  - `IS/IT: Konzultace, analýzy a projektové řízení`
+  - `Technika a vývoj`
+
+The actor supports enforcing this via:
+
+- `MVP_ENFORCE_FIXED_START_URL_SCOPE=true`
+- `MVP_FIXED_START_URL=<fixed jobs.cz URL>`
+
 ## Non-goals (Current Spec)
 
 - LLM extraction / semantic parsing of job content
@@ -64,6 +83,17 @@ Key settings:
 - inactive marking guards:
   - `CRAWL_INACTIVE_GUARD_MIN_ACTIVE_COUNT`
   - `CRAWL_INACTIVE_GUARD_MIN_SEEN_RATIO`
+
+### Named Run Profiles (MVP Convention)
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - full list scan only
+  - optional ingestion trigger enabled for end-to-end runs
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - sample/partial runs allowed (`maxItems`)
+  - same collection names, isolated DB state
 
 ## High-Level Flow
 
@@ -193,6 +223,11 @@ Purpose:
 - crawler memory for incremental crawl decisions
 - active/inactive state tracking
 - does **not** store ingestion lifecycle state in current MVP
+
+Note:
+
+- production crawl state should only be mutated by `prod_full` runs
+- sample/debug runs should use `dev_sample` (separate DB)
 
 ## Correctness Rules
 

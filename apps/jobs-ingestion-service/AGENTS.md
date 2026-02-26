@@ -60,6 +60,17 @@ These instructions are app-local extensions of the repository root rules.
 - The trigger payload includes only `{ source, crawlRunId }`; HTML is not sent over HTTP.
 - The crawler is expected to use a full production scan when writing into production collections; sample runs should use a dev DB (same collection names) to avoid corrupting `crawl_job_states`.
 
+### Named Run Profiles (MVP Convention)
+
+- `prod_full`
+  - crawler uses `MONGODB_DB_NAME=jobCompass`
+  - ingestion uses `MONGODB_DB_NAME=jobCompass`
+  - crawler runs full list scan and triggers ingestion
+- `dev_sample`
+  - crawler uses `MONGODB_DB_NAME=job-compass-dev`
+  - ingestion uses `MONGODB_DB_NAME=job-compass-dev`
+  - sample/partial runs are allowed for debugging
+
 ## Parsing / Extraction Pipeline (Current Behavior)
 
 - `loadDetailPage` is deterministic and performs:
@@ -87,6 +98,7 @@ These instructions are app-local extensions of the repository root rules.
 
 - `normalized_job_ads`
   - parsed/normalized job documents (final ingestion output)
+  - includes top-level `crawlRunId` when known (trigger mode or inferred from local run-folder path); `null` in generic CLI batch mode
 - `ingestion_run_summaries`
   - run-level summaries, metrics, rates, and skipped/failed audit arrays
 - `ingestion_trigger_requests`

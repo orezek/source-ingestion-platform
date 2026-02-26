@@ -90,6 +90,7 @@ Final schema is `unifiedJobAdSchema` in `src/schema.ts`.
 
 Key top-level sections:
 
+- `crawlRunId`: crawler run identifier for traceability (`null` when unknown in generic CLI batch mode)
 - `listing`: list-page snapshot
 - `detail`: normalized extracted detail fields
 - `rawDetailPage`: Cheerio-cleaned text used for extraction (and token estimate)
@@ -222,9 +223,22 @@ Core runtime/env groups:
 - `MONGODB_RUN_SUMMARIES_COLLECTION` (default `ingestion_run_summaries`)
 - `MONGODB_INGESTION_TRIGGERS_COLLECTION` (default `ingestion_trigger_requests`)
 
+### Run profile convention (MVP)
+
+Use the same collection names in different databases.
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - `ENABLE_MONGO_WRITE=true`
+  - crawler-triggered runs from full crawler scans only
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - use for sample/debug runs and integration tests
+  - same collection names, isolated DB state
+
 ### Parser metadata
 
-- `PARSER_VERSION` (current default `jobs-ingestion-service-v0.7.0`)
+- `PARSER_VERSION` (current default `jobs-ingestion-service-v0.8.0`)
 
 ## Run Modes
 

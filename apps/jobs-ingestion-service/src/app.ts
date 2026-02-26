@@ -82,12 +82,12 @@ export const envSchema = z.object({
   INGESTION_API_PORT: z.coerce.number().int().min(1).max(65_535).default(3010),
   ENABLE_MONGO_WRITE: toBoolean.default(false),
   MONGODB_URI: z.string().optional(),
-  MONGODB_DB_NAME: z.string().default('jobcompass'),
+  MONGODB_DB_NAME: z.string().default('jobCompass'),
   MONGODB_JOBS_COLLECTION: z.string().default('normalized_job_ads'),
   MONGODB_CRAWL_JOBS_COLLECTION: z.string().default('crawl_job_states'),
   MONGODB_RUN_SUMMARIES_COLLECTION: z.string().default('ingestion_run_summaries'),
   MONGODB_INGESTION_TRIGGERS_COLLECTION: z.string().default('ingestion_trigger_requests'),
-  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.7.0'),
+  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.8.0'),
 });
 
 export type EnvSchema = z.infer<typeof envSchema>;
@@ -289,6 +289,7 @@ const buildRunSummaryDocument = (input: {
 
 type ParseRecordsOptions = {
   runId: string;
+  crawlRunId: string | null;
   inputRootDir: string;
   recordsDirName: string;
   sampleSize: number | null;
@@ -305,7 +306,13 @@ const parseRecords = async (
   stats: ParseRunStats;
   workerCount: number;
 }> => {
-  const { runId, inputRootDir: recordsInputRootDir, recordsDirName, sampleSize } = options;
+  const {
+    runId,
+    crawlRunId,
+    inputRootDir: recordsInputRootDir,
+    recordsDirName,
+    sampleSize,
+  } = options;
   if (!envs.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is required to run detail-page extraction.');
   }
@@ -341,6 +348,7 @@ const parseRecords = async (
     minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
     parserVersion: envs.PARSER_VERSION,
     runId,
+    crawlRunId,
     logger,
   });
 
@@ -459,6 +467,7 @@ export type IngestionRunStatus = 'succeeded' | 'completed_with_errors';
 
 export type RunIngestionWorkflowOptions = {
   runId?: string;
+  crawlRunId?: string | null;
   inputRootDirOverride?: string;
   recordsDirNameOverride?: string;
   sampleSizeOverride?: number | null;
@@ -467,6 +476,7 @@ export type RunIngestionWorkflowOptions = {
 
 export type RunIngestionWorkflowResult = {
   runId: string;
+  crawlRunId: string | null;
   status: IngestionRunStatus;
   runSummaryDocument: IngestionRunSummary;
   structuredParsed: UnifiedJobAd[];
@@ -479,6 +489,18 @@ export type RunIngestionWorkflowResult = {
   outputJsonPath: string;
   mongoWritesStructured: number;
   mongoWritesRunSummary: number;
+};
+
+const inferCrawlRunIdFromInputRootDir = (resolvedInputRootDir: string): string | null => {
+  const normalizedInputRootDir = path.resolve(resolvedInputRootDir);
+  const parentDir = path.basename(path.dirname(normalizedInputRootDir));
+  const currentDir = path.basename(normalizedInputRootDir);
+
+  if (parentDir === envs.CRAWL_RUNS_SUBDIR && currentDir.length > 0) {
+    return currentDir;
+  }
+
+  return null;
 };
 
 export const runIngestionWorkflow = async (
@@ -497,10 +519,15 @@ export const runIngestionWorkflow = async (
     options.sampleSizeOverride !== undefined
       ? options.sampleSizeOverride
       : envs.INGESTION_SAMPLE_SIZE;
+  const resolvedCrawlRunId =
+    options.crawlRunId !== undefined
+      ? options.crawlRunId
+      : inferCrawlRunIdFromInputRootDir(resolvedInputRootDir);
 
   logger.info(
     {
       runId,
+      crawlRunId: resolvedCrawlRunId,
       inputRootDir: resolvedInputRootDir,
       outputJsonPath: resolvedOutputJsonPath,
       enableMongoWrite: envs.ENABLE_MONGO_WRITE,
@@ -528,6 +555,7 @@ export const runIngestionWorkflow = async (
     workerCount,
   } = await parseRecords({
     runId,
+    crawlRunId: resolvedCrawlRunId,
     inputRootDir: resolvedInputRootDir,
     recordsDirName: resolvedRecordsDirName,
     sampleSize: resolvedSampleSize,
@@ -649,6 +677,7 @@ export const runIngestionWorkflow = async (
 
   return {
     runId,
+    crawlRunId: resolvedCrawlRunId,
     status: failed > 0 || skippedIncomplete > 0 ? 'completed_with_errors' : 'succeeded',
     runSummaryDocument,
     structuredParsed,

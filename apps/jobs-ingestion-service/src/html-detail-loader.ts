@@ -83,6 +83,8 @@ const pruneNonContentNodes = (dom: CheerioAPI): void => {
   dom(nonContentSelectors.join(',')).remove();
 };
 
+const countWords = (text: string): number => (text.length > 0 ? text.split(' ').length : 0);
+
 type PrimaryJobContentContainerMatch = {
   selector: (typeof primaryJobContentContainerSelectors)[number];
   text: string;
@@ -152,6 +154,23 @@ const bufferToUtf8 = (buffer: Buffer): string => {
   return buffer.toString('utf8');
 };
 
+type DecodedDetailHtmlFile = {
+  rawHtml: string;
+  htmlSha256: string;
+  wasGzipCompressed: boolean;
+  fileSizeBytes: number;
+  rawHtmlChars: number;
+};
+
+type DetailPageTextAnalysis = {
+  mergedText: string;
+  plainTextWords: number;
+  primaryJobContentContainer: PrimaryJobContentContainerMatch | null;
+  detailSignalHits: number;
+  noiseSignalHits: number;
+  qualitySignals: DetailPageQualitySignals;
+};
+
 export type LoadedDetailPage = {
   rawHtml: string;
   textContent: string;
@@ -186,10 +205,7 @@ export class IncompleteDetailPageError extends Error {
   }
 }
 
-export const loadDetailPage = async (
-  detailHtmlPath: string,
-  minRelevantTextChars: number,
-): Promise<LoadedDetailPage> => {
+const decodeDetailHtmlFile = async (detailHtmlPath: string): Promise<DecodedDetailHtmlFile> => {
   await access(detailHtmlPath);
 
   const fileBuffer = await readFile(detailHtmlPath);
@@ -197,11 +213,21 @@ export const loadDetailPage = async (
   const rawHtml = bufferToUtf8(fileBuffer);
   const htmlSha256 = createHash('sha256').update(rawHtml, 'utf8').digest('hex');
 
+  return {
+    rawHtml,
+    htmlSha256,
+    wasGzipCompressed,
+    fileSizeBytes: fileBuffer.length,
+    rawHtmlChars: rawHtml.length,
+  };
+};
+
+const analyzeDetailPageText = (rawHtml: string): DetailPageTextAnalysis => {
   const dom = load(rawHtml);
   pruneNonContentNodes(dom);
 
   const mergedText = normalizeWhitespace(dom('body').text());
-  const plainTextWords = mergedText.length > 0 ? mergedText.split(' ').length : 0;
+  const plainTextWords = countWords(mergedText);
   const primaryJobContentContainer = findPrimaryJobContentContainer(dom);
   const detailSignalHits = countPatternHits(mergedText, detailSignalPatterns);
   const noiseSignalHits = countPatternHits(mergedText, noiseSignalPatterns);
@@ -217,80 +243,119 @@ export const loadDetailPage = async (
     noiseSignalHits,
   };
 
-  if (mergedText.length < minRelevantTextChars) {
+  return {
+    mergedText,
+    plainTextWords,
+    primaryJobContentContainer,
+    detailSignalHits,
+    noiseSignalHits,
+    qualitySignals,
+  };
+};
+
+const assertMinimumWholePageText = (
+  detailHtmlPath: string,
+  minRelevantTextChars: number,
+  analysis: DetailPageTextAnalysis,
+): void => {
+  if (analysis.mergedText.length < minRelevantTextChars) {
     throw new IncompleteDetailPageError(
       detailHtmlPath,
-      `plain text length ${mergedText.length} is below minimum ${minRelevantTextChars}`,
+      `plain text length ${analysis.mergedText.length} is below minimum ${minRelevantTextChars}`,
+      analysis.qualitySignals,
+    );
+  }
+
+  if (analysis.plainTextWords < minimumDetailWords) {
+    throw new IncompleteDetailPageError(
+      detailHtmlPath,
+      `plain text word count ${analysis.plainTextWords} is below minimum ${minimumDetailWords}`,
+      analysis.qualitySignals,
+    );
+  }
+};
+
+const assertPrimaryJobContentContainerSufficient = (
+  detailHtmlPath: string,
+  minRelevantTextChars: number,
+  primaryJobContentContainer: PrimaryJobContentContainerMatch,
+  qualitySignals: DetailPageQualitySignals,
+): void => {
+  if (primaryJobContentContainer.chars < minRelevantTextChars) {
+    throw new IncompleteDetailPageError(
+      detailHtmlPath,
+      `primary job content container "${primaryJobContentContainer.selector}" text length ${primaryJobContentContainer.chars} is below minimum ${minRelevantTextChars}`,
       qualitySignals,
     );
   }
 
-  if (plainTextWords < minimumDetailWords) {
+  if (primaryJobContentContainer.words < minimumDetailWords) {
     throw new IncompleteDetailPageError(
       detailHtmlPath,
-      `plain text word count ${plainTextWords} is below minimum ${minimumDetailWords}`,
+      `primary job content container "${primaryJobContentContainer.selector}" word count ${primaryJobContentContainer.words} is below minimum ${minimumDetailWords}`,
       qualitySignals,
     );
   }
+};
 
-  if (primaryJobContentContainer !== null) {
-    if (primaryJobContentContainer.chars < minRelevantTextChars) {
-      throw new IncompleteDetailPageError(
-        detailHtmlPath,
-        `primary job content container "${primaryJobContentContainer.selector}" text length ${primaryJobContentContainer.chars} is below minimum ${minRelevantTextChars}`,
-        qualitySignals,
-      );
-    }
-
-    if (primaryJobContentContainer.words < minimumDetailWords) {
-      throw new IncompleteDetailPageError(
-        detailHtmlPath,
-        `primary job content container "${primaryJobContentContainer.selector}" word count ${primaryJobContentContainer.words} is below minimum ${minimumDetailWords}`,
-        qualitySignals,
-      );
-    }
-
-    // Prefer the best primary content container text to reduce cookie/legal/footer noise
-    // while keeping the raw HTML dump for auditing and reprocessing.
-    const textContent = primaryJobContentContainer.text;
-
-    return {
-      rawHtml,
-      textContent,
-      htmlSha256,
-      wasGzipCompressed,
-      fileSizeBytes: fileBuffer.length,
-      rawHtmlChars: rawHtml.length,
-      textContentChars: textContent.length,
-    };
-  }
-
-  if (detailSignalHits === 0 && noiseSignalHits > 0) {
+const assertFallbackHeuristicCompleteness = (
+  detailHtmlPath: string,
+  analysis: DetailPageTextAnalysis,
+): void => {
+  if (analysis.detailSignalHits === 0 && analysis.noiseSignalHits > 0) {
     throw new IncompleteDetailPageError(
       detailHtmlPath,
       'page contains noise/legal signals but no job-detail signals',
-      qualitySignals,
+      analysis.qualitySignals,
     );
   }
 
-  const detailToNoiseRatio = detailSignalHits / (noiseSignalHits + 1);
-  if (noiseSignalHits >= 4 && detailToNoiseRatio < minimumDetailSignalToNoiseRatio) {
+  const detailToNoiseRatio = analysis.detailSignalHits / (analysis.noiseSignalHits + 1);
+  if (analysis.noiseSignalHits >= 4 && detailToNoiseRatio < minimumDetailSignalToNoiseRatio) {
     throw new IncompleteDetailPageError(
       detailHtmlPath,
       `job-detail signal ratio ${detailToNoiseRatio.toFixed(3)} is below minimum ${minimumDetailSignalToNoiseRatio} for noise-heavy page`,
-      qualitySignals,
+      analysis.qualitySignals,
     );
   }
+};
 
-  const textContent = mergedText;
+const buildLoadedDetailPage = (
+  decodedFile: DecodedDetailHtmlFile,
+  textContent: string,
+): LoadedDetailPage => ({
+  rawHtml: decodedFile.rawHtml,
+  textContent,
+  htmlSha256: decodedFile.htmlSha256,
+  wasGzipCompressed: decodedFile.wasGzipCompressed,
+  fileSizeBytes: decodedFile.fileSizeBytes,
+  rawHtmlChars: decodedFile.rawHtmlChars,
+  textContentChars: textContent.length,
+});
 
-  return {
-    rawHtml,
-    textContent,
-    htmlSha256,
-    wasGzipCompressed,
-    fileSizeBytes: fileBuffer.length,
-    rawHtmlChars: rawHtml.length,
-    textContentChars: textContent.length,
-  };
+export const loadDetailPage = async (
+  detailHtmlPath: string,
+  minRelevantTextChars: number,
+): Promise<LoadedDetailPage> => {
+  const decodedFile = await decodeDetailHtmlFile(detailHtmlPath);
+  const analysis = analyzeDetailPageText(decodedFile.rawHtml);
+
+  assertMinimumWholePageText(detailHtmlPath, minRelevantTextChars, analysis);
+
+  if (analysis.primaryJobContentContainer !== null) {
+    assertPrimaryJobContentContainerSufficient(
+      detailHtmlPath,
+      minRelevantTextChars,
+      analysis.primaryJobContentContainer,
+      analysis.qualitySignals,
+    );
+
+    // Prefer the best primary content container text to reduce cookie/legal/footer noise
+    // while keeping the raw HTML dump for auditing and reprocessing.
+    return buildLoadedDetailPage(decodedFile, analysis.primaryJobContentContainer.text);
+  }
+
+  assertFallbackHeuristicCompleteness(detailHtmlPath, analysis);
+
+  return buildLoadedDetailPage(decodedFile, analysis.mergedText);
 };

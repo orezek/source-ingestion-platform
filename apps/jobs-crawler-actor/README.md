@@ -83,6 +83,32 @@ Note:
 
 - `maxConcurrency` and `maxRequestsPerMinute` are accepted by runtime and are useful for local safety, but the current `.actor/input_schema.json` documents the core actor fields only.
 
+## Fixed MVP Crawl Scope (Current Product Dataset)
+
+The current MVP intentionally uses a fixed Jobs.cz search scope as a stable working dataset for:
+
+- ETL reliability and observability tuning
+- RAG/CAG experiments
+- enrichment and analytics workflows
+- UI/dashboard prototyping
+
+Scope (current default/expected start URL):
+
+- location: Praha
+- radius: `0 km`
+- categories:
+  - `IS/IT: Správa systémů a HW`
+  - `IS/IT: Vývoj aplikací a systémů`
+  - `IS/IT: Konzultace, analýzy a projektové řízení`
+  - `Technika a vývoj`
+
+Expected size varies, but is typically around ~1700 active jobs.
+
+This scope can be enforced at runtime using:
+
+- `MVP_ENFORCE_FIXED_START_URL_SCOPE=true`
+- `MVP_FIXED_START_URL=<fixed jobs.cz URL>`
+
 ## Incremental Crawl Behavior (Current MVP)
 
 This app uses Mongo crawler state (`crawl_job_states`) to avoid unnecessary detail-page fetching.
@@ -186,6 +212,21 @@ Key variables:
 - `MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION` (default `crawl_run_summaries`)
 - `CRAWL_INACTIVE_GUARD_MIN_ACTIVE_COUNT`
 - `CRAWL_INACTIVE_GUARD_MIN_SEEN_RATIO`
+
+### Run Profile Convention (MVP)
+
+Use the same collection names in different databases.
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - full list scan only (no `maxItems`-limited partial runs)
+  - `ENABLE_INGESTION_TRIGGER=true` for end-to-end pipeline runs
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - sample runs allowed (`maxItems` in `INPUT.json`)
+  - `ENABLE_INGESTION_TRIGGER=false` unless testing handoff/ingestion
+
+The actor guard rails will refuse reconciling a `maxItems`-limited partial list scan into the production crawl-state DB when enabled.
 
 ## Local Development
 

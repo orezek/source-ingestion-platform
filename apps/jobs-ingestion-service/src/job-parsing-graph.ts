@@ -11,6 +11,7 @@ type JobParsingGraphConfig = {
   minRelevantTextChars: number;
   parserVersion: string;
   runId: string;
+  crawlRunId: string | null;
   logger: AppLogger;
 };
 
@@ -30,6 +31,7 @@ const buildDocument = (
   state: JobParsingGraphStateType,
   parserVersion: string,
   runId: string,
+  crawlRunId: string | null,
   extractorModel: string,
 ): UnifiedJobAd => {
   const { inputRecord, loadedDetailPage, extractedDetail, extractionTelemetry } = state;
@@ -39,6 +41,7 @@ const buildDocument = (
     id: `${listingRecord.source}:${listingRecord.sourceId}`,
     source: listingRecord.source,
     sourceId: listingRecord.sourceId,
+    crawlRunId,
     adUrl: listingRecord.adUrl,
     htmlDetailPageKey: listingRecord.htmlDetailPageKey,
     scrapedAt: listingRecord.scrapedAt,
@@ -143,6 +146,7 @@ export class JobParsingGraph {
         state,
         config.parserVersion,
         config.runId,
+        config.crawlRunId,
         config.extractor.getModelName(),
       );
       this.logger.debug(

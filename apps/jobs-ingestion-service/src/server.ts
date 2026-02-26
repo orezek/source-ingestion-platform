@@ -240,6 +240,7 @@ const runTriggerInBackground = async (
 
   triggerLogger.info({ inputRunDir, outputPath }, 'Starting ingestion run for crawl trigger');
   const result = await runIngestionWorkflow({
+    crawlRunId: trigger.crawlRunId,
     inputRootDirOverride: inputRunDir,
     recordsDirNameOverride: envs.INPUT_RECORDS_DIR_NAME,
     sampleSizeOverride: null,

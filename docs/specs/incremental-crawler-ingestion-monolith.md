@@ -140,10 +140,6 @@ Minimal document shape (MVP):
     "detailRenderType": "vacancy-detail",
     "detailRenderSignal": "vacancy_primary_content",
     "detailRenderComplete": true
-  },
-  "ingestion": {
-    "lastTriggeredRunId": "crawl_20260225_100000_abcd",
-    "lastTriggerAt": "2026-02-25T10:05:00.000Z"
   }
 }
 ```
@@ -151,7 +147,8 @@ Minimal document shape (MVP):
 Notes:
 
 - `detail` fields can be absent until the first successful detail fetch.
-- `ingestion` subdocument is optional in MVP but useful for auditability.
+- In current MVP, ingestion lifecycle state is kept out of `crawl_job_states`.
+- `jobs-ingestion-service` prunes non-success jobs from `crawl_job_states` so crawler retries them later.
 
 ### 2) Existing Run Summary Collection (already implemented)
 
@@ -326,6 +323,19 @@ Handoff keys:
 - `crawlRunId`
 - local artifact location convention (`apps/jobs-ingestion-service/scrapped_jobs/`) for MVP
 
+## Named Run Profiles (MVP Convention)
+
+Use the same collection names in different MongoDB databases.
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - full crawler scan only (no sample `maxItems` runs)
+  - safe to reconcile into production `crawl_job_states`
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - sample/debug runs allowed
+  - same collection names, isolated DB state
+
 ## Future Modularity (without changing current MVP behavior)
 
 This monolithic design should be implemented with clear internal module boundaries:
@@ -396,7 +406,7 @@ These are low-complexity additions that materially improve reliability without c
 
 ## Open Questions (for agreement)
 
-1. Should `crawl_job_states` include an `ingestionStatus` subdocument in MVP, or keep ingestion state fully separate?
+1. Resolved: keep ingestion state fully separate (no `ingestionStatus` subdocument in `crawl_job_states`); prune non-success jobs from crawler state instead.
 2. Do we want to store `inactiveAt` now, or add it later?
 
 ## Proposed MVP Implementation Order

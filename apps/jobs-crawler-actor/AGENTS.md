@@ -75,15 +75,21 @@ These instructions are app-local extensions of the repository root rules.
   - `PROD_CRAWL_STATE_DB_NAME=jobCompass`
 - If a run stops early at list-collection time because `maxItems` was reached (`maxItemsEnqueueGuardTriggered=true`), the actor **fails before reconciliation** when using the production crawl-state DB.
 
+### Named Run Profiles (MVP Convention)
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - full list scan only (no `maxItems`-limited partial runs)
+  - `ENABLE_INGESTION_TRIGGER=true` when running the end-to-end local pipeline
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - sample/partial runs allowed for debugging (`maxItems` in actor input)
+  - `ENABLE_INGESTION_TRIGGER=false` unless explicitly testing handoff/ingestion
+
 ### Operational Rule (MVP)
 
-- Production state runs:
-  - use `MONGODB_DB_NAME=jobCompass`
-  - must be full scans
-- Sample/dev runs:
-  - use a separate DB, e.g. `MONGODB_DB_NAME=job-compass-dev`
-  - same collection names are fine
-  - safe for testing and debugging
+- Production state runs (`prod_full`) must be full scans.
+- Sample/dev runs (`dev_sample`) must use a separate DB (same collection names are fine).
 
 ## Local Shared Output Contract (Crawler -> Ingestion)
 

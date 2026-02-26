@@ -83,6 +83,7 @@ Outputs include:
 
 - `rawHtml`
 - `textContent`
+- `textContent` prefers the best primary job-content container text when available (single cleaned text copy)
 - detail HTML metadata (`sha256`, bytes, gzip)
 - quality signals (when skipped)
 
@@ -161,6 +162,11 @@ Properties:
 
 Stores normalized structured job documents (`UnifiedJobAd`).
 
+Traceability:
+
+- top-level `crawlRunId` is stored when known (trigger mode or inferred from local run-folder path)
+- `crawlRunId` may be `null` in generic CLI batch mode
+
 ### `ingestion_run_summaries`
 
 Stores one summary doc per ingestion run with:
@@ -185,6 +191,17 @@ Current MVP consistency rule:
 - also supports one-off alignment command to remove orphaned crawl-state docs not present in `normalized_job_ads`
 
 This ensures future crawler runs retry jobs that did not become usable normalized documents.
+
+## Named Run Profiles (MVP Convention)
+
+Use the same collection names in different Mongo databases.
+
+- `prod_full`
+  - `MONGODB_DB_NAME=jobCompass`
+  - used with crawler-triggered full runs
+- `dev_sample`
+  - `MONGODB_DB_NAME=job-compass-dev`
+  - used for sample/debug runs and integration tests
 
 ## Run Summary Semantics (`ingestion_run_summaries`)
 

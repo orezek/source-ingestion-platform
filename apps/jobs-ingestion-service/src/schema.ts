@@ -464,6 +464,7 @@ export const unifiedJobAdSchema = z.object({
   id: z.string(),
   source: z.string(),
   sourceId: z.string(),
+  crawlRunId: z.string().nullable(),
   adUrl: z.url(),
   htmlDetailPageKey: z.string(),
   scrapedAt: z.string(),
