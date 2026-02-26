@@ -250,7 +250,9 @@ export const loadDetailPage = async (
       );
     }
 
-    const textContent = mergedText;
+    // Prefer the best primary content container text to reduce cookie/legal/footer noise
+    // while keeping the raw HTML dump for auditing and reprocessing.
+    const textContent = primaryJobContentContainer.text;
 
     return {
       rawHtml,
