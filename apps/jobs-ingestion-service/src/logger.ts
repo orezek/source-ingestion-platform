@@ -13,7 +13,7 @@ export const createLogger = (level: AppLogLevel, options?: CreateLoggerOptions):
     level,
     timestamp: pino.stdTimeFunctions.isoTime,
     base: {
-      service: 'job-ingestion-service',
+      service: 'jobs-ingestion-service',
     },
     transport:
       options?.pretty && process.stdout.isTTY

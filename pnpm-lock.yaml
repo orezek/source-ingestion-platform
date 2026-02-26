@@ -115,7 +115,7 @@ importers:
         specifier: 'catalog:'
         version: 5.8.3
 
-  apps/job-compass-actor:
+  apps/jobs-crawler-actor:
     dependencies:
       '@repo/env-config':
         specifier: workspace:*
@@ -155,7 +155,7 @@ importers:
         specifier: 'catalog:'
         version: 5.8.3
 
-  apps/job-ingestion-service:
+  apps/jobs-ingestion-service:
     dependencies:
       '@langchain/google-genai':
         specifier: 'catalog:'

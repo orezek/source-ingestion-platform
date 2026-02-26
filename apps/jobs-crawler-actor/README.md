@@ -48,7 +48,7 @@ The input of this actor should be JSON. Using the Apify platform, you can config
 From the repository root:
 
 ```bash
-pnpm -C apps/job-compass-actor dev
+pnpm -C apps/jobs-crawler-actor dev
 ```
 
 ## Output Metadata (Detail HTML Snapshot)
@@ -86,7 +86,7 @@ Optional ingestion trigger (best effort; runs after crawl finalization for `succ
 From the repository root:
 
 ```bash
-pnpm -C apps/job-compass-actor lint
-pnpm -C apps/job-compass-actor check-types
-pnpm -C apps/job-compass-actor build
+pnpm -C apps/jobs-crawler-actor lint
+pnpm -C apps/jobs-crawler-actor check-types
+pnpm -C apps/jobs-crawler-actor build
 ```

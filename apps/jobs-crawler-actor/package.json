@@ -1,5 +1,5 @@
 {
-  "name": "job-compass-actor",
+  "name": "jobs-crawler-actor",
   "version": "1.0.0",
   "description": "Job ad extractor from jobs.cz",
   "private": true,
@@ -15,9 +15,9 @@
     "dev": "tsx watch src/main.ts",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
-    "docker:build": "docker build -t job-compass-actor -f ./Dockerfile ../../",
-    "docker:run": "docker run --platform linux/arm64 --rm --entrypoint tail -v $(pwd)/storage:/app/apps/${APP_NAME}/storage job-compass-actor",
-    "docker:run:test": "docker run --memory=4g --shm-size=2g --platform linux/amd64 --rm -d --name debug-compass --entrypoint tail -v $(pwd)/storage:/app/apps/${APP_NAME}/storage job-compass-actor -f /dev/null",
+    "docker:build": "docker build -t jobs-crawler-actor -f ./Dockerfile ../../",
+    "docker:run": "docker run --platform linux/arm64 --rm --entrypoint tail -v $(pwd)/storage:/app/apps/${APP_NAME}/storage jobs-crawler-actor",
+    "docker:run:test": "docker run --memory=4g --shm-size=2g --platform linux/amd64 --rm -d --name debug-compass --entrypoint tail -v $(pwd)/storage:/app/apps/${APP_NAME}/storage jobs-crawler-actor -f /dev/null",
     "docker:exec": "docker exec -it debug-compass /bin/sh"
   },
   "keywords": [],

@@ -1,6 +1,6 @@
 # Job Ingestion Service
 
-`job-ingestion-service` parses scraped job listing records + corresponding detail HTML pages into a single unified JobCompass schema.
+`jobs-ingestion-service` parses scraped job listing records + corresponding detail HTML pages into a single unified JobCompass schema.
 
 The parser currently supports this local input layout at app root:
 
@@ -143,13 +143,13 @@ When Mongo persistence is enabled, each run writes:
 CLI (existing batch mode):
 
 ```bash
-pnpm -C apps/job-ingestion-service dev
+pnpm -C apps/jobs-ingestion-service dev
 ```
 
 Fastify API (idempotent crawl-run trigger endpoint):
 
 ```bash
-pnpm -C apps/job-ingestion-service dev-server
+pnpm -C apps/jobs-ingestion-service dev-server
 ```
 
 Start endpoint:
@@ -165,7 +165,7 @@ Trigger states are persisted to `MONGODB_INGESTION_TRIGGERS_COLLECTION` and retu
 ## Validate
 
 ```bash
-pnpm -C apps/job-ingestion-service lint
-pnpm -C apps/job-ingestion-service check-types
-pnpm -C apps/job-ingestion-service build
+pnpm -C apps/jobs-ingestion-service lint
+pnpm -C apps/jobs-ingestion-service check-types
+pnpm -C apps/jobs-ingestion-service build
 ```

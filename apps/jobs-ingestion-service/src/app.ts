@@ -86,7 +86,7 @@ export const envSchema = z.object({
   MONGODB_JOBS_COLLECTION: z.string().default('normalized_job_ads'),
   MONGODB_RUN_SUMMARIES_COLLECTION: z.string().default('ingestion_run_summaries'),
   MONGODB_INGESTION_TRIGGERS_COLLECTION: z.string().default('ingestion_trigger_requests'),
-  PARSER_VERSION: z.string().default('job-ingestion-service-v0.6.0'),
+  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.6.0'),
 });
 
 export type EnvSchema = z.infer<typeof envSchema>;

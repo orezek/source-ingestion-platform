@@ -1,6 +1,6 @@
 {
   "actorSpecification": 1,
-  "name": "job-compass-actor",
+  "name": "jobs-crawler-actor",
   "version": "1.1",
   "title": "Jobs.cz Scraper",
   "description": "Scrapes job listings and details from Jobs.cz including salary, location, and company data.",

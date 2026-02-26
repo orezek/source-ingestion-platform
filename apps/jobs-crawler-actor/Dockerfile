@@ -21,7 +21,7 @@ RUN pnpm add --global turbo
 COPY . .
 
 
-ARG APP_NAME=job-compass-actor
+ARG APP_NAME=jobs-crawler-actor
 RUN turbo prune --scope=${APP_NAME} --docker
 
 # ==============================================================================
@@ -47,7 +47,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 # ==============================================================================
 FROM installer AS builder
 WORKDIR /app
-ARG APP_NAME=job-compass-actor
+ARG APP_NAME=jobs-crawler-actor
 
 # Copy full source code from pruner
 COPY --from=pruner /app/out/full/ .
@@ -61,7 +61,7 @@ RUN pnpm run build --filter ${APP_NAME}
 # ⚠️ CRITICAL: Must use the Apify image to get Chrome/Playwright binaries + XVFB
 FROM apify/actor-node-playwright-chrome:20 AS runner
 WORKDIR /app
-ARG APP_NAME=job-compass-actor
+ARG APP_NAME=jobs-crawler-actor
 
 # 1. Enable pnpm in the Apify image (it's not there by default)
 USER root
@@ -94,4 +94,4 @@ ENV NODE_ENV=production
 ENV CRAWLEE_LOG_LEVEL=INFO
 # We set the workdir to the specific app so 'node dist/main.js' works relatively
 #WORKDIR /app/apps/${APP_NAME}
-CMD ["node", "apps/job-compass-actor/dist/main.js"]
+CMD ["node", "apps/jobs-crawler-actor/dist/main.js"]

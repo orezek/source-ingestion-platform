@@ -14,7 +14,7 @@ For MVP, crawler and ingestion remain two apps in the same monorepo and share lo
 
 ## Goals
 
-- Keep one crawler app/process (`job-compass-actor`) with monolithic crawl flow.
+- Keep one crawler app/process (`jobs-crawler-actor`) with monolithic crawl flow.
 - Crawl list pages first, then fetch detail pages only for new jobs.
 - Persist crawler state across runs to support `new/existing/inactive` decisions.
 - Trigger ingestion after crawler reaches a successful end state.
@@ -31,7 +31,7 @@ For MVP, crawler and ingestion remain two apps in the same monorepo and share lo
 
 ## Application Split (MVP)
 
-### `apps/job-compass-actor`
+### `apps/jobs-crawler-actor`
 
 Owns:
 
@@ -42,7 +42,7 @@ Owns:
 - crawl run summary
 - triggering ingestion endpoint
 
-### `apps/job-ingestion-service`
+### `apps/jobs-ingestion-service`
 
 Owns:
 
@@ -54,7 +54,7 @@ Owns:
 
 ## High-Level Design
 
-One `job-compass-actor` run performs four phases:
+One `jobs-crawler-actor` run performs four phases:
 
 1. List crawl (discover jobs and collect listing JSON records)
 2. Reconciliation against crawler state collection
@@ -67,7 +67,7 @@ For MVP, the crawler writes artifacts directly into the ingestion app's local da
 
 Target directory (existing convention, default):
 
-- `apps/job-ingestion-service/scrapped_jobs/`
+- `apps/jobs-ingestion-service/scrapped_jobs/`
 
 MVP assumptions:
 
@@ -281,7 +281,7 @@ Rationale:
 
 No artifact URI contract yet in MVP.
 
-Ingestion service will read required records from Mongo (`crawl_job_states`) using `crawlRunId` and read raw files from the local shared directory (env-configurable base path, defaulting to `apps/job-ingestion-service/scrapped_jobs/`).
+Ingestion service will read required records from Mongo (`crawl_job_states`) using `crawlRunId` and read raw files from the local shared directory (env-configurable base path, defaulting to `apps/jobs-ingestion-service/scrapped_jobs/`).
 
 ## Ingestion Idempotency Requirements
 
@@ -308,14 +308,14 @@ Optional future extension:
 
 ## Data Boundary Between Crawler and Ingestion (MVP)
 
-Crawler (`job-compass-actor`) owns:
+Crawler (`jobs-crawler-actor`) owns:
 
 - discovery (list pages)
 - detail HTML dump capture
 - crawl state (`crawl_job_states`)
 - crawl run summary
 
-Ingestion (`job-ingestion-service`) owns:
+Ingestion (`jobs-ingestion-service`) owns:
 
 - parsing/extraction
 - normalized schema docs
@@ -324,7 +324,7 @@ Ingestion (`job-ingestion-service`) owns:
 Handoff keys:
 
 - `crawlRunId`
-- local artifact location convention (`apps/job-ingestion-service/scrapped_jobs/`) for MVP
+- local artifact location convention (`apps/jobs-ingestion-service/scrapped_jobs/`) for MVP
 
 ## Future Modularity (without changing current MVP behavior)
 
