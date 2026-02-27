@@ -79,9 +79,9 @@ These instructions are app-local extensions of the repository root rules.
   - completeness validation
   - text extraction for downstream LLM processing
 - `cleanDetailText` is LLM-based and performs:
-  - LangSmith prompt-driven text cleanup (`ad-cleaner-job-compass`)
+  - LangSmith prompt-driven text cleanup (`jobcompass-job-ad-text-cleaner`)
   - removal of UI/cookie/GDPR/legal noise before extraction
-  - produces cleaned text for extraction input and persists it as `rawDetailPage.text`
+  - produces cleaned text for extraction input and persists it as `rawDetailPage.cleanDetailText`
 - The structured extraction is performed downstream in the LangGraph pipeline.
 
 ## Detail Page Completeness Gate (Important)
@@ -94,8 +94,9 @@ These instructions are app-local extensions of the repository root rules.
 
 ## Raw Text Quality Rule (Current MVP)
 
-- Keep only one processed text copy in the persisted output (`rawDetailPage.text`) plus raw HTML dump.
-- `rawDetailPage.text` stores the LLM-cleaned text (step 3 input).
+- Persist both processed text snapshots plus raw HTML dump.
+- `rawDetailPage.loadDetailPageText` stores step-1 static-cleaned text.
+- `rawDetailPage.cleanDetailText` stores step-2 LLM-cleaned text (extractor input).
 - When a valid primary job content container exists, step-1 `textContent` uses the primary container text (not whole-body merged text) before cleaner runs.
 - `rawHtml` remains the audit/reprocessing source of truth.
 

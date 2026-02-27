@@ -92,7 +92,7 @@ Outputs include:
 
 Responsibilities:
 
-- pull LangSmith Hub prompt (`LANGSMITH_CLEANER_PROMPT_NAME`, default `ad-cleaner-job-compass`)
+- pull LangSmith Hub prompt (`LLM_CLEANER_PROMPT_NAME`, default `jobcompass-job-ad-text-cleaner`)
 - pass `textContent` as prompt input
 - return cleaned text output used for LLM extraction input and persisted to output
 
@@ -100,7 +100,7 @@ Responsibilities:
 
 Responsibilities:
 
-- pull LangSmith Hub prompt (`LANGSMITH_PROMPT_NAME`, default `job-ad-extractor`)
+- pull LangSmith Hub prompt (`LLM_EXTRACTOR_PROMPT_NAME`, default `jobcompass-job-ad-structured-extractor`)
 - provide prompt variables from listing + detail page text
 - invoke Gemini structured output using Zod schema
 - normalize extracted output
@@ -111,7 +111,9 @@ Responsibilities:
 Responsibilities:
 
 - merge listing snapshot + extracted detail + ingestion metadata
-- attach `rawDetailPage` (LLM-cleaned text + token estimate)
+- attach `rawDetailPage` snapshots:
+  - step-1 static-cleaned text + metadata
+  - step-2 LLM-cleaned text + metadata
 - validate final `unifiedJobAdSchema`
 
 ## Text Transformation Mapping (Source -> Stored Fields)
@@ -129,9 +131,9 @@ Responsibilities:
 Persistence contract:
 
 - Raw HTML dump remains the audit/reprocessing source of truth in filesystem artifacts.
-- `normalized_job_ads.rawDetailPage.text` stores step-2 LLM-cleaned text.
+- `normalized_job_ads.rawDetailPage.loadDetailPageText` stores step-1 static-cleaned text.
+- `normalized_job_ads.rawDetailPage.cleanDetailText` stores step-2 LLM-cleaned text.
 - `normalized_job_ads.detail` stores step-3 structured extraction output.
-- Step-1 static-cleaned text is transient (not persisted as a separate field).
 
 ## Completeness Gate (Current Strategy)
 
@@ -231,6 +233,7 @@ Important fields:
 - `jobsTotal = jobsProcessed + jobsSkippedIncomplete + jobsFailed`
 - `jobsNonSuccess = jobsSkippedIncomplete + jobsFailed`
 - rate fields in `[0, 1]`
+- `llmCleanerStats`, `llmExtractorStats`, `llmTotalStats` provide per-node and overall token/cost/duration metrics
 - `skippedIncompleteJobs[]` and `failedJobs[]` are audit payloads, not just counts
 
 ### `skippedIncompleteJobs[]`
@@ -271,7 +274,7 @@ Key groups:
 - logging (`LOG_LEVEL`, `LOG_PRETTY`)
 - local input/handoff (`INPUT_ROOT_DIR`, `CRAWL_RUNS_SUBDIR`, `INPUT_RECORDS_DIR_NAME`)
 - concurrency/sampling (`INGESTION_CONCURRENCY`, `INGESTION_SAMPLE_SIZE`)
-- LLM provider + prompt config (`GEMINI_*`, `LANGSMITH_*`)
+- LLM provider + prompt config (`GEMINI_*`, `LLM_*`; legacy `LANGSMITH_*` aliases remain supported)
 - completeness tuning (`DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS`)
 - costs (`GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS`, `GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS`)
 - Fastify host/port (`INGESTION_API_HOST`, `INGESTION_API_PORT`)

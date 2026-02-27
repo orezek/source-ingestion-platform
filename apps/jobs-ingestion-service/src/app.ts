@@ -71,8 +71,10 @@ export const envSchema = z.object({
   INGESTION_CONCURRENCY: z.coerce.number().int().positive().max(32).default(1),
   GEMINI_API_KEY: z.string().optional(),
   LANGSMITH_API_KEY: z.string().optional(),
-  LANGSMITH_PROMPT_NAME: z.string().default('job-ad-extractor'),
-  LANGSMITH_CLEANER_PROMPT_NAME: z.string().default('ad-cleaner-job-compass'),
+  LLM_EXTRACTOR_PROMPT_NAME: z.string().default('jobcompass-job-ad-structured-extractor'),
+  LLM_CLEANER_PROMPT_NAME: z.string().default('jobcompass-job-ad-text-cleaner'),
+  LANGSMITH_PROMPT_NAME: z.string().optional(),
+  LANGSMITH_CLEANER_PROMPT_NAME: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3-flash-preview'),
   GEMINI_TEMPERATURE: z.coerce.number().min(0).max(1).default(0),
   GEMINI_THINKING_LEVEL: thinkingLevelSchema.default('LOW'),
@@ -90,7 +92,7 @@ export const envSchema = z.object({
   MONGODB_CRAWL_JOBS_COLLECTION: z.string().default('crawl_job_states'),
   MONGODB_RUN_SUMMARIES_COLLECTION: z.string().default('ingestion_run_summaries'),
   MONGODB_INGESTION_TRIGGERS_COLLECTION: z.string().default('ingestion_trigger_requests'),
-  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.8.0'),
+  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.9.0'),
 });
 
 export type EnvSchema = z.infer<typeof envSchema>;
@@ -99,7 +101,32 @@ type ParseRunStats = {
   avgTimeToProcssSeconds: number;
   p50TimeToProcssSeconds: number;
   p95TimeToProcssSeconds: number;
-  avgLlmCallDurationSeconds: number;
+  avgLlmCleanerCallDurationSeconds: number;
+  avgLlmExtractorCallDurationSeconds: number;
+  avgLlmTotalCallDurationSeconds: number;
+  p50LlmTotalCallDurationSeconds: number;
+  p95LlmTotalCallDurationSeconds: number;
+  llmCleanerCalls: number;
+  llmExtractorCalls: number;
+  llmTotalCalls: number;
+  llmCleanerInputTokens: number;
+  llmCleanerOutputTokens: number;
+  llmCleanerTotalTokens: number;
+  llmCleanerInputCostUsd: number;
+  llmCleanerOutputCostUsd: number;
+  llmCleanerTotalCostUsd: number;
+  llmExtractorInputTokens: number;
+  llmExtractorOutputTokens: number;
+  llmExtractorTotalTokens: number;
+  llmExtractorInputCostUsd: number;
+  llmExtractorOutputCostUsd: number;
+  llmExtractorTotalCostUsd: number;
+  llmTotalInputTokens: number;
+  llmTotalOutputTokens: number;
+  llmTotalTokens: number;
+  llmTotalInputCostUsd: number;
+  llmTotalOutputCostUsd: number;
+  llmTotalCostUsd: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalTokens: number;
@@ -145,6 +172,19 @@ const failedJobSchema = z.object({
 
 type FailedJob = z.infer<typeof failedJobSchema>;
 
+const llmRunStatsSchema = z.object({
+  calls: z.number().int().nonnegative(),
+  avgCallDurationSeconds: z.number().nonnegative(),
+  p50CallDurationSeconds: z.number().nonnegative(),
+  p95CallDurationSeconds: z.number().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  inputCostUsd: z.number().nonnegative(),
+  outputCostUsd: z.number().nonnegative(),
+  totalCostUsd: z.number().nonnegative(),
+});
+
 const ingestionRunSummarySchema = z.object({
   id: z.string(),
   runId: z.string(),
@@ -153,8 +193,8 @@ const ingestionRunSummarySchema = z.object({
   runDurationSeconds: z.number().nonnegative(),
   parserVersion: z.string(),
   extractorModel: z.string(),
-  langsmithPromptName: z.string(),
-  langsmithCleanerPromptName: z.string(),
+  llmExtractorPromptName: z.string(),
+  llmCleanerPromptName: z.string(),
   sampleSize: z.union([z.number().int().positive(), z.literal('all')]),
   concurrency: z.number().int().positive(),
   jobsTotal: z.number().int().nonnegative(),
@@ -169,6 +209,9 @@ const ingestionRunSummarySchema = z.object({
   jobsSkippedIncompleteRate: z.number().min(0).max(1),
   jobsFailedRate: z.number().min(0).max(1),
   mongoWritesStructured: z.number().int().nonnegative(),
+  llmCleanerStats: llmRunStatsSchema,
+  llmExtractorStats: llmRunStatsSchema,
+  llmTotalStats: llmRunStatsSchema,
   totalInputTokens: z.number().int().nonnegative(),
   totalOutputTokens: z.number().int().nonnegative(),
   totalTokens: z.number().int().nonnegative(),
@@ -176,13 +219,19 @@ const ingestionRunSummarySchema = z.object({
   avgTimeToProcssSeconds: z.number().nonnegative(),
   p50TimeToProcssSeconds: z.number().nonnegative(),
   p95TimeToProcssSeconds: z.number().nonnegative(),
-  avgLlmCallDurationSeconds: z.number().nonnegative(),
+  avgLlmCleanerCallDurationSeconds: z.number().nonnegative(),
+  avgLlmExtractorCallDurationSeconds: z.number().nonnegative(),
+  avgLlmTotalCallDurationSeconds: z.number().nonnegative(),
+  p50LlmTotalCallDurationSeconds: z.number().nonnegative(),
+  p95LlmTotalCallDurationSeconds: z.number().nonnegative(),
 });
 
 type IngestionRunSummary = z.infer<typeof ingestionRunSummarySchema>;
 
 export const envs: EnvSchema = loadEnv(envSchema, import.meta.url);
 export const logger = createLogger(envs.LOG_LEVEL, { pretty: envs.LOG_PRETTY });
+const llmExtractorPromptName = envs.LLM_EXTRACTOR_PROMPT_NAME;
+const llmCleanerPromptName = envs.LLM_CLEANER_PROMPT_NAME;
 
 export const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const inputRootDir = path.resolve(appRootDir, envs.INPUT_ROOT_DIR);
@@ -200,12 +249,61 @@ const percentile = (values: number[], ratio: number): number => {
 };
 
 const buildRunStats = (parsed: UnifiedJobAd[]): ParseRunStats => {
+  const buildLlmNodeStats = (input: {
+    callDurations: number[];
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    inputCostUsd: number;
+    outputCostUsd: number;
+    totalCostUsd: number;
+  }) => ({
+    calls: input.callDurations.length,
+    avgCallDurationSeconds:
+      input.callDurations.length === 0
+        ? 0
+        : input.callDurations.reduce((sum, value) => sum + value, 0) / input.callDurations.length,
+    p50CallDurationSeconds: percentile(input.callDurations, 0.5),
+    p95CallDurationSeconds: percentile(input.callDurations, 0.95),
+    inputTokens: input.inputTokens,
+    outputTokens: input.outputTokens,
+    totalTokens: input.totalTokens,
+    inputCostUsd: input.inputCostUsd,
+    outputCostUsd: input.outputCostUsd,
+    totalCostUsd: input.totalCostUsd,
+  });
+
   if (parsed.length === 0) {
     return {
       avgTimeToProcssSeconds: 0,
       p50TimeToProcssSeconds: 0,
       p95TimeToProcssSeconds: 0,
-      avgLlmCallDurationSeconds: 0,
+      avgLlmCleanerCallDurationSeconds: 0,
+      avgLlmExtractorCallDurationSeconds: 0,
+      avgLlmTotalCallDurationSeconds: 0,
+      p50LlmTotalCallDurationSeconds: 0,
+      p95LlmTotalCallDurationSeconds: 0,
+      llmCleanerCalls: 0,
+      llmExtractorCalls: 0,
+      llmTotalCalls: 0,
+      llmCleanerInputTokens: 0,
+      llmCleanerOutputTokens: 0,
+      llmCleanerTotalTokens: 0,
+      llmCleanerInputCostUsd: 0,
+      llmCleanerOutputCostUsd: 0,
+      llmCleanerTotalCostUsd: 0,
+      llmExtractorInputTokens: 0,
+      llmExtractorOutputTokens: 0,
+      llmExtractorTotalTokens: 0,
+      llmExtractorInputCostUsd: 0,
+      llmExtractorOutputCostUsd: 0,
+      llmExtractorTotalCostUsd: 0,
+      llmTotalInputTokens: 0,
+      llmTotalOutputTokens: 0,
+      llmTotalTokens: 0,
+      llmTotalInputCostUsd: 0,
+      llmTotalOutputCostUsd: 0,
+      llmTotalCostUsd: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalTokens: 0,
@@ -214,26 +312,69 @@ const buildRunStats = (parsed: UnifiedJobAd[]): ParseRunStats => {
   }
 
   const timeToProcssValues = parsed.map((item) => item.ingestion.timeToProcssSeconds);
-  const llmCallDurations = parsed.map((item) => item.ingestion.llmCallDurationSeconds);
-  const totalInputTokens = parsed.reduce((sum, item) => sum + item.ingestion.llmInputTokens, 0);
-  const totalOutputTokens = parsed.reduce((sum, item) => sum + item.ingestion.llmOutputTokens, 0);
-  const totalTokens = parsed.reduce((sum, item) => sum + item.ingestion.llmTotalTokens, 0);
-  const totalEstimatedCostUsd = parsed.reduce(
-    (sum, item) => sum + item.ingestion.llmTotalCostUsd,
-    0,
-  );
+  const llmCleanerStats = buildLlmNodeStats({
+    callDurations: parsed.map((item) => item.ingestion.llmCleanerCallDurationSeconds),
+    inputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerInputTokens, 0),
+    outputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerOutputTokens, 0),
+    totalTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerTotalTokens, 0),
+    inputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerInputCostUsd, 0),
+    outputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerOutputCostUsd, 0),
+    totalCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmCleanerTotalCostUsd, 0),
+  });
+  const llmExtractorStats = buildLlmNodeStats({
+    callDurations: parsed.map((item) => item.ingestion.llmExtractorCallDurationSeconds),
+    inputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorInputTokens, 0),
+    outputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorOutputTokens, 0),
+    totalTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorTotalTokens, 0),
+    inputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorInputCostUsd, 0),
+    outputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorOutputCostUsd, 0),
+    totalCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmExtractorTotalCostUsd, 0),
+  });
+  const llmTotalStats = buildLlmNodeStats({
+    callDurations: parsed.map((item) => item.ingestion.llmTotalCallDurationSeconds),
+    inputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalInputTokens, 0),
+    outputTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalOutputTokens, 0),
+    totalTokens: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalTokens, 0),
+    inputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalInputCostUsd, 0),
+    outputCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalOutputCostUsd, 0),
+    totalCostUsd: parsed.reduce((sum, item) => sum + item.ingestion.llmTotalCostUsd, 0),
+  });
 
   return {
     avgTimeToProcssSeconds:
       timeToProcssValues.reduce((sum, value) => sum + value, 0) / timeToProcssValues.length,
     p50TimeToProcssSeconds: percentile(timeToProcssValues, 0.5),
     p95TimeToProcssSeconds: percentile(timeToProcssValues, 0.95),
-    avgLlmCallDurationSeconds:
-      llmCallDurations.reduce((sum, value) => sum + value, 0) / llmCallDurations.length,
-    totalInputTokens,
-    totalOutputTokens,
-    totalTokens,
-    totalEstimatedCostUsd,
+    avgLlmCleanerCallDurationSeconds: llmCleanerStats.avgCallDurationSeconds,
+    avgLlmExtractorCallDurationSeconds: llmExtractorStats.avgCallDurationSeconds,
+    avgLlmTotalCallDurationSeconds: llmTotalStats.avgCallDurationSeconds,
+    p50LlmTotalCallDurationSeconds: llmTotalStats.p50CallDurationSeconds,
+    p95LlmTotalCallDurationSeconds: llmTotalStats.p95CallDurationSeconds,
+    llmCleanerCalls: llmCleanerStats.calls,
+    llmExtractorCalls: llmExtractorStats.calls,
+    llmTotalCalls: llmTotalStats.calls,
+    llmCleanerInputTokens: llmCleanerStats.inputTokens,
+    llmCleanerOutputTokens: llmCleanerStats.outputTokens,
+    llmCleanerTotalTokens: llmCleanerStats.totalTokens,
+    llmCleanerInputCostUsd: llmCleanerStats.inputCostUsd,
+    llmCleanerOutputCostUsd: llmCleanerStats.outputCostUsd,
+    llmCleanerTotalCostUsd: llmCleanerStats.totalCostUsd,
+    llmExtractorInputTokens: llmExtractorStats.inputTokens,
+    llmExtractorOutputTokens: llmExtractorStats.outputTokens,
+    llmExtractorTotalTokens: llmExtractorStats.totalTokens,
+    llmExtractorInputCostUsd: llmExtractorStats.inputCostUsd,
+    llmExtractorOutputCostUsd: llmExtractorStats.outputCostUsd,
+    llmExtractorTotalCostUsd: llmExtractorStats.totalCostUsd,
+    llmTotalInputTokens: llmTotalStats.inputTokens,
+    llmTotalOutputTokens: llmTotalStats.outputTokens,
+    llmTotalTokens: llmTotalStats.totalTokens,
+    llmTotalInputCostUsd: llmTotalStats.inputCostUsd,
+    llmTotalOutputCostUsd: llmTotalStats.outputCostUsd,
+    llmTotalCostUsd: llmTotalStats.totalCostUsd,
+    totalInputTokens: llmTotalStats.inputTokens,
+    totalOutputTokens: llmTotalStats.outputTokens,
+    totalTokens: llmTotalStats.totalTokens,
+    totalEstimatedCostUsd: llmTotalStats.totalCostUsd,
   };
 };
 
@@ -265,8 +406,8 @@ const buildRunSummaryDocument = (input: {
       runDurationSeconds: input.runDurationSeconds,
       parserVersion: envs.PARSER_VERSION,
       extractorModel: envs.GEMINI_MODEL,
-      langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
-      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
+      llmExtractorPromptName,
+      llmCleanerPromptName,
       sampleSize: input.sampleSize ?? 'all',
       concurrency: input.workerCount,
       jobsTotal,
@@ -281,6 +422,54 @@ const buildRunSummaryDocument = (input: {
       jobsSkippedIncompleteRate: rate(input.skippedIncomplete),
       jobsFailedRate: rate(input.failed),
       mongoWritesStructured: input.mongoWritesStructured,
+      llmCleanerStats: {
+        calls: input.stats.llmCleanerCalls,
+        avgCallDurationSeconds: input.stats.avgLlmCleanerCallDurationSeconds,
+        p50CallDurationSeconds: percentile(
+          input.structuredParsed.map((item) => item.ingestion.llmCleanerCallDurationSeconds),
+          0.5,
+        ),
+        p95CallDurationSeconds: percentile(
+          input.structuredParsed.map((item) => item.ingestion.llmCleanerCallDurationSeconds),
+          0.95,
+        ),
+        inputTokens: input.stats.llmCleanerInputTokens,
+        outputTokens: input.stats.llmCleanerOutputTokens,
+        totalTokens: input.stats.llmCleanerTotalTokens,
+        inputCostUsd: input.stats.llmCleanerInputCostUsd,
+        outputCostUsd: input.stats.llmCleanerOutputCostUsd,
+        totalCostUsd: input.stats.llmCleanerTotalCostUsd,
+      },
+      llmExtractorStats: {
+        calls: input.stats.llmExtractorCalls,
+        avgCallDurationSeconds: input.stats.avgLlmExtractorCallDurationSeconds,
+        p50CallDurationSeconds: percentile(
+          input.structuredParsed.map((item) => item.ingestion.llmExtractorCallDurationSeconds),
+          0.5,
+        ),
+        p95CallDurationSeconds: percentile(
+          input.structuredParsed.map((item) => item.ingestion.llmExtractorCallDurationSeconds),
+          0.95,
+        ),
+        inputTokens: input.stats.llmExtractorInputTokens,
+        outputTokens: input.stats.llmExtractorOutputTokens,
+        totalTokens: input.stats.llmExtractorTotalTokens,
+        inputCostUsd: input.stats.llmExtractorInputCostUsd,
+        outputCostUsd: input.stats.llmExtractorOutputCostUsd,
+        totalCostUsd: input.stats.llmExtractorTotalCostUsd,
+      },
+      llmTotalStats: {
+        calls: input.stats.llmTotalCalls,
+        avgCallDurationSeconds: input.stats.avgLlmTotalCallDurationSeconds,
+        p50CallDurationSeconds: input.stats.p50LlmTotalCallDurationSeconds,
+        p95CallDurationSeconds: input.stats.p95LlmTotalCallDurationSeconds,
+        inputTokens: input.stats.llmTotalInputTokens,
+        outputTokens: input.stats.llmTotalOutputTokens,
+        totalTokens: input.stats.llmTotalTokens,
+        inputCostUsd: input.stats.llmTotalInputCostUsd,
+        outputCostUsd: input.stats.llmTotalOutputCostUsd,
+        totalCostUsd: input.stats.llmTotalCostUsd,
+      },
       totalInputTokens: input.stats.totalInputTokens,
       totalOutputTokens: input.stats.totalOutputTokens,
       totalTokens: input.stats.totalTokens,
@@ -288,7 +477,11 @@ const buildRunSummaryDocument = (input: {
       avgTimeToProcssSeconds: input.stats.avgTimeToProcssSeconds,
       p50TimeToProcssSeconds: input.stats.p50TimeToProcssSeconds,
       p95TimeToProcssSeconds: input.stats.p95TimeToProcssSeconds,
-      avgLlmCallDurationSeconds: input.stats.avgLlmCallDurationSeconds,
+      avgLlmCleanerCallDurationSeconds: input.stats.avgLlmCleanerCallDurationSeconds,
+      avgLlmExtractorCallDurationSeconds: input.stats.avgLlmExtractorCallDurationSeconds,
+      avgLlmTotalCallDurationSeconds: input.stats.avgLlmTotalCallDurationSeconds,
+      p50LlmTotalCallDurationSeconds: input.stats.p50LlmTotalCallDurationSeconds,
+      p95LlmTotalCallDurationSeconds: input.stats.p95LlmTotalCallDurationSeconds,
     });
   })();
 
@@ -338,7 +531,7 @@ const parseRecords = async (
 
   const extractor = new GeminiJobDetailExtractor({
     langsmithApiKey: envs.LANGSMITH_API_KEY,
-    langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
+    langsmithPromptName: llmExtractorPromptName,
     apiKey: envs.GEMINI_API_KEY,
     model: envs.GEMINI_MODEL,
     temperature: envs.GEMINI_TEMPERATURE,
@@ -349,11 +542,13 @@ const parseRecords = async (
   });
   const textCleaner = new GeminiDetailTextCleaner({
     langsmithApiKey: envs.LANGSMITH_API_KEY,
-    langsmithPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
+    langsmithPromptName: llmCleanerPromptName,
     apiKey: envs.GEMINI_API_KEY,
     model: envs.GEMINI_MODEL,
     temperature: envs.GEMINI_TEMPERATURE,
     thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
+    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
     logger,
   });
 
@@ -382,8 +577,8 @@ const parseRecords = async (
       inputRecords: inputRecords.length,
       sampleSize: sampleSize ?? 'all',
       model: envs.GEMINI_MODEL,
-      langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
-      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
+      llmExtractorPromptName,
+      llmCleanerPromptName,
       concurrency: workerCount,
       minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
       logTextTransformContent: envs.LOG_TEXT_TRANSFORM_CONTENT,
@@ -556,8 +751,8 @@ export const runIngestionWorkflow = async (
       mongoCollectionCrawlJobs: envs.MONGODB_CRAWL_JOBS_COLLECTION,
       mongoCollectionRunSummaries: envs.MONGODB_RUN_SUMMARIES_COLLECTION,
       model: envs.GEMINI_MODEL,
-      langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
-      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
+      llmExtractorPromptName,
+      llmCleanerPromptName,
       minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
       logLevel: envs.LOG_LEVEL,
       logPretty: envs.LOG_PRETTY,
@@ -670,7 +865,13 @@ export const runIngestionWorkflow = async (
       avgTimeToProcssSeconds: stats.avgTimeToProcssSeconds,
       p50TimeToProcssSeconds: stats.p50TimeToProcssSeconds,
       p95TimeToProcssSeconds: stats.p95TimeToProcssSeconds,
-      avgLlmCallDurationSeconds: stats.avgLlmCallDurationSeconds,
+      avgLlmCleanerCallDurationSeconds: stats.avgLlmCleanerCallDurationSeconds,
+      avgLlmExtractorCallDurationSeconds: stats.avgLlmExtractorCallDurationSeconds,
+      avgLlmTotalCallDurationSeconds: stats.avgLlmTotalCallDurationSeconds,
+      p50LlmTotalCallDurationSeconds: stats.p50LlmTotalCallDurationSeconds,
+      p95LlmTotalCallDurationSeconds: stats.p95LlmTotalCallDurationSeconds,
+      llmCleanerTotalTokens: stats.llmCleanerTotalTokens,
+      llmExtractorTotalTokens: stats.llmExtractorTotalTokens,
       totalInputTokens: stats.totalInputTokens,
       totalOutputTokens: stats.totalOutputTokens,
       totalTokens: stats.totalTokens,

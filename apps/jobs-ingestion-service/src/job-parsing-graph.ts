@@ -5,6 +5,7 @@ import { loadDetailPage, type LoadedDetailPage } from './html-detail-loader.js';
 import type { LocalInputRecord } from './input-provider.js';
 import {
   type ExtractionTelemetry,
+  type LlmUsageTelemetry,
   GeminiDetailTextCleaner,
   GeminiJobDetailExtractor,
 } from './extraction.js';
@@ -26,6 +27,7 @@ const JobParsingGraphState = Annotation.Root({
   inputRecord: Annotation<LocalInputRecord>(),
   loadedDetailPage: Annotation<LoadedDetailPage>(),
   cleanedDetailText: Annotation<string>(),
+  cleanerTelemetry: Annotation<LlmUsageTelemetry>(),
   extractedDetail: Annotation<ExtractedJobDetail>(),
   extractionTelemetry: Annotation<ExtractionTelemetry>(),
   unifiedJobAd: Annotation<UnifiedJobAd>(),
@@ -45,8 +47,20 @@ const buildDocument = (
   crawlRunId: string | null,
   extractorModel: string,
 ): UnifiedJobAd => {
-  const { inputRecord, loadedDetailPage, extractedDetail, extractionTelemetry } = state;
+  const { inputRecord, loadedDetailPage, extractedDetail, extractionTelemetry, cleanerTelemetry } =
+    state;
   const { listingRecord } = inputRecord;
+  const llmTotalInputTokens = cleanerTelemetry.llmInputTokens + extractionTelemetry.llmInputTokens;
+  const llmTotalOutputTokens =
+    cleanerTelemetry.llmOutputTokens + extractionTelemetry.llmOutputTokens;
+  const llmTotalTokens = cleanerTelemetry.llmTotalTokens + extractionTelemetry.llmTotalTokens;
+  const llmTotalInputCostUsd =
+    cleanerTelemetry.llmInputCostUsd + extractionTelemetry.llmInputCostUsd;
+  const llmTotalOutputCostUsd =
+    cleanerTelemetry.llmOutputCostUsd + extractionTelemetry.llmOutputCostUsd;
+  const llmTotalCostUsd = cleanerTelemetry.llmTotalCostUsd + extractionTelemetry.llmTotalCostUsd;
+  const llmTotalCallDurationSeconds =
+    cleanerTelemetry.llmCallDurationSeconds + extractionTelemetry.llmCallDurationSeconds;
 
   return unifiedJobAdSchema.parse({
     id: `${listingRecord.source}:${listingRecord.sourceId}`,
@@ -65,11 +79,19 @@ const buildDocument = (
     },
     detail: extractedDetail,
     rawDetailPage: {
-      // Persist step-3 cleaned text to enable cheaper reprocessing without re-running cleaner.
-      text: state.cleanedDetailText,
-      charCount: state.cleanedDetailText.length,
-      tokenCountApprox: approximateTokenCountFromChars(state.cleanedDetailText.length),
-      tokenCountMethod: 'chars_div_4',
+      loadDetailPageText: {
+        text: loadedDetailPage.textContent,
+        charCount: loadedDetailPage.textContentChars,
+        tokenCountApprox: approximateTokenCountFromChars(loadedDetailPage.textContentChars),
+        tokenCountMethod: 'chars_div_4',
+      },
+      cleanDetailText: {
+        // Persist step-2 cleaner output to enable cheaper reprocessing without re-running cleaner.
+        text: state.cleanedDetailText,
+        charCount: state.cleanedDetailText.length,
+        tokenCountApprox: approximateTokenCountFromChars(state.cleanedDetailText.length),
+        tokenCountMethod: 'chars_div_4',
+      },
     },
     ingestion: {
       runId,
@@ -81,13 +103,27 @@ const buildDocument = (
       extractedAt: new Date().toISOString(),
       parserVersion,
       timeToProcssSeconds: 0,
-      llmCallDurationSeconds: extractionTelemetry.llmCallDurationSeconds,
-      llmInputTokens: extractionTelemetry.llmInputTokens,
-      llmOutputTokens: extractionTelemetry.llmOutputTokens,
-      llmTotalTokens: extractionTelemetry.llmTotalTokens,
-      llmInputCostUsd: extractionTelemetry.llmInputCostUsd,
-      llmOutputCostUsd: extractionTelemetry.llmOutputCostUsd,
-      llmTotalCostUsd: extractionTelemetry.llmTotalCostUsd,
+      llmCleanerCallDurationSeconds: cleanerTelemetry.llmCallDurationSeconds,
+      llmCleanerInputTokens: cleanerTelemetry.llmInputTokens,
+      llmCleanerOutputTokens: cleanerTelemetry.llmOutputTokens,
+      llmCleanerTotalTokens: cleanerTelemetry.llmTotalTokens,
+      llmCleanerInputCostUsd: cleanerTelemetry.llmInputCostUsd,
+      llmCleanerOutputCostUsd: cleanerTelemetry.llmOutputCostUsd,
+      llmCleanerTotalCostUsd: cleanerTelemetry.llmTotalCostUsd,
+      llmExtractorCallDurationSeconds: extractionTelemetry.llmCallDurationSeconds,
+      llmExtractorInputTokens: extractionTelemetry.llmInputTokens,
+      llmExtractorOutputTokens: extractionTelemetry.llmOutputTokens,
+      llmExtractorTotalTokens: extractionTelemetry.llmTotalTokens,
+      llmExtractorInputCostUsd: extractionTelemetry.llmInputCostUsd,
+      llmExtractorOutputCostUsd: extractionTelemetry.llmOutputCostUsd,
+      llmExtractorTotalCostUsd: extractionTelemetry.llmTotalCostUsd,
+      llmTotalCallDurationSeconds,
+      llmTotalInputTokens,
+      llmTotalOutputTokens,
+      llmTotalTokens,
+      llmTotalInputCostUsd,
+      llmTotalOutputCostUsd,
+      llmTotalCostUsd,
     },
   });
 };
@@ -182,16 +218,17 @@ export class JobParsingGraph {
 
     const cleanDetailTextNode = async (
       state: JobParsingGraphStateType,
-    ): Promise<Pick<JobParsingGraphStateType, 'cleanedDetailText'>> => {
-      const cleanedDetailText = await config.textCleaner.cleanText(
-        state.loadedDetailPage.textContent,
-      );
+    ): Promise<Pick<JobParsingGraphStateType, 'cleanedDetailText' | 'cleanerTelemetry'>> => {
+      const cleanerResult = await config.textCleaner.cleanText(state.loadedDetailPage.textContent);
+      const cleanedDetailText = cleanerResult.text;
 
       this.logger.debug(
         {
           sourceId: state.inputRecord.listingRecord.sourceId,
           rawTextChars: state.loadedDetailPage.textContentChars,
           cleanedTextChars: cleanedDetailText.length,
+          llmTotalTokens: cleanerResult.telemetry.llmTotalTokens,
+          llmTotalCostUsd: cleanerResult.telemetry.llmTotalCostUsd,
         },
         'Cleaned detail text before extraction',
       );
@@ -213,7 +250,10 @@ export class JobParsingGraph {
         );
       }
 
-      return { cleanedDetailText };
+      return {
+        cleanedDetailText,
+        cleanerTelemetry: cleanerResult.telemetry,
+      };
     };
 
     const mergeNode = (
@@ -277,7 +317,9 @@ export class JobParsingGraph {
         id: structured.id,
         sourceId: structured.sourceId,
         timeToProcssSeconds,
-        llmCallDurationSeconds: structured.ingestion.llmCallDurationSeconds,
+        llmCleanerCallDurationSeconds: structured.ingestion.llmCleanerCallDurationSeconds,
+        llmExtractorCallDurationSeconds: structured.ingestion.llmExtractorCallDurationSeconds,
+        llmTotalCallDurationSeconds: structured.ingestion.llmTotalCallDurationSeconds,
       },
       'Completed parsing record',
     );

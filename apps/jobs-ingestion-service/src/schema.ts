@@ -426,11 +426,18 @@ export const normalizedExtractedJobDetailSchema = extractedJobDetailSchema.trans
   };
 });
 
-export const rawDetailPageSchema = z.object({
+export const rawDetailTextSnapshotSchema = z.object({
   text: z.string(),
   charCount: z.number().int().nonnegative(),
   tokenCountApprox: z.number().int().nonnegative(),
   tokenCountMethod: z.enum(['chars_div_4']),
+});
+
+export type RawDetailTextSnapshot = z.infer<typeof rawDetailTextSnapshotSchema>;
+
+export const rawDetailPageSchema = z.object({
+  loadDetailPageText: rawDetailTextSnapshotSchema,
+  cleanDetailText: rawDetailTextSnapshotSchema,
 });
 
 export type RawDetailPage = z.infer<typeof rawDetailPageSchema>;
@@ -462,12 +469,26 @@ export const unifiedJobAdSchema = z.object({
     extractedAt: z.iso.datetime(),
     parserVersion: z.string(),
     timeToProcssSeconds: z.number().nonnegative(),
-    llmCallDurationSeconds: z.number().nonnegative(),
-    llmInputTokens: z.number().int().nonnegative(),
-    llmOutputTokens: z.number().int().nonnegative(),
+    llmCleanerCallDurationSeconds: z.number().nonnegative(),
+    llmCleanerInputTokens: z.number().int().nonnegative(),
+    llmCleanerOutputTokens: z.number().int().nonnegative(),
+    llmCleanerTotalTokens: z.number().int().nonnegative(),
+    llmCleanerInputCostUsd: z.number().nonnegative(),
+    llmCleanerOutputCostUsd: z.number().nonnegative(),
+    llmCleanerTotalCostUsd: z.number().nonnegative(),
+    llmExtractorCallDurationSeconds: z.number().nonnegative(),
+    llmExtractorInputTokens: z.number().int().nonnegative(),
+    llmExtractorOutputTokens: z.number().int().nonnegative(),
+    llmExtractorTotalTokens: z.number().int().nonnegative(),
+    llmExtractorInputCostUsd: z.number().nonnegative(),
+    llmExtractorOutputCostUsd: z.number().nonnegative(),
+    llmExtractorTotalCostUsd: z.number().nonnegative(),
+    llmTotalCallDurationSeconds: z.number().nonnegative(),
+    llmTotalInputTokens: z.number().int().nonnegative(),
+    llmTotalOutputTokens: z.number().int().nonnegative(),
     llmTotalTokens: z.number().int().nonnegative(),
-    llmInputCostUsd: z.number().nonnegative(),
-    llmOutputCostUsd: z.number().nonnegative(),
+    llmTotalInputCostUsd: z.number().nonnegative(),
+    llmTotalOutputCostUsd: z.number().nonnegative(),
     llmTotalCostUsd: z.number().nonnegative(),
   }),
 });

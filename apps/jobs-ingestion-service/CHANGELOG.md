@@ -4,8 +4,8 @@ All notable changes to `apps/jobs-ingestion-service` should be documented in thi
 
 This app has two relevant version identifiers:
 
-- package version (`package.json`): currently `1.0.0`
-- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.8.0`
+- package version (`package.json`): currently `1.0.1`
+- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.9.0`
 
 The parser version is the operational identifier used in `normalized_job_ads` and `ingestion_run_summaries`.
 
@@ -17,7 +17,36 @@ The parser version is the operational identifier used in `normalized_job_ads` an
 - Added app-level changelog with parser-version notes.
 - Formalized MVP run-profile conventions (`prod_full`, `dev_sample`) in env examples and operator docs.
 
-## [jobs-ingestion-service-v0.8.0] - Current Parser Baseline
+### Changed
+
+- Added dual raw text snapshots in `normalized_job_ads.rawDetailPage`:
+  - `loadDetailPageText` (step-1 static extraction)
+  - `cleanDetailText` (step-2 LLM cleaner output)
+- Added per-node and total LLM telemetry:
+  - cleaner stats
+  - extractor stats
+  - combined total stats
+- Run summaries now include cleaner/extractor/total telemetry blocks and totals across both LLM nodes.
+- Prompt env convention updated:
+  - `LLM_EXTRACTOR_PROMPT_NAME` (default `jobcompass-job-ad-structured-extractor`)
+  - `LLM_CLEANER_PROMPT_NAME` (default `jobcompass-job-ad-text-cleaner`)
+  - legacy `LANGSMITH_*` aliases remain supported as fallback.
+
+## [jobs-ingestion-service-v0.9.0] - Current Parser Baseline
+
+### Added
+
+- Persisted both step-1 and step-2 text snapshots in `rawDetailPage`.
+- Cleaner LLM telemetry capture (tokens/cost/duration) and ingestion-level aggregation.
+
+### Changed
+
+- Prompt defaults updated to:
+  - `jobcompass-job-ad-text-cleaner`
+  - `jobcompass-job-ad-structured-extractor`
+- `ingestion_run_summaries` now report cleaner/extractor/total LLM usage separately and in aggregate.
+
+## [jobs-ingestion-service-v0.8.0]
 
 ### Added
 

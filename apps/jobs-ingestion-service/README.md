@@ -13,8 +13,8 @@ For each listing record + detail HTML snapshot pair, the service:
 
 1. loads and validates the detail HTML page
 2. builds cleaned plain-text content with Cheerio
-3. runs Gemini text-cleaning prompt (`ad-cleaner-job-compass`) to remove UI/GDPR/cookie noise
-4. runs Gemini structured extraction using a LangSmith Hub prompt (`job-ad-extractor`)
+3. runs Gemini text-cleaning prompt (`jobcompass-job-ad-text-cleaner`) to remove UI/GDPR/cookie noise
+4. runs Gemini structured extraction using a LangSmith Hub prompt (`jobcompass-job-ad-structured-extractor`)
 5. writes normalized output to JSON and optionally MongoDB (`normalized_job_ads`)
 6. records run summaries and ingestion trigger state for observability
 
@@ -60,13 +60,13 @@ Current graph nodes:
    - returns metadata (hash, bytes, text content)
 
 2. `cleanDetailText`
-   - pulls LangSmith prompt `ad-cleaner-job-compass`
+   - pulls LangSmith prompt `jobcompass-job-ad-text-cleaner`
    - cleans `textContent` (UI/GDPR/cookie/legal noise removal)
    - feeds cleaned text to extraction node
-   - cleaned text is persisted to `rawDetailPage.text` in final document
+   - cleaned text is persisted to `rawDetailPage.cleanDetailText` in final document
 
 3. `extractDetail`
-   - pulls LangSmith prompt `job-ad-extractor`
+   - pulls LangSmith prompt `jobcompass-job-ad-structured-extractor`
    - calls Gemini structured output with Zod schema
    - validates model output against the local canonical schema
    - applies normalization only (no deterministic field overrides)
@@ -99,7 +99,9 @@ Key top-level sections:
 - `crawlRunId`: crawler run identifier for traceability (`null` when unknown in generic CLI batch mode)
 - `listing`: list-page snapshot
 - `detail`: normalized extracted detail fields
-- `rawDetailPage`: LLM-cleaned text used for extraction (and token estimate)
+- `rawDetailPage`: both step outputs with metadata per text snapshot:
+  - `loadDetailPageText` (step 1 output)
+  - `cleanDetailText` (step 2 output, extractor input)
 - `ingestion`: run metadata, HTML hash/path, timing, token usage, costs, parser version
 
 ### Text Transformation Steps & Field Mapping
@@ -119,9 +121,9 @@ Persistence mapping:
 - raw HTML source of truth:
   - file in `scrapped_jobs/runs/<crawlRunId>/records/*.html`
 - static-cleaned text (step 1):
-  - transient in graph state (`loadedDetailPage.textContent`)
+  - persisted to `normalized_job_ads.rawDetailPage.loadDetailPageText`
 - LLM-cleaned text (step 2):
-  - persisted to `normalized_job_ads.rawDetailPage.text`
+  - persisted to `normalized_job_ads.rawDetailPage.cleanDetailText`
 - structured extraction result (step 3):
   - persisted to `normalized_job_ads.detail`
 
@@ -165,6 +167,10 @@ This keeps crawler state aligned with practically usable normalized output, with
 - audit arrays:
   - `skippedIncompleteJobs[]`
   - `failedJobs[]`
+- LLM telemetry blocks:
+  - `llmCleanerStats`
+  - `llmExtractorStats`
+  - `llmTotalStats`
 
 These arrays include listing metadata (title/company/url/etc.) so skipped/failed jobs can be investigated without relying on logs.
 
@@ -232,8 +238,11 @@ Core runtime/env groups:
 
 - `GEMINI_API_KEY`
 - `LANGSMITH_API_KEY`
-- `LANGSMITH_PROMPT_NAME` (default `job-ad-extractor`)
-- `LANGSMITH_CLEANER_PROMPT_NAME` (default `ad-cleaner-job-compass`)
+- `LLM_EXTRACTOR_PROMPT_NAME` (default `jobcompass-job-ad-structured-extractor`)
+- `LLM_CLEANER_PROMPT_NAME` (default `jobcompass-job-ad-text-cleaner`)
+- legacy fallback aliases:
+  - `LANGSMITH_PROMPT_NAME`
+  - `LANGSMITH_CLEANER_PROMPT_NAME`
 - `GEMINI_MODEL`
 - `GEMINI_TEMPERATURE`
 - `GEMINI_THINKING_LEVEL`
@@ -270,7 +279,7 @@ Use the same collection names in different databases.
 
 ### Parser metadata
 
-- `PARSER_VERSION` (current default `jobs-ingestion-service-v0.8.0`)
+- `PARSER_VERSION` (current default `jobs-ingestion-service-v0.9.0`)
 
 ## Run Modes
 

@@ -1,6 +1,6 @@
 {
   "name": "jobs-ingestion-service",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "JobCompass ETL ingestion shell for normalizing scraped jobs and persisting to MongoDB.",
   "license": "ISC",
   "author": "Oldrich Rezek oldrich.rezek@oldrichrezek.com",

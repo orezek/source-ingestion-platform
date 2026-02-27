@@ -243,6 +243,8 @@ export type ExtractionTelemetry = {
   llmTotalCostUsd: number;
 };
 
+export type LlmUsageTelemetry = ExtractionTelemetry;
+
 export type ExtractionResult = {
   detail: ExtractedJobDetail;
   telemetry: ExtractionTelemetry;
@@ -255,7 +257,14 @@ export type GeminiTextCleanerConfig = {
   model: string;
   temperature: number;
   thinkingLevel: ThinkingLevel | null;
+  inputPriceUsdPerMillionTokens: number;
+  outputPriceUsdPerMillionTokens: number;
   logger: AppLogger;
+};
+
+export type TextCleaningResult = {
+  text: string;
+  telemetry: LlmUsageTelemetry;
 };
 
 export class GeminiDetailTextCleaner {
@@ -264,6 +273,10 @@ export class GeminiDetailTextCleaner {
   private readonly modelName: string;
 
   private readonly logger: AppLogger;
+
+  private readonly inputPriceUsdPerMillionTokens: number;
+
+  private readonly outputPriceUsdPerMillionTokens: number;
 
   private readonly model: {
     invoke(input: unknown): Promise<{ content: unknown }>;
@@ -275,6 +288,8 @@ export class GeminiDetailTextCleaner {
     this.promptName = config.langsmithPromptName;
     this.modelName = config.model;
     this.logger = config.logger.child({ component: 'GeminiDetailTextCleaner' });
+    this.inputPriceUsdPerMillionTokens = config.inputPriceUsdPerMillionTokens;
+    this.outputPriceUsdPerMillionTokens = config.outputPriceUsdPerMillionTokens;
 
     this.model = new ChatGoogleGenerativeAI({
       apiKey: config.apiKey,
@@ -290,7 +305,7 @@ export class GeminiDetailTextCleaner {
     );
   }
 
-  async cleanText(textContent: string): Promise<string> {
+  async cleanText(textContent: string): Promise<TextCleaningResult> {
     const prompt = await this.hubPromptPromise;
     const promptInput = buildCleanerPromptInput(textContent, prompt.inputVariables);
 
@@ -309,6 +324,10 @@ export class GeminiDetailTextCleaner {
     const response = await this.model.invoke(renderedPrompt);
     const cleanedText = extractTextFromLlmContent(response.content).trim();
     const cleanDurationSeconds = (performance.now() - startedAt) / 1_000;
+    const usage = resolveTokenUsage(response as RawLlmMessage);
+    const llmInputCostUsd = tokensToUsd(usage.inputTokens, this.inputPriceUsdPerMillionTokens);
+    const llmOutputCostUsd = tokensToUsd(usage.outputTokens, this.outputPriceUsdPerMillionTokens);
+    const llmTotalCostUsd = llmInputCostUsd + llmOutputCostUsd;
 
     if (cleanedText.length === 0) {
       throw new Error(`LangSmith cleaner prompt "${this.promptName}" returned empty text output.`);
@@ -319,13 +338,28 @@ export class GeminiDetailTextCleaner {
         inputChars: textContent.length,
         outputChars: cleanedText.length,
         cleanDurationSeconds,
+        llmInputTokens: usage.inputTokens,
+        llmOutputTokens: usage.outputTokens,
+        llmTotalTokens: usage.totalTokens,
+        llmTotalCostUsd,
         model: this.modelName,
         promptName: this.promptName,
       },
       'Completed LLM text cleaning',
     );
 
-    return cleanedText;
+    return {
+      text: cleanedText,
+      telemetry: {
+        llmCallDurationSeconds: cleanDurationSeconds,
+        llmInputTokens: usage.inputTokens,
+        llmOutputTokens: usage.outputTokens,
+        llmTotalTokens: usage.totalTokens,
+        llmInputCostUsd,
+        llmOutputCostUsd,
+        llmTotalCostUsd,
+      },
+    };
   }
 }
 
