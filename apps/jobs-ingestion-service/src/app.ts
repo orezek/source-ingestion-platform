@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadEnv } from '@repo/env-config';
 import { z } from 'zod';
 
-import { GeminiJobDetailExtractor } from './extraction.js';
+import { GeminiDetailTextCleaner, GeminiJobDetailExtractor } from './extraction.js';
 import { IncompleteDetailPageError } from './html-detail-loader.js';
 import { LocalScrapedJobsInputProvider } from './input-provider.js';
 import { JobParsingGraph } from './job-parsing-graph.js';
@@ -70,6 +70,7 @@ export const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   LANGSMITH_API_KEY: z.string().optional(),
   LANGSMITH_PROMPT_NAME: z.string().default('job-ad-extractor'),
+  LANGSMITH_CLEANER_PROMPT_NAME: z.string().default('ad-cleaner-job-compass'),
   GEMINI_MODEL: z.string().default('gemini-3-flash-preview'),
   GEMINI_TEMPERATURE: z.coerce.number().min(0).max(1).default(0),
   GEMINI_THINKING_LEVEL: thinkingLevelSchema.default('LOW'),
@@ -151,6 +152,7 @@ const ingestionRunSummarySchema = z.object({
   parserVersion: z.string(),
   extractorModel: z.string(),
   langsmithPromptName: z.string(),
+  langsmithCleanerPromptName: z.string(),
   sampleSize: z.union([z.number().int().positive(), z.literal('all')]),
   concurrency: z.number().int().positive(),
   jobsTotal: z.number().int().nonnegative(),
@@ -262,6 +264,7 @@ const buildRunSummaryDocument = (input: {
       parserVersion: envs.PARSER_VERSION,
       extractorModel: envs.GEMINI_MODEL,
       langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
+      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
       sampleSize: input.sampleSize ?? 'all',
       concurrency: input.workerCount,
       jobsTotal,
@@ -342,8 +345,18 @@ const parseRecords = async (
     outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
     logger,
   });
+  const textCleaner = new GeminiDetailTextCleaner({
+    langsmithApiKey: envs.LANGSMITH_API_KEY,
+    langsmithPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
+    apiKey: envs.GEMINI_API_KEY,
+    model: envs.GEMINI_MODEL,
+    temperature: envs.GEMINI_TEMPERATURE,
+    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+    logger,
+  });
 
   const parserGraph = new JobParsingGraph({
+    textCleaner,
     extractor,
     minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
     parserVersion: envs.PARSER_VERSION,
@@ -366,6 +379,7 @@ const parseRecords = async (
       sampleSize: sampleSize ?? 'all',
       model: envs.GEMINI_MODEL,
       langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
+      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
       concurrency: workerCount,
       minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
       runId,
@@ -537,6 +551,7 @@ export const runIngestionWorkflow = async (
       mongoCollectionRunSummaries: envs.MONGODB_RUN_SUMMARIES_COLLECTION,
       model: envs.GEMINI_MODEL,
       langsmithPromptName: envs.LANGSMITH_PROMPT_NAME,
+      langsmithCleanerPromptName: envs.LANGSMITH_CLEANER_PROMPT_NAME,
       minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
       logLevel: envs.LOG_LEVEL,
       logPretty: envs.LOG_PRETTY,

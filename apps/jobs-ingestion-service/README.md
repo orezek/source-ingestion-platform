@@ -13,8 +13,8 @@ For each listing record + detail HTML snapshot pair, the service:
 
 1. loads and validates the detail HTML page
 2. builds cleaned plain-text content with Cheerio
-3. runs Gemini structured extraction using a LangSmith Hub prompt (`job-ad-extractor`)
-4. applies deterministic post-processing / normalization
+3. runs Gemini text-cleaning prompt (`ad-cleaner-job-compass`) to remove UI/GDPR/cookie noise
+4. runs Gemini structured extraction using a LangSmith Hub prompt (`job-ad-extractor`)
 5. writes normalized output to JSON and optionally MongoDB (`normalized_job_ads`)
 6. records run summaries and ingestion trigger state for observability
 
@@ -59,13 +59,19 @@ Current graph nodes:
    - extracts plain text and validates completeness
    - returns metadata (hash, bytes, text content)
 
-2. `extractDetail`
+2. `cleanDetailText`
+   - pulls LangSmith prompt `ad-cleaner-job-compass`
+   - cleans `textContent` (UI/GDPR/cookie/legal noise removal)
+   - feeds cleaned text to extraction node only
+   - does not overwrite `rawDetailPage.text` in final document
+
+3. `extractDetail`
    - pulls LangSmith prompt `job-ad-extractor`
    - calls Gemini structured output with Zod schema
    - validates model output against the local canonical schema
    - applies normalization only (no deterministic field overrides)
 
-3. `merge`
+4. `merge`
    - merges listing + extracted detail + ingestion metadata
    - validates final `unifiedJobAdSchema`
 
@@ -202,6 +208,7 @@ Core runtime/env groups:
 - `GEMINI_API_KEY`
 - `LANGSMITH_API_KEY`
 - `LANGSMITH_PROMPT_NAME` (default `job-ad-extractor`)
+- `LANGSMITH_CLEANER_PROMPT_NAME` (default `ad-cleaner-job-compass`)
 - `GEMINI_MODEL`
 - `GEMINI_TEMPERATURE`
 - `GEMINI_THINKING_LEVEL`

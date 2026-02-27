@@ -3,10 +3,15 @@ import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import type { AppLogger } from './logger.js';
 import { loadDetailPage, type LoadedDetailPage } from './html-detail-loader.js';
 import type { LocalInputRecord } from './input-provider.js';
-import { type ExtractionTelemetry, GeminiJobDetailExtractor } from './extraction.js';
+import {
+  type ExtractionTelemetry,
+  GeminiDetailTextCleaner,
+  GeminiJobDetailExtractor,
+} from './extraction.js';
 import { type ExtractedJobDetail, type UnifiedJobAd, unifiedJobAdSchema } from './schema.js';
 
 type JobParsingGraphConfig = {
+  textCleaner: GeminiDetailTextCleaner;
   extractor: GeminiJobDetailExtractor;
   minRelevantTextChars: number;
   parserVersion: string;
@@ -18,6 +23,7 @@ type JobParsingGraphConfig = {
 const JobParsingGraphState = Annotation.Root({
   inputRecord: Annotation<LocalInputRecord>(),
   loadedDetailPage: Annotation<LoadedDetailPage>(),
+  cleanedDetailText: Annotation<string>(),
   extractedDetail: Annotation<ExtractedJobDetail>(),
   extractionTelemetry: Annotation<ExtractionTelemetry>(),
   unifiedJobAd: Annotation<UnifiedJobAd>(),
@@ -117,7 +123,7 @@ export class JobParsingGraph {
     ): Promise<Pick<JobParsingGraphStateType, 'extractedDetail' | 'extractionTelemetry'>> => {
       const extractionResult = await config.extractor.extractFromDetailPage(
         state.inputRecord.listingRecord,
-        state.loadedDetailPage.textContent,
+        state.cleanedDetailText,
       );
       const extractionTelemetry = extractionResult.telemetry;
 
@@ -136,6 +142,25 @@ export class JobParsingGraph {
         extractedDetail: extractionResult.detail,
         extractionTelemetry,
       };
+    };
+
+    const cleanDetailTextNode = async (
+      state: JobParsingGraphStateType,
+    ): Promise<Pick<JobParsingGraphStateType, 'cleanedDetailText'>> => {
+      const cleanedDetailText = await config.textCleaner.cleanText(
+        state.loadedDetailPage.textContent,
+      );
+
+      this.logger.debug(
+        {
+          sourceId: state.inputRecord.listingRecord.sourceId,
+          rawTextChars: state.loadedDetailPage.textContentChars,
+          cleanedTextChars: cleanedDetailText.length,
+        },
+        'Cleaned detail text before extraction',
+      );
+
+      return { cleanedDetailText };
     };
 
     const mergeNode = (
@@ -162,10 +187,12 @@ export class JobParsingGraph {
 
     this.graphApp = new StateGraph(JobParsingGraphState)
       .addNode('loadDetailPage', loadDetailPageNode)
+      .addNode('cleanDetailText', cleanDetailTextNode)
       .addNode('extractDetail', extractDetailNode)
       .addNode('merge', mergeNode)
       .addEdge(START, 'loadDetailPage')
-      .addEdge('loadDetailPage', 'extractDetail')
+      .addEdge('loadDetailPage', 'cleanDetailText')
+      .addEdge('cleanDetailText', 'extractDetail')
       .addEdge('extractDetail', 'merge')
       .addEdge('merge', END)
       .compile();

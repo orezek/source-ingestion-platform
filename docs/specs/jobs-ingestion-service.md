@@ -11,8 +11,9 @@
 `jobs-ingestion-service` transforms crawler artifacts into normalized structured job documents using a combination of:
 
 - deterministic HTML loading / validation (Cheerio)
+- LLM-based text cleanup (Gemini + LangSmith Hub prompt)
 - LLM-based structured extraction (Gemini + LangSmith Hub prompt)
-- deterministic normalization and post-processing
+- deterministic normalization and schema validation
 - persistence to JSON and MongoDB
 
 ## Non-goals (Current Spec)
@@ -87,7 +88,15 @@ Outputs include:
 - detail HTML metadata (`sha256`, bytes, gzip)
 - quality signals (when skipped)
 
-### Node 2: `extractDetail`
+### Node 2: `cleanDetailText`
+
+Responsibilities:
+
+- pull LangSmith Hub prompt (`LANGSMITH_CLEANER_PROMPT_NAME`, default `ad-cleaner-job-compass`)
+- pass `textContent` as prompt input
+- return cleaned text output used only for LLM extraction input
+
+### Node 3: `extractDetail`
 
 Responsibilities:
 
@@ -95,16 +104,9 @@ Responsibilities:
 - provide prompt variables from listing + detail page text
 - invoke Gemini structured output using Zod schema
 - normalize extracted output
-- apply deterministic post-processing / overrides
+- no deterministic field overrides (model output is trusted, then normalized/validated)
 
-Post-processing includes:
-
-- stricter `seniorityLevel` inference gating
-- stricter `workModes` resolution
-- deterministic `summary` derivation from structured fields
-- schema-level normalization of strings/arrays
-
-### Node 3: `merge`
+### Node 4: `merge`
 
 Responsibilities:
 

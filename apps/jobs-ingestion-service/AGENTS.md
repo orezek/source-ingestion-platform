@@ -78,6 +78,10 @@ These instructions are app-local extensions of the repository root rules.
   - Cheerio DOM parsing + non-content pruning
   - completeness validation
   - text extraction for downstream LLM processing
+- `cleanDetailText` is LLM-based and performs:
+  - LangSmith prompt-driven text cleanup (`ad-cleaner-job-compass`)
+  - removal of UI/cookie/GDPR/legal noise before extraction
+  - produces cleaned text only for extraction input (does not overwrite stored `rawDetailPage.text`)
 - The structured extraction is performed downstream in the LangGraph pipeline.
 
 ## Detail Page Completeness Gate (Important)
