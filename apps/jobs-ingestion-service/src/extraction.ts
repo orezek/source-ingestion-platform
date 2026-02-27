@@ -66,7 +66,6 @@ const isHubPromptRunnable = (value: unknown): value is HubPromptRunnable =>
 type StructuredPromptContext = {
   detailText: string;
   listingJson: string;
-  listingSalaryHint: string;
 };
 
 const buildStructuredPromptContext = (
@@ -74,12 +73,10 @@ const buildStructuredPromptContext = (
   detailText: string,
 ): StructuredPromptContext => {
   const listingJson = JSON.stringify(listingRecord, null, 2);
-  const listingSalaryHint = listingRecord.salary ?? '[not available]';
 
   return {
     detailText,
     listingJson,
-    listingSalaryHint,
   };
 };
 
@@ -92,7 +89,6 @@ const buildHubPromptInput = (
   const exactPromptInputs = {
     jobAdDetailText: promptContext.detailText,
     listingJson: promptContext.listingJson,
-    listingSalaryHint: promptContext.listingSalaryHint,
   } satisfies Record<string, string>;
 
   if (inputVariables && inputVariables.length > 0) {
