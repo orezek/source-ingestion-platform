@@ -31,6 +31,8 @@ const actorInputSchema = z.object({
     )
     .default([{ url: 'https://www.jobs.cz/prace/' }]),
   maxItems: z.coerce.number().int().positive(),
+  maxConcurrency: z.coerce.number().int().positive().default(1),
+  maxRequestsPerMinute: z.coerce.number().int().positive().default(30),
   proxyConfiguration: z.custom<ProxyConfigurationOptions>().optional(),
   debugLog: z.boolean().optional().default(false),
 });
@@ -1131,8 +1133,8 @@ const createCrawler = (maxRequestsPerCrawlSafetyCap: number) =>
         error,
       });
     },
-    maxConcurrency: 1,
-    maxRequestsPerMinute: 30,
+    maxConcurrency: input.maxConcurrency,
+    maxRequestsPerMinute: input.maxRequestsPerMinute,
     maxRequestsPerCrawl: maxRequestsPerCrawlSafetyCap,
     launchContext: {
       launchOptions: {
@@ -1155,8 +1157,8 @@ await upsertRunSummaryToMongoBestEffort(
       startUrls: startUrls.map((item) => item.url),
       maxItems: input.maxItems,
       maxRequestsPerCrawlSafetyCap: Math.max(input.maxItems * 5, 50),
-      maxConcurrency: 1,
-      maxRequestsPerMinute: 30,
+      maxConcurrency: input.maxConcurrency,
+      maxRequestsPerMinute: input.maxRequestsPerMinute,
       debugLog: input.debugLog ?? false,
       proxyConfigured: Boolean(input.proxyConfiguration),
       localSharedScrapedJobsDir,
@@ -1337,8 +1339,8 @@ const runSummary = {
     startUrls: startUrls.map((item) => item.url),
     maxItems: input.maxItems,
     maxRequestsPerCrawlSafetyCap: Math.max(input.maxItems * 5, 50),
-    maxConcurrency: 1,
-    maxRequestsPerMinute: 30,
+    maxConcurrency: input.maxConcurrency,
+    maxRequestsPerMinute: input.maxRequestsPerMinute,
     debugLog: input.debugLog ?? false,
     proxyConfigured: Boolean(input.proxyConfiguration),
   },

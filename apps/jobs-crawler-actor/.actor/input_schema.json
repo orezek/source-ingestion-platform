@@ -17,6 +17,20 @@
       "default": 100,
       "minimum": 1
     },
+    "maxConcurrency": {
+      "title": "Max Concurrency",
+      "type": "integer",
+      "description": "Maximum number of parallel browser tasks for crawl processing.",
+      "default": 1,
+      "minimum": 1
+    },
+    "maxRequestsPerMinute": {
+      "title": "Max Requests Per Minute",
+      "type": "integer",
+      "description": "Global rate limit for outgoing crawl requests per minute.",
+      "default": 30,
+      "minimum": 1
+    },
     "proxyConfiguration": {
       "title": "Proxy Configuration",
       "type": "object",

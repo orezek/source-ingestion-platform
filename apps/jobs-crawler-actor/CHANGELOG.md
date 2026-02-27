@@ -6,6 +6,20 @@ The app package version is currently `1.0.0` (see `package.json`). This changelo
 
 ## [Unreleased]
 
+### Fixed
+
+- Actor input throttling controls are now applied at runtime:
+  - `maxConcurrency`
+  - `maxRequestsPerMinute`
+- These limits now affect both list and detail crawl phases.
+
+### Changed
+
+- Expanded `.actor/input_schema.json` to include:
+  - `maxConcurrency`
+  - `maxRequestsPerMinute`
+- Expanded `.env.example` documentation with per-variable operational comments and explicit note that crawl throttling is input-driven (not env-driven).
+
 ### Documentation
 
 - Added detailed README and app-specific architecture spec for operators and contributors.

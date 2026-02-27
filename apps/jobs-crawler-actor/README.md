@@ -57,6 +57,8 @@ Required/optional fields:
 
 - `startUrls` (optional): list of Jobs.cz search URLs. If omitted, defaults to `https://www.jobs.cz/prace/`
 - `maxItems` (required): maximum number of job ads (detail pages) to target in the run
+- `maxConcurrency` (optional, default `1`): crawler parallelism used for both list and detail phases
+- `maxRequestsPerMinute` (optional, default `30`): crawler global request-rate limit used for both phases
 - `proxyConfiguration` (optional): Apify proxy configuration object
 - `debugLog` (optional): enables verbose crawl logging
 
@@ -78,10 +80,6 @@ Required/optional fields:
   }
 }
 ```
-
-Note:
-
-- `maxConcurrency` and `maxRequestsPerMinute` are accepted by runtime and are useful for local safety, but the current `.actor/input_schema.json` documents the core actor fields only.
 
 ## Fixed MVP Crawl Scope (Current Product Dataset)
 
