@@ -4,7 +4,7 @@ All notable changes to `apps/jobs-ingestion-service` should be documented in thi
 
 This app has two relevant version identifiers:
 
-- package version (`package.json`): currently `1.0.1`
+- package version (`package.json`): currently `1.0.2`
 - parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.9.0`
 
 The parser version is the operational identifier used in `normalized_job_ads` and `ingestion_run_summaries`.
@@ -30,7 +30,7 @@ The parser version is the operational identifier used in `normalized_job_ads` an
 - Prompt env convention updated:
   - `LLM_EXTRACTOR_PROMPT_NAME` (default `jobcompass-job-ad-structured-extractor`)
   - `LLM_CLEANER_PROMPT_NAME` (default `jobcompass-job-ad-text-cleaner`)
-  - legacy `LANGSMITH_*` aliases remain supported as fallback.
+- Removed legacy prompt env aliases (`LANGSMITH_PROMPT_NAME`, `LANGSMITH_CLEANER_PROMPT_NAME`) to keep configuration explicit and deterministic.
 
 ## [jobs-ingestion-service-v0.9.0] - Current Parser Baseline
 

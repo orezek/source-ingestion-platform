@@ -274,7 +274,7 @@ Key groups:
 - logging (`LOG_LEVEL`, `LOG_PRETTY`)
 - local input/handoff (`INPUT_ROOT_DIR`, `CRAWL_RUNS_SUBDIR`, `INPUT_RECORDS_DIR_NAME`)
 - concurrency/sampling (`INGESTION_CONCURRENCY`, `INGESTION_SAMPLE_SIZE`)
-- LLM provider + prompt config (`GEMINI_*`, `LLM_*`; legacy `LANGSMITH_*` aliases remain supported)
+- LLM provider + prompt config (`GEMINI_*`, `LLM_*`)
 - completeness tuning (`DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS`)
 - costs (`GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS`, `GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS`)
 - Fastify host/port (`INGESTION_API_HOST`, `INGESTION_API_PORT`)

@@ -73,8 +73,6 @@ export const envSchema = z.object({
   LANGSMITH_API_KEY: z.string().optional(),
   LLM_EXTRACTOR_PROMPT_NAME: z.string().default('jobcompass-job-ad-structured-extractor'),
   LLM_CLEANER_PROMPT_NAME: z.string().default('jobcompass-job-ad-text-cleaner'),
-  LANGSMITH_PROMPT_NAME: z.string().optional(),
-  LANGSMITH_CLEANER_PROMPT_NAME: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3-flash-preview'),
   GEMINI_TEMPERATURE: z.coerce.number().min(0).max(1).default(0),
   GEMINI_THINKING_LEVEL: thinkingLevelSchema.default('LOW'),

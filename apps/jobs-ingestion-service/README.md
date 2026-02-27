@@ -240,9 +240,6 @@ Core runtime/env groups:
 - `LANGSMITH_API_KEY`
 - `LLM_EXTRACTOR_PROMPT_NAME` (default `jobcompass-job-ad-structured-extractor`)
 - `LLM_CLEANER_PROMPT_NAME` (default `jobcompass-job-ad-text-cleaner`)
-- legacy fallback aliases:
-  - `LANGSMITH_PROMPT_NAME`
-  - `LANGSMITH_CLEANER_PROMPT_NAME`
 - `GEMINI_MODEL`
 - `GEMINI_TEMPERATURE`
 - `GEMINI_THINKING_LEVEL`
