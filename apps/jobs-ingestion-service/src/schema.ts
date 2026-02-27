@@ -203,9 +203,7 @@ const seniorityLevelSchema = z
 
 const compensationPeriodSchema = z
   .enum(['hour', 'day', 'month', 'year', 'project', 'unknown'])
-  .describe(
-    "The time unit for the salary payment. Default to 'month' if ambiguous but likely monthly.",
-  );
+  .describe("The time unit for the salary payment. Use 'unknown' if ambiguous.");
 
 export const sourceListingRecordSchema = z.object({
   sourceId: z.union([z.string(), z.number()]).transform((value) => String(value)),
@@ -222,167 +220,145 @@ export const sourceListingRecordSchema = z.object({
 
 export type SourceListingRecord = z.infer<typeof sourceListingRecordSchema>;
 
-export const extractedSalarySchema = z.object({
-  min: z
-    .number()
-    .nullable()
-    .default(null)
-    .describe(
-      "The lower bound of the salary range. Numeric only (e.g. 30000). If '30k' is found, convert to 30000.",
-    ),
-  max: z
-    .number()
-    .nullable()
-    .default(null)
-    .describe(
-      "The upper bound of the salary range. Numeric only. If fixed salary (e.g. '50000'), set both min and max to 50000.",
-    ),
-  currency: z
-    .string()
-    .nullable()
-    .default('CZK')
-    .describe("ISO currency code (e.g. CZK, EUR, USD). Infer from context (e.g. 'Kč' -> CZK)."),
-  period: compensationPeriodSchema.default('unknown'),
-  inferred: z
-    .boolean()
-    .default(false)
-    .describe('ALWAYS FALSE for the LLM. This flag is reserved for post-processing updates.'),
-});
+export const extractedSalarySchema = z
+  .object({
+    min: z
+      .number()
+      .nullable()
+      .describe(
+        "The lower bound of the salary range. Numeric only (e.g. 30000). If '30k' is found, convert to 30000.",
+      ),
+    max: z
+      .number()
+      .nullable()
+      .describe(
+        "The upper bound of the salary range. Numeric only. If fixed salary (e.g. '50000'), set both min and max to 50000.",
+      ),
+    currency: z
+      .string()
+      .nullable()
+      .describe("ISO currency code (e.g. CZK, EUR, USD). Infer from context (e.g. 'Kč' -> CZK)."),
+    period: compensationPeriodSchema,
+  })
+  .strict();
 
-export const extractedLocationSchema = z.object({
-  city: z.string().nullable().default(null),
-  region: z.string().nullable().default(null),
-  country: z.string().nullable().default(null),
-  addressText: z.string().nullable().default(null),
-});
+export const extractedLocationSchema = z
+  .object({
+    city: z.string().nullable(),
+    region: z.string().nullable(),
+    country: z.string().nullable(),
+    addressText: z.string().nullable(),
+  })
+  .strict();
 
-export const languageRequirementSchema = z.object({
-  language: z.string(),
-  level: z.string().nullable().default(null),
-});
+export const languageRequirementSchema = z
+  .object({
+    language: z.string(),
+    level: z.string().nullable(),
+  })
+  .strict();
 
-export const recruiterContactsSchema = z.object({
-  contactName: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Recruiter or contact person name if explicitly present. Use null if missing or unclear. Do not invent a person from generic HR text.',
-    ),
-  contactEmail: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe('Recruiter contact email if explicitly present. Use null if missing. Do not invent.'),
-  contactPhone: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Recruiter contact phone number if explicitly present. Use null if missing. Do not invent.',
-    ),
-});
+export const recruiterContactsSchema = z
+  .object({
+    contactName: z
+      .string()
+      .nullable()
+      .describe(
+        'Recruiter or contact person name if explicitly present. Use null if missing or unclear. Do not invent a person from generic HR text.',
+      ),
+    contactEmail: z
+      .string()
+      .nullable()
+      .describe(
+        'Recruiter contact email if explicitly present. Use null if missing. Do not invent.',
+      ),
+    contactPhone: z
+      .string()
+      .nullable()
+      .describe(
+        'Recruiter contact phone number if explicitly present. Use null if missing. Do not invent.',
+      ),
+  })
+  .strict();
 
-export const extractedJobDetailSchema = z.object({
-  canonicalTitle: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Normalized job role title based on ad evidence. Remove obvious company/location noise when possible. Keep null if unclear.',
-    ),
-  seniorityLevel: seniorityLevelSchema
-    .nullable()
-    .default(null)
-    .describe(
-      'Standardize to one of: medior, senior, junior, absolvent. Prefer explicit evidence (keywords such as junior/senior/medior/mid/intermediate, graduate/absolvent labels). If explicit evidence is absent, infer only when there are at least 2 strong signals (e.g. years of experience + leadership scope). Do not infer "medior" from a generic role title alone. Keep null when evidence is weak or ambiguous.',
-    ),
-  employmentTypes: z
-    .array(employmentTypeSchema)
-    .default([])
-    .describe(
-      'Normalize to one or more of: full-time, part-time, contract, freelance, internship, temporary, other.',
-    ),
-  workModes: z
-    .array(workModeSchema)
-    .default([])
-    .describe(
-      'Use only explicit evidence from the ad. Default to ["unknown"] when remote/hybrid/onsite is not explicitly stated. Do not assume onsite from location alone.',
-    ),
-  locations: z.array(extractedLocationSchema).default([]),
-  salary: extractedSalarySchema,
-  languageRequirements: z.array(languageRequirementSchema).default([]),
-  techStack: z
-    .array(z.string())
-    .default([])
-    .describe(
-      'Only explicitly named technologies, languages, frameworks, databases, tools, protocols, or standards (e.g. Java, SQL, React, OAuth2). Exclude soft skills, personality traits, and generic job categories. Exclude generic office tools like Word/Excel/Outlook unless critical.',
-    ),
-  travelRequirements: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe('Travel requirement text if explicitly mentioned; otherwise null.'),
-  startDateText: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Start date or candidate availability text exactly as stated in the ad; otherwise null.',
-    ),
-  applicationDeadlineText: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe('Application deadline text exactly as stated in the ad; otherwise null.'),
-  applyUrl: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Apply URL if explicitly provided in the ad; otherwise null. Prefer absolute URL when available.',
-    ),
-  recruiterContacts: recruiterContactsSchema.default({
-    contactName: null,
-    contactEmail: null,
-    contactPhone: null,
-  }),
-  responsibilities: z
-    .array(z.string())
-    .default([])
-    .describe('List of specific day-to-day duties. Split compound sentences.'),
-  requirements: z
-    .array(z.string())
-    .default([])
-    .describe('Hard skills, education, and experience requirements.'),
-  niceToHave: z.array(z.string()).default([]).describe("Optional or 'advantage' skills."),
-  benefits: z
-    .array(z.string())
-    .default([])
-    .describe('Perks, hardware, holidays, or monetary bonuses.'),
-  hiringProcess: z.array(z.string()).default([]),
-  summary: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Optional for the LLM. It may return null. Final summary is derived deterministically in post-processing from extracted structured fields and listing context; do not invent narrative details.',
-    ),
-  jobDescription: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Role description content only (responsibilities, expectations, scope, context). Exclude unrelated site chrome or marketing text when possible. Use null if unavailable.',
-    ),
-  companyDescription: z
-    .string()
-    .nullable()
-    .default(null)
-    .describe(
-      'Employer/company description text that is relevant to understanding the company. Use null if not present.',
-    ),
-});
+export const extractedJobDetailSchema = z
+  .object({
+    canonicalTitle: z
+      .string()
+      .nullable()
+      .describe(
+        'Cleaned job role title based on ad evidence. Remove obvious company/location noise. Do not translate. Keep null if unclear.',
+      ),
+    seniorityLevel: seniorityLevelSchema
+      .nullable()
+      .describe(
+        'Standardize to one of: medior, senior, junior, absolvent. Prefer explicit evidence (keywords such as junior/senior/medior/mid/intermediate, graduate/absolvent labels). If explicit evidence is absent, infer only when there are at least 2 strong signals (e.g. years of experience + leadership scope). Do not infer "medior" from a generic role title alone. Keep null when evidence is weak or ambiguous.',
+      ),
+    employmentTypes: z
+      .array(employmentTypeSchema)
+      .describe(
+        'Normalize to one or more of: full-time, part-time, contract, freelance, internship, temporary, other.',
+      ),
+    workModes: z
+      .array(workModeSchema)
+      .describe(
+        'Use only explicit evidence. If not stated, prefer outputting ["unknown"]. Do not assume onsite from location alone.',
+      ),
+    locations: z.array(extractedLocationSchema),
+    salary: extractedSalarySchema,
+    languageRequirements: z.array(languageRequirementSchema),
+    techStack: z
+      .array(z.string())
+      .describe(
+        'Only explicitly named technologies. Exclude soft skills and generic office software. Extract exactly as written.',
+      ),
+    travelRequirements: z
+      .string()
+      .nullable()
+      .describe('Travel requirement text if explicitly mentioned; otherwise null.'),
+    startDateText: z
+      .string()
+      .nullable()
+      .describe('Start date/availability text exactly as stated; otherwise null.'),
+    applicationDeadlineText: z
+      .string()
+      .nullable()
+      .describe('Application deadline text exactly as stated in the ad; otherwise null.'),
+    applyUrl: z.string().nullable().describe('Apply URL if explicitly present; otherwise null.'),
+    recruiterContacts: recruiterContactsSchema,
+    responsibilities: z
+      .array(z.string())
+      .describe(
+        'Specific day-to-day duties. Extract verbatim as exact bullet points from the text.',
+      ),
+    requirements: z
+      .array(z.string())
+      .describe(
+        'Hard skills, education, and experience requirements. Extract verbatim as exact bullet points from the text.',
+      ),
+    niceToHave: z
+      .array(z.string())
+      .describe(
+        'Optional or advantage skills. Extract verbatim as exact bullet points from the text.',
+      ),
+    benefits: z
+      .array(z.string())
+      .describe(
+        'Perks, hardware, holidays, bonuses. Extract verbatim as exact bullet points from the text.',
+      ),
+    hiringProcess: z.array(z.string()),
+    jobDescription: z
+      .string()
+      .nullable()
+      .describe('Core job description extracted verbatim. Act as a text-cropping tool.'),
+    companyDescription: z
+      .string()
+      .nullable()
+      .describe(
+        'Employer/company description relevant for understanding the company. Use null if not present.',
+      ),
+  })
+  .strict();
 
 export type ExtractedJobDetail = z.infer<typeof extractedJobDetailSchema>;
 
@@ -422,7 +398,6 @@ export const normalizedExtractedJobDetailSchema = extractedJobDetailSchema.trans
   return {
     ...detail,
     canonicalTitle: normalizeDetailNullableText(detail.canonicalTitle),
-    summary: normalizeDetailNullableText(detail.summary),
     jobDescription: normalizeDetailNullableText(detail.jobDescription),
     responsibilities: normalizeStringArray(detail.responsibilities),
     requirements: normalizeStringArray(detail.requirements),

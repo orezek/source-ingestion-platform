@@ -74,7 +74,26 @@ const noiseSignalPatterns = [
 const isGzipBuffer = (buffer: Buffer): boolean =>
   buffer.length >= 2 && buffer[0] === gzipMagicNumberA && buffer[1] === gzipMagicNumberB;
 
-const normalizeWhitespace = (input: string): string => input.replace(/\s+/g, ' ').trim();
+const normalizeTextPreservingLineBreaks = (input: string): string =>
+  input
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t\f\v]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+const addReadableBreakHints = (selection: ReturnType<CheerioAPI>): void => {
+  selection.find('br').replaceWith('\n');
+  selection.find('p').prepend('\n').append('\n');
+  selection.find('li').prepend('\n- ').append('\n');
+};
+
+const extractReadableText = (selection: ReturnType<CheerioAPI>): string => {
+  const clonedSelection = selection.clone();
+  addReadableBreakHints(clonedSelection);
+
+  return normalizeTextPreservingLineBreaks(clonedSelection.text());
+};
 
 const countPatternHits = (text: string, patterns: RegExp[]): number =>
   patterns.reduce((hits, pattern) => (pattern.test(text) ? hits + 1 : hits), 0);
@@ -83,7 +102,8 @@ const pruneNonContentNodes = (dom: CheerioAPI): void => {
   dom(nonContentSelectors.join(',')).remove();
 };
 
-const countWords = (text: string): number => (text.length > 0 ? text.split(' ').length : 0);
+const countWords = (text: string): number =>
+  text.length > 0 ? text.trim().split(/\s+/).length : 0;
 
 type PrimaryJobContentContainerMatch = {
   selector: (typeof primaryJobContentContainerSelectors)[number];
@@ -109,12 +129,12 @@ const findPrimaryJobContentContainer = (
       seenNodes.add(elementNode);
 
       const element = dom(elementNode);
-      const text = normalizeWhitespace(element.text());
+      const text = extractReadableText(element);
       if (text.length === 0) {
         return;
       }
 
-      const words = text.split(' ').length;
+      const words = countWords(text);
       const candidate: PrimaryJobContentContainerMatch = {
         selector,
         text,
@@ -226,7 +246,7 @@ const analyzeDetailPageText = (rawHtml: string): DetailPageTextAnalysis => {
   const dom = load(rawHtml);
   pruneNonContentNodes(dom);
 
-  const mergedText = normalizeWhitespace(dom('body').text());
+  const mergedText = extractReadableText(dom('body'));
   const plainTextWords = countWords(mergedText);
   const primaryJobContentContainer = findPrimaryJobContentContainer(dom);
   const detailSignalHits = countPatternHits(mergedText, detailSignalPatterns);

@@ -127,7 +127,6 @@ export class JobParsingGraph {
           llmCallDurationSeconds: extractionTelemetry.llmCallDurationSeconds,
           llmTotalTokens: extractionTelemetry.llmTotalTokens,
           llmTotalCostUsd: extractionTelemetry.llmTotalCostUsd,
-          summaryChars: extractionResult.detail.summary?.length ?? 0,
           jobDescriptionChars: extractionResult.detail.jobDescription?.length ?? 0,
         },
         'Extracted structured detail fields from LLM',

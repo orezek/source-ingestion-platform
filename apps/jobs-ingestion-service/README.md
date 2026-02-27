@@ -62,8 +62,8 @@ Current graph nodes:
 2. `extractDetail`
    - pulls LangSmith prompt `job-ad-extractor`
    - calls Gemini structured output with Zod schema
-   - applies normalization and deterministic overrides
-   - derives `summary` deterministically from structured fields (not creative free-form summary generation)
+   - validates model output against the local canonical schema
+   - applies normalization only (no deterministic field overrides)
 
 3. `merge`
    - merges listing + extracted detail + ingestion metadata
