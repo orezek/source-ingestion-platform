@@ -39,6 +39,11 @@ Two supported modes:
 - `DASHBOARD_DATA_MODE=mongo` for live data
 - `DASHBOARD_DATA_MODE=fixture` for local UI testing and automated tests
 
+Database selection:
+
+- `MONGODB_DB_NAME` if explicitly set
+- otherwise `JOB_COMPASS_DB_PREFIX`
+
 ## Development
 
 ```bash

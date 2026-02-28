@@ -13,8 +13,7 @@ const optionalStringSchema = z.preprocess((value) => {
 
 const envSchema = z.object({
   DASHBOARD_DATA_MODE: dataModeSchema.default('mongo'),
-  JOB_COMPASS_PROD_DB_NAME: z.string().default('job-compass'),
-  JOB_COMPASS_DEV_DB_NAME: z.string().default('job-compass-dev'),
+  JOB_COMPASS_DB_PREFIX: z.string().trim().min(1).default('job-compass'),
   MONGODB_URI: z.string().optional(),
   MONGODB_DB_NAME: optionalStringSchema,
   MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION: z.string().default('crawl_run_summaries'),
@@ -32,5 +31,5 @@ export type DashboardEnv = Omit<ParsedDashboardEnv, 'MONGODB_DB_NAME'> & {
 const parsedEnv = loadEnv(envSchema, import.meta.url);
 export const env: DashboardEnv = {
   ...parsedEnv,
-  MONGODB_DB_NAME: parsedEnv.MONGODB_DB_NAME ?? parsedEnv.JOB_COMPASS_PROD_DB_NAME,
+  MONGODB_DB_NAME: parsedEnv.MONGODB_DB_NAME ?? parsedEnv.JOB_COMPASS_DB_PREFIX,
 };

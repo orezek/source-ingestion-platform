@@ -22,6 +22,22 @@ This app does not own:
 - normalized job document generation
 - writes to `normalized_job_ads`
 
+## Operator Flow
+
+Use this app in the following order:
+
+1. configure runtime and infrastructure in `apps/jobs-crawler-actor/.env`
+2. define crawl behavior in `apps/jobs-crawler-actor/search-spaces/*.json`
+3. generate Apify-compatible `INPUT.json`
+4. run the crawler
+5. let the crawler trigger ingestion or start ingestion separately
+
+The important separation is:
+
+- `.env` = runtime, secrets, paths, Mongo, trigger URL
+- `search-spaces/*.json` = what to crawl and how that search space behaves
+- `storage/key_value_stores/default/INPUT.json` = generated runtime artifact, not the human-maintained config source
+
 ## Search Spaces
 
 The crawler is generic for any `jobs.cz` search URL, but local operator workflow is based on **search spaces**.

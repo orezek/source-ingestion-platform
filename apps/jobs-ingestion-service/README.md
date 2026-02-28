@@ -21,6 +21,21 @@ This app does not own:
 - detail-page fetching
 - crawl-state reconciliation on list coverage
 
+## Operator Flow
+
+Use this app in the following order:
+
+1. configure runtime and infrastructure in `apps/jobs-ingestion-service/.env`
+2. start the ingestion API if crawler-triggered ingestion is enabled
+3. run the crawler for a chosen search space
+4. let the crawler trigger ingestion, or run ingestion manually for the selected crawl run
+
+The important separation is:
+
+- crawler search spaces define the crawl scope
+- ingestion `.env` defines runtime, model, paths, Mongo, and API settings
+- trigger payload carries `crawlRunId`, `searchSpaceId`, and `mongoDbName`, so ingestion follows the crawler run instead of redefining scope
+
 ## Input Contract
 
 Crawler artifacts are expected under:
