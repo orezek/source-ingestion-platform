@@ -1,0 +1,128 @@
+[
+  {
+    "id": "ingestion-run-002",
+    "crawlRunId": "crawl-run-002",
+    "startedAt": "2026-02-27T08:23:00.000Z",
+    "completedAt": "2026-02-27T08:26:30.000Z",
+    "status": "completed_with_errors",
+    "parserVersion": "jobs-ingestion-service-v0.6.0",
+    "extractorModel": "gemini-3-flash-preview",
+    "langsmithCleanerPromptName": "jobcompass-job-ad-text-cleaner",
+    "langsmithExtractorPromptName": "jobcompass-job-ad-structured-extractor",
+    "jobsTotal": 18,
+    "jobsProcessed": 15,
+    "jobsSkippedIncomplete": 2,
+    "jobsFailed": 1,
+    "jobsSuccessRate": 0.8333,
+    "jobsNonSuccessRate": 0.1667,
+    "totalTokens": 224500,
+    "totalEstimatedCostUsd": 0.8432,
+    "avgTimeToProcssSeconds": 9.2,
+    "p50TimeToProcssSeconds": 8.7,
+    "p95TimeToProcssSeconds": 15.3,
+    "llmCleanerStats": {
+      "promptName": "jobcompass-job-ad-text-cleaner",
+      "totalTokens": 82450,
+      "totalInputTokens": 64000,
+      "totalOutputTokens": 18450,
+      "totalEstimatedCostUsd": 0.221,
+      "avgCallDurationSeconds": 2.1
+    },
+    "llmExtractorStats": {
+      "promptName": "jobcompass-job-ad-structured-extractor",
+      "totalTokens": 142050,
+      "totalInputTokens": 101000,
+      "totalOutputTokens": 41050,
+      "totalEstimatedCostUsd": 0.6222,
+      "avgCallDurationSeconds": 6.8
+    },
+    "llmTotalStats": {
+      "totalTokens": 224500,
+      "totalInputTokens": 165000,
+      "totalOutputTokens": 59500,
+      "totalEstimatedCostUsd": 0.8432,
+      "avgCallDurationSeconds": 8.9
+    },
+    "skippedIncompleteJobs": [
+      {
+        "sourceId": "2001083701",
+        "reason": "Primary content container text length below minimum threshold.",
+        "listing": {
+          "jobTitle": "Metodik IT aplikací senior",
+          "companyName": "Penta Hospitals CZ, s.r.o.",
+          "adUrl": "https://www.jobs.cz/rpd/2001083701/",
+          "location": "Praha – Nové Město"
+        }
+      },
+      {
+        "sourceId": "2000994357",
+        "reason": "Noise-heavy page with insufficient job-detail signals.",
+        "listing": {
+          "jobTitle": "Business Intelligence Analyst",
+          "companyName": "Albert Česká republika, s.r.o.",
+          "adUrl": "https://www.jobs.cz/rpd/2000994357/",
+          "location": "Praha – Jinonice"
+        }
+      }
+    ],
+    "failedJobs": [
+      {
+        "sourceId": "2001006855",
+        "errorName": "SchemaValidationError",
+        "errorMessage": "Structured extraction response did not conform to canonical schema.",
+        "listing": {
+          "jobTitle": "Jarní praxe a letní brigáda v jednom (střední školy)",
+          "companyName": "COMMERZBANK Aktiengesellschaft, pobočka Praha",
+          "adUrl": "https://www.jobs.cz/rpd/2001006855/"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ingestion-run-001",
+    "crawlRunId": "crawl-run-001",
+    "startedAt": "2026-02-26T18:15:00.000Z",
+    "completedAt": "2026-02-26T18:19:00.000Z",
+    "status": "succeeded",
+    "parserVersion": "jobs-ingestion-service-v0.6.0",
+    "extractorModel": "gemini-3-flash-preview",
+    "langsmithCleanerPromptName": "jobcompass-job-ad-text-cleaner",
+    "langsmithExtractorPromptName": "jobcompass-job-ad-structured-extractor",
+    "jobsTotal": 36,
+    "jobsProcessed": 36,
+    "jobsSkippedIncomplete": 0,
+    "jobsFailed": 0,
+    "jobsSuccessRate": 1,
+    "jobsNonSuccessRate": 0,
+    "totalTokens": 417866,
+    "totalEstimatedCostUsd": 1.421,
+    "avgTimeToProcssSeconds": 8.4,
+    "p50TimeToProcssSeconds": 7.8,
+    "p95TimeToProcssSeconds": 13.6,
+    "llmCleanerStats": {
+      "promptName": "jobcompass-job-ad-text-cleaner",
+      "totalTokens": 144221,
+      "totalInputTokens": 102300,
+      "totalOutputTokens": 41921,
+      "totalEstimatedCostUsd": 0.382,
+      "avgCallDurationSeconds": 2.0
+    },
+    "llmExtractorStats": {
+      "promptName": "jobcompass-job-ad-structured-extractor",
+      "totalTokens": 273645,
+      "totalInputTokens": 188000,
+      "totalOutputTokens": 85645,
+      "totalEstimatedCostUsd": 1.039,
+      "avgCallDurationSeconds": 6.2
+    },
+    "llmTotalStats": {
+      "totalTokens": 417866,
+      "totalInputTokens": 290300,
+      "totalOutputTokens": 127566,
+      "totalEstimatedCostUsd": 1.421,
+      "avgCallDurationSeconds": 8.2
+    },
+    "skippedIncompleteJobs": [],
+    "failedJobs": []
+  }
+]

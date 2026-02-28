@@ -1,0 +1,156 @@
+[
+  {
+    "crawlRunId": "crawl-run-002",
+    "source": "jobs.cz",
+    "status": "completed_with_errors",
+    "startedAt": "2026-02-27T08:10:00.000Z",
+    "finishedAt": "2026-02-27T08:22:30.000Z",
+    "stopReason": "completed",
+    "newJobsCount": 18,
+    "existingJobsCount": 1630,
+    "inactiveMarkedCount": 12,
+    "datasetRecordsStored": 18,
+    "failedRequests": 3,
+    "runSummary": {
+      "input": {
+        "maxItems": 1700,
+        "maxConcurrency": 2,
+        "maxRequestsPerMinute": 24,
+        "startUrls": [
+          "https://www.jobs.cz/prace/praha/?field%5B%5D=200900012&field%5B%5D=200900013&field%5B%5D=200900011&field%5B%5D=200900033&locality%5Bradius%5D=0"
+        ]
+      },
+      "outcome": {
+        "stopReason": "completed",
+        "failedRequests": 3,
+        "failedListRequests": 0,
+        "failedDetailRequests": 3,
+        "partialListScanGuardTriggered": false,
+        "maxItemsEnqueueGuardTriggered": false,
+        "maxItemsAbortTriggered": false,
+        "inactiveMarkingSkipped": false,
+        "inactiveMarkingSkipReason": null
+      },
+      "counters": {
+        "listPagesVisited": 47,
+        "detailPagesVisited": 18,
+        "htmlSnapshotsSaved": 18,
+        "datasetRecordsStored": 18,
+        "reconcileNewJobsCount": 18,
+        "reconcileExistingJobsCount": 1630,
+        "inactiveMarkedCount": 12
+      },
+      "listPageResults": {
+        "parsedListingResultsCountTotal": 1648
+      },
+      "detailRendering": {
+        "renderTypeCounts": {
+          "jobscz-template": 6,
+          "widget": 7,
+          "vacancy-detail": 5,
+          "unknown": 0
+        },
+        "renderSignalCounts": {
+          "none": 6,
+          "widget_container_text": 7,
+          "vacancy_detail_text": 5
+        },
+        "averageDetailRenderWaitMs": 324,
+        "maxDetailRenderWaitMs": 1620,
+        "totalDetailHtmlBytes": 1892000
+      },
+      "failedRequestUrls": [
+        "https://www.jobs.cz/rpd/2000000001/",
+        "https://www.jobs.cz/rpd/2000000002/",
+        "https://www.jobs.cz/rpd/2000000003/"
+      ],
+      "ingestionTrigger": {
+        "enabled": true,
+        "attempted": true,
+        "ok": true,
+        "accepted": true,
+        "deduplicated": false,
+        "responseStatus": 202,
+        "skippedReason": null
+      },
+      "crawlState": {
+        "mongoDbName": "job-compass"
+      }
+    }
+  },
+  {
+    "crawlRunId": "crawl-run-001",
+    "source": "jobs.cz",
+    "status": "succeeded",
+    "startedAt": "2026-02-26T18:00:00.000Z",
+    "finishedAt": "2026-02-26T18:14:00.000Z",
+    "stopReason": "completed",
+    "newJobsCount": 36,
+    "existingJobsCount": 1608,
+    "inactiveMarkedCount": 10,
+    "datasetRecordsStored": 36,
+    "failedRequests": 0,
+    "runSummary": {
+      "input": {
+        "maxItems": 1700,
+        "maxConcurrency": 2,
+        "maxRequestsPerMinute": 24,
+        "startUrls": [
+          "https://www.jobs.cz/prace/praha/?field%5B%5D=200900012&field%5B%5D=200900013&field%5B%5D=200900011&field%5B%5D=200900033&locality%5Bradius%5D=0"
+        ]
+      },
+      "outcome": {
+        "stopReason": "completed",
+        "failedRequests": 0,
+        "failedListRequests": 0,
+        "failedDetailRequests": 0,
+        "partialListScanGuardTriggered": false,
+        "maxItemsEnqueueGuardTriggered": false,
+        "maxItemsAbortTriggered": false,
+        "inactiveMarkingSkipped": false,
+        "inactiveMarkingSkipReason": null
+      },
+      "counters": {
+        "listPagesVisited": 45,
+        "detailPagesVisited": 36,
+        "htmlSnapshotsSaved": 36,
+        "datasetRecordsStored": 36,
+        "reconcileNewJobsCount": 36,
+        "reconcileExistingJobsCount": 1608,
+        "inactiveMarkedCount": 10
+      },
+      "listPageResults": {
+        "parsedListingResultsCountTotal": 1644
+      },
+      "detailRendering": {
+        "renderTypeCounts": {
+          "jobscz-template": 12,
+          "widget": 15,
+          "vacancy-detail": 9,
+          "unknown": 0
+        },
+        "renderSignalCounts": {
+          "none": 12,
+          "widget_container_text": 15,
+          "vacancy_detail_text": 9
+        },
+        "averageDetailRenderWaitMs": 284,
+        "maxDetailRenderWaitMs": 1190,
+        "totalDetailHtmlBytes": 3650000
+      },
+      "failedRequestUrls": [],
+      "ingestionTrigger": {
+        "enabled": true,
+        "attempted": true,
+        "ok": true,
+        "accepted": true,
+        "deduplicated": false,
+        "responseStatus": 202,
+        "skippedReason": null
+      },
+      "crawlState": {
+        "mongoDbName": "job-compass"
+      }
+    }
+  }
+]

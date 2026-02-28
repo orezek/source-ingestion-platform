@@ -62,3 +62,4 @@ Then update at minimum:
 
 - Apps are auto-included by `pnpm-workspace.yaml` via `apps/*`.
 - Keep dependency conventions: internal `workspace:*`, shared external dependencies via `catalog:`.
+- The default scaffold flow targets Node/console apps from `apps/app-template`. Framework-specific apps (for example Next.js) may be created manually when the template is not an architectural fit.
