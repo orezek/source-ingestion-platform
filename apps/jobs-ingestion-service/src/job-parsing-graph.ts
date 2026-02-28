@@ -18,9 +18,13 @@ type JobParsingGraphConfig = {
   logTextTransformContent: boolean;
   textTransformPreviewChars: number;
   parserVersion: string;
+  searchSpaceId: string;
+  logger: AppLogger;
+};
+
+type ParseRecordContext = {
   runId: string;
   crawlRunId: string | null;
-  logger: AppLogger;
 };
 
 const JobParsingGraphState = Annotation.Root({
@@ -30,7 +34,6 @@ const JobParsingGraphState = Annotation.Root({
   cleanerTelemetry: Annotation<LlmUsageTelemetry>(),
   extractedDetail: Annotation<ExtractedJobDetail>(),
   extractionTelemetry: Annotation<ExtractionTelemetry>(),
-  unifiedJobAd: Annotation<UnifiedJobAd>(),
 });
 
 type JobParsingGraphStateType = typeof JobParsingGraphState.State;
@@ -43,13 +46,14 @@ const toTextPreview = (text: string, maxChars: number): string =>
 const buildDocument = (
   state: JobParsingGraphStateType,
   parserVersion: string,
-  runId: string,
-  crawlRunId: string | null,
+  context: ParseRecordContext,
+  searchSpaceId: string,
   extractorModel: string,
 ): UnifiedJobAd => {
   const { inputRecord, loadedDetailPage, extractedDetail, extractionTelemetry, cleanerTelemetry } =
     state;
   const { listingRecord } = inputRecord;
+  const seenRunId = context.crawlRunId ?? context.runId;
   const llmTotalInputTokens = cleanerTelemetry.llmInputTokens + extractionTelemetry.llmInputTokens;
   const llmTotalOutputTokens =
     cleanerTelemetry.llmOutputTokens + extractionTelemetry.llmOutputTokens;
@@ -66,7 +70,13 @@ const buildDocument = (
     id: `${listingRecord.source}:${listingRecord.sourceId}`,
     source: listingRecord.source,
     sourceId: listingRecord.sourceId,
-    crawlRunId,
+    searchSpaceId,
+    crawlRunId: context.crawlRunId,
+    isActive: true,
+    firstSeenAt: listingRecord.scrapedAt,
+    lastSeenAt: listingRecord.scrapedAt,
+    firstSeenRunId: seenRunId,
+    lastSeenRunId: seenRunId,
     adUrl: listingRecord.adUrl,
     htmlDetailPageKey: listingRecord.htmlDetailPageKey,
     scrapedAt: listingRecord.scrapedAt,
@@ -86,7 +96,6 @@ const buildDocument = (
         tokenCountMethod: 'chars_div_4',
       },
       cleanDetailText: {
-        // Persist step-2 cleaner output to enable cheaper reprocessing without re-running cleaner.
         text: state.cleanedDetailText,
         charCount: state.cleanedDetailText.length,
         tokenCountApprox: approximateTokenCountFromChars(state.cleanedDetailText.length),
@@ -94,7 +103,7 @@ const buildDocument = (
       },
     },
     ingestion: {
-      runId,
+      runId: context.runId,
       datasetFileName: inputRecord.datasetFileName,
       datasetRecordIndex: inputRecord.datasetRecordIndex,
       detailHtmlPath: inputRecord.detailHtmlPath,
@@ -131,12 +140,21 @@ const buildDocument = (
 export class JobParsingGraph {
   private readonly logger: AppLogger;
 
+  private readonly parserVersion: string;
+
+  private readonly searchSpaceId: string;
+
+  private readonly extractorModel: string;
+
   private readonly graphApp: {
     invoke(input: Pick<JobParsingGraphStateType, 'inputRecord'>): Promise<JobParsingGraphStateType>;
   };
 
   constructor(config: JobParsingGraphConfig) {
-    this.logger = config.logger.child({ component: 'JobParsingGraph', runId: config.runId });
+    this.logger = config.logger.child({ component: 'JobParsingGraph' });
+    this.parserVersion = config.parserVersion;
+    this.searchSpaceId = config.searchSpaceId;
+    this.extractorModel = config.extractor.getModelName();
 
     const loadDetailPageNode = async (
       state: JobParsingGraphStateType,
@@ -173,6 +191,46 @@ export class JobParsingGraph {
       }
 
       return { loadedDetailPage };
+    };
+
+    const cleanDetailTextNode = async (
+      state: JobParsingGraphStateType,
+    ): Promise<Pick<JobParsingGraphStateType, 'cleanedDetailText' | 'cleanerTelemetry'>> => {
+      const cleanerResult = await config.textCleaner.cleanText(state.loadedDetailPage.textContent);
+      const cleanedDetailText = cleanerResult.text;
+
+      this.logger.debug(
+        {
+          sourceId: state.inputRecord.listingRecord.sourceId,
+          rawTextChars: state.loadedDetailPage.textContentChars,
+          cleanedTextChars: cleanedDetailText.length,
+          llmTotalTokens: cleanerResult.telemetry.llmTotalTokens,
+          llmTotalCostUsd: cleanerResult.telemetry.llmTotalCostUsd,
+        },
+        'Cleaned detail text before extraction',
+      );
+
+      if (config.logTextTransformContent) {
+        this.logger.info(
+          {
+            sourceId: state.inputRecord.listingRecord.sourceId,
+            stage: 'cleanDetailText',
+            beforeChars: state.loadedDetailPage.textContentChars,
+            afterChars: cleanedDetailText.length,
+            beforePreview: toTextPreview(
+              state.loadedDetailPage.textContent,
+              config.textTransformPreviewChars,
+            ),
+            afterPreview: toTextPreview(cleanedDetailText, config.textTransformPreviewChars),
+          },
+          'Text transform trace',
+        );
+      }
+
+      return {
+        cleanedDetailText,
+        cleanerTelemetry: cleanerResult.telemetry,
+      };
     };
 
     const extractDetailNode = async (
@@ -216,82 +274,21 @@ export class JobParsingGraph {
       };
     };
 
-    const cleanDetailTextNode = async (
-      state: JobParsingGraphStateType,
-    ): Promise<Pick<JobParsingGraphStateType, 'cleanedDetailText' | 'cleanerTelemetry'>> => {
-      const cleanerResult = await config.textCleaner.cleanText(state.loadedDetailPage.textContent);
-      const cleanedDetailText = cleanerResult.text;
-
-      this.logger.debug(
-        {
-          sourceId: state.inputRecord.listingRecord.sourceId,
-          rawTextChars: state.loadedDetailPage.textContentChars,
-          cleanedTextChars: cleanedDetailText.length,
-          llmTotalTokens: cleanerResult.telemetry.llmTotalTokens,
-          llmTotalCostUsd: cleanerResult.telemetry.llmTotalCostUsd,
-        },
-        'Cleaned detail text before extraction',
-      );
-
-      if (config.logTextTransformContent) {
-        this.logger.info(
-          {
-            sourceId: state.inputRecord.listingRecord.sourceId,
-            stage: 'cleanDetailText',
-            beforeChars: state.loadedDetailPage.textContentChars,
-            afterChars: cleanedDetailText.length,
-            beforePreview: toTextPreview(
-              state.loadedDetailPage.textContent,
-              config.textTransformPreviewChars,
-            ),
-            afterPreview: toTextPreview(cleanedDetailText, config.textTransformPreviewChars),
-          },
-          'Text transform trace',
-        );
-      }
-
-      return {
-        cleanedDetailText,
-        cleanerTelemetry: cleanerResult.telemetry,
-      };
-    };
-
-    const mergeNode = (
-      state: JobParsingGraphStateType,
-    ): Pick<JobParsingGraphStateType, 'unifiedJobAd'> => {
-      const unifiedJobAd = buildDocument(
-        state,
-        config.parserVersion,
-        config.runId,
-        config.crawlRunId,
-        config.extractor.getModelName(),
-      );
-      this.logger.debug(
-        {
-          id: unifiedJobAd.id,
-          sourceId: unifiedJobAd.sourceId,
-          extractorModel: unifiedJobAd.ingestion.extractorModel,
-        },
-        'Merged structured document',
-      );
-
-      return { unifiedJobAd };
-    };
-
     this.graphApp = new StateGraph(JobParsingGraphState)
       .addNode('loadDetailPage', loadDetailPageNode)
       .addNode('cleanDetailText', cleanDetailTextNode)
       .addNode('extractDetail', extractDetailNode)
-      .addNode('merge', mergeNode)
       .addEdge(START, 'loadDetailPage')
       .addEdge('loadDetailPage', 'cleanDetailText')
       .addEdge('cleanDetailText', 'extractDetail')
-      .addEdge('extractDetail', 'merge')
-      .addEdge('merge', END)
+      .addEdge('extractDetail', END)
       .compile();
   }
 
-  async parseRecord(inputRecord: LocalInputRecord): Promise<UnifiedJobAd> {
+  async parseRecord(
+    inputRecord: LocalInputRecord,
+    context: ParseRecordContext,
+  ): Promise<UnifiedJobAd> {
     this.logger.info(
       {
         sourceId: inputRecord.listingRecord.sourceId,
@@ -304,10 +301,26 @@ export class JobParsingGraph {
     const result = await this.graphApp.invoke({ inputRecord });
     const timeToProcssSeconds = (performance.now() - startedAt) / 1_000;
 
+    const mergedDocument = buildDocument(
+      result,
+      this.parserVersion,
+      context,
+      this.searchSpaceId,
+      this.extractorModel,
+    );
+    this.logger.debug(
+      {
+        id: mergedDocument.id,
+        sourceId: mergedDocument.sourceId,
+        extractorModel: mergedDocument.ingestion.extractorModel,
+      },
+      'Merged structured document',
+    );
+
     const structured = unifiedJobAdSchema.parse({
-      ...result.unifiedJobAd,
+      ...mergedDocument,
       ingestion: {
-        ...result.unifiedJobAd.ingestion,
+        ...mergedDocument.ingestion,
         timeToProcssSeconds,
       },
     });

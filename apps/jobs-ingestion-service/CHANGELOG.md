@@ -5,11 +5,24 @@ All notable changes to `apps/jobs-ingestion-service` should be documented in thi
 This app has two relevant version identifiers:
 
 - package version (`package.json`): currently `1.0.2`
-- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v0.9.0`
+- parser version (`PARSER_VERSION`, written into ingestion metadata): currently `jobs-ingestion-service-v1.0.0`
 
 The parser version is the operational identifier used in `normalized_job_ads` and `ingestion_run_summaries`.
 
 ## [Unreleased]
+
+### Changed
+
+- Removed the old crawl-state prune/alignment model.
+- `normalized_job_ads` now carries the search-space activity fields seeded during first successful ingestion:
+  - `searchSpaceId`
+  - `isActive`
+  - `firstSeenAt`
+  - `lastSeenAt`
+  - `firstSeenRunId`
+  - `lastSeenRunId`
+- Added idempotent per-item ingestion endpoint: `POST /ingestion/item`.
+- Kept `POST /ingestion/start` as the bulk/manual backfill path.
 
 ### Documentation
 
@@ -32,7 +45,15 @@ The parser version is the operational identifier used in `normalized_job_ads` an
   - `LLM_CLEANER_PROMPT_NAME` (default `jobcompass-job-ad-text-cleaner`)
 - Removed legacy prompt env aliases (`LANGSMITH_PROMPT_NAME`, `LANGSMITH_CLEANER_PROMPT_NAME`) to keep configuration explicit and deterministic.
 
-## [jobs-ingestion-service-v0.9.0] - Current Parser Baseline
+## [jobs-ingestion-service-v1.0.0] - Current Parser Baseline
+
+### Changed
+
+- Trusted-state model simplified to `normalized_job_ads` only.
+- Newly ingested normalized docs now include search-space activity fields (`isActive`, first/last seen timestamps, first/last seen run ids).
+- Added idempotent live item ingestion endpoint: `POST /ingestion/item`.
+
+## [jobs-ingestion-service-v0.9.0]
 
 ### Added
 

@@ -9,10 +9,10 @@ import { z } from 'zod';
 
 import { GeminiDetailTextCleaner, GeminiJobDetailExtractor } from './extraction.js';
 import { IncompleteDetailPageError } from './html-detail-loader.js';
-import { LocalScrapedJobsInputProvider } from './input-provider.js';
+import { LocalScrapedJobsInputProvider, type LocalInputRecord } from './input-provider.js';
 import { JobParsingGraph } from './job-parsing-graph.js';
 import { createLogger } from './logger.js';
-import { pruneCrawlStateByDocIds, writeOutputToFile, writeOutputToMongo } from './repository.js';
+import { writeOutputToFile, writeOutputToMongo } from './repository.js';
 import { sourceListingRecordSchema, type UnifiedJobAd } from './schema.js';
 
 const toOptionalPositiveInt = z.preprocess((value) => {
@@ -97,10 +97,9 @@ export const envSchema = z.object({
   MONGODB_URI: z.string().optional(),
   MONGODB_DB_NAME: toOptionalString,
   MONGODB_JOBS_COLLECTION: z.string().default('normalized_job_ads'),
-  MONGODB_CRAWL_JOBS_COLLECTION: z.string().default('crawl_job_states'),
   MONGODB_RUN_SUMMARIES_COLLECTION: z.string().default('ingestion_run_summaries'),
   MONGODB_INGESTION_TRIGGERS_COLLECTION: z.string().default('ingestion_trigger_requests'),
-  PARSER_VERSION: z.string().default('jobs-ingestion-service-v0.9.0'),
+  PARSER_VERSION: z.string().default('jobs-ingestion-service-v1.0.0'),
 });
 
 type ParsedEnvSchema = z.infer<typeof envSchema>;
@@ -513,9 +512,128 @@ const buildRunSummaryDocument = (input: {
 type ParseRecordsOptions = {
   runId: string;
   crawlRunId: string | null;
+  searchSpaceId: string;
   inputRootDir: string;
   recordsDirName: string;
   sampleSize: number | null;
+};
+
+const ensureLlmRuntimeConfigured = (): void => {
+  if (!envs.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is required to run detail-page extraction.');
+  }
+
+  if (!envs.LANGSMITH_API_KEY) {
+    throw new Error(
+      'LANGSMITH_API_KEY is required to pull the extractDetail prompt from LangSmith Hub.',
+    );
+  }
+};
+
+const parserGraphCache = new Map<string, Promise<JobParsingGraph>>();
+
+const createParserGraph = async (searchSpaceId: string): Promise<JobParsingGraph> => {
+  ensureLlmRuntimeConfigured();
+
+  const extractor = new GeminiJobDetailExtractor({
+    langsmithApiKey: envs.LANGSMITH_API_KEY!,
+    langsmithPromptName: llmExtractorPromptName,
+    apiKey: envs.GEMINI_API_KEY!,
+    model: envs.GEMINI_MODEL,
+    temperature: envs.GEMINI_TEMPERATURE,
+    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
+    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
+    logger,
+  });
+  const textCleaner = new GeminiDetailTextCleaner({
+    langsmithApiKey: envs.LANGSMITH_API_KEY!,
+    langsmithPromptName: llmCleanerPromptName,
+    apiKey: envs.GEMINI_API_KEY!,
+    model: envs.GEMINI_MODEL,
+    temperature: envs.GEMINI_TEMPERATURE,
+    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
+    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
+    logger,
+  });
+
+  return new JobParsingGraph({
+    textCleaner,
+    extractor,
+    minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
+    logTextTransformContent: envs.LOG_TEXT_TRANSFORM_CONTENT,
+    textTransformPreviewChars: envs.LOG_TEXT_TRANSFORM_PREVIEW_CHARS,
+    parserVersion: envs.PARSER_VERSION,
+    searchSpaceId,
+    logger,
+  });
+};
+
+const getParserGraph = async (searchSpaceId: string): Promise<JobParsingGraph> => {
+  const cacheKey = searchSpaceId;
+  const cached = parserGraphCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const created = createParserGraph(searchSpaceId).catch((error) => {
+    parserGraphCache.delete(cacheKey);
+    throw error;
+  });
+  parserGraphCache.set(cacheKey, created);
+  return created;
+};
+
+const parseSingleInputRecord = async (input: {
+  parserGraph: JobParsingGraph;
+  inputRecord: LocalInputRecord;
+  runId: string;
+  crawlRunId: string | null;
+}): Promise<
+  | { status: 'processed'; structured: UnifiedJobAd }
+  | { status: 'skipped_incomplete'; skipped: SkippedIncompleteJob }
+  | { status: 'failed'; failed: FailedJob }
+> => {
+  const { parserGraph, inputRecord, runId, crawlRunId } = input;
+
+  try {
+    const structured = await parserGraph.parseRecord(inputRecord, { runId, crawlRunId });
+    return { status: 'processed', structured };
+  } catch (error) {
+    if (error instanceof IncompleteDetailPageError) {
+      return {
+        status: 'skipped_incomplete',
+        skipped: skippedIncompleteJobSchema.parse({
+          sourceId: inputRecord.listingRecord.sourceId,
+          source: inputRecord.listingRecord.source,
+          datasetFileName: inputRecord.datasetFileName,
+          datasetRecordIndex: inputRecord.datasetRecordIndex,
+          detailHtmlPath: inputRecord.detailHtmlPath,
+          htmlDetailPageKey: inputRecord.listingRecord.htmlDetailPageKey,
+          reason: error.message,
+          qualitySignals: error.qualitySignals,
+          listing: inputRecord.listingRecord,
+        }),
+      };
+    }
+
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+    return {
+      status: 'failed',
+      failed: failedJobSchema.parse({
+        sourceId: inputRecord.listingRecord.sourceId,
+        source: inputRecord.listingRecord.source,
+        datasetFileName: inputRecord.datasetFileName,
+        datasetRecordIndex: inputRecord.datasetRecordIndex,
+        detailHtmlPath: inputRecord.detailHtmlPath,
+        htmlDetailPageKey: inputRecord.listingRecord.htmlDetailPageKey,
+        errorName: normalizedError.name,
+        errorMessage: normalizedError.message,
+        listing: inputRecord.listingRecord,
+      }),
+    };
+  }
 };
 
 const parseRecords = async (
@@ -532,18 +650,12 @@ const parseRecords = async (
   const {
     runId,
     crawlRunId,
+    searchSpaceId,
     inputRootDir: recordsInputRootDir,
     recordsDirName,
     sampleSize,
   } = options;
-  if (!envs.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is required to run detail-page extraction.');
-  }
-  if (!envs.LANGSMITH_API_KEY) {
-    throw new Error(
-      'LANGSMITH_API_KEY is required to pull the extractDetail prompt from LangSmith Hub.',
-    );
-  }
+  ensureLlmRuntimeConfigured();
 
   const inputProvider = new LocalScrapedJobsInputProvider(
     logger.child({ component: 'InputProvider' }),
@@ -554,40 +666,7 @@ const parseRecords = async (
     sampleSize,
   });
 
-  const extractor = new GeminiJobDetailExtractor({
-    langsmithApiKey: envs.LANGSMITH_API_KEY,
-    langsmithPromptName: llmExtractorPromptName,
-    apiKey: envs.GEMINI_API_KEY,
-    model: envs.GEMINI_MODEL,
-    temperature: envs.GEMINI_TEMPERATURE,
-    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
-    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
-    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
-    logger,
-  });
-  const textCleaner = new GeminiDetailTextCleaner({
-    langsmithApiKey: envs.LANGSMITH_API_KEY,
-    langsmithPromptName: llmCleanerPromptName,
-    apiKey: envs.GEMINI_API_KEY,
-    model: envs.GEMINI_MODEL,
-    temperature: envs.GEMINI_TEMPERATURE,
-    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
-    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
-    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
-    logger,
-  });
-
-  const parserGraph = new JobParsingGraph({
-    textCleaner,
-    extractor,
-    minRelevantTextChars: envs.DETAIL_PAGE_MIN_RELEVANT_TEXT_CHARS,
-    logTextTransformContent: envs.LOG_TEXT_TRANSFORM_CONTENT,
-    textTransformPreviewChars: envs.LOG_TEXT_TRANSFORM_PREVIEW_CHARS,
-    parserVersion: envs.PARSER_VERSION,
-    runId,
-    crawlRunId,
-    logger,
-  });
+  const parserGraph = await getParserGraph(searchSpaceId);
 
   const workerCount = Math.max(1, Math.min(envs.INGESTION_CONCURRENCY, inputRecords.length));
   const parsedByIndex: Array<UnifiedJobAd | null> = new Array(inputRecords.length).fill(null);
@@ -627,63 +706,46 @@ const parseRecords = async (
         return;
       }
 
-      try {
-        const parsedRecord = await parserGraph.parseRecord(inputRecord);
-        parsedByIndex[currentIndex] = parsedRecord;
-      } catch (error) {
-        if (error instanceof IncompleteDetailPageError) {
-          skippedIncomplete += 1;
-          skippedIncompleteJobs.push(
-            skippedIncompleteJobSchema.parse({
-              sourceId: inputRecord.listingRecord.sourceId,
-              source: inputRecord.listingRecord.source,
-              datasetFileName: inputRecord.datasetFileName,
-              datasetRecordIndex: inputRecord.datasetRecordIndex,
-              detailHtmlPath: inputRecord.detailHtmlPath,
-              htmlDetailPageKey: inputRecord.listingRecord.htmlDetailPageKey,
-              reason: error.message,
-              qualitySignals: error.qualitySignals,
-              listing: inputRecord.listingRecord,
-            }),
-          );
-          logger.warn(
-            {
-              sourceId: inputRecord.listingRecord.sourceId,
-              source: inputRecord.listingRecord.source,
-              detailHtmlPath: inputRecord.detailHtmlPath,
-              reason: error.message,
-              qualitySignals: error.qualitySignals,
-            },
-            'Skipped record because detail page is incomplete',
-          );
-          continue;
-        }
+      const result = await parseSingleInputRecord({
+        parserGraph,
+        inputRecord,
+        runId,
+        crawlRunId,
+      });
 
-        failed += 1;
-        const normalizedError = error instanceof Error ? error : new Error(String(error));
-        failedJobs.push(
-          failedJobSchema.parse({
-            sourceId: inputRecord.listingRecord.sourceId,
-            source: inputRecord.listingRecord.source,
-            datasetFileName: inputRecord.datasetFileName,
-            datasetRecordIndex: inputRecord.datasetRecordIndex,
-            detailHtmlPath: inputRecord.detailHtmlPath,
-            htmlDetailPageKey: inputRecord.listingRecord.htmlDetailPageKey,
-            errorName: normalizedError.name,
-            errorMessage: normalizedError.message,
-            listing: inputRecord.listingRecord,
-          }),
-        );
-        logger.error(
-          {
-            err: error,
-            sourceId: inputRecord.listingRecord.sourceId,
-            source: inputRecord.listingRecord.source,
-            detailHtmlPath: inputRecord.detailHtmlPath,
-          },
-          'Failed parsing record',
-        );
+      if (result.status === 'processed') {
+        parsedByIndex[currentIndex] = result.structured;
+        continue;
       }
+
+      if (result.status === 'skipped_incomplete') {
+        skippedIncomplete += 1;
+        skippedIncompleteJobs.push(result.skipped);
+        logger.warn(
+          {
+            sourceId: inputRecord.listingRecord.sourceId,
+            source: inputRecord.listingRecord.source,
+            detailHtmlPath: inputRecord.detailHtmlPath,
+            reason: result.skipped.reason,
+            qualitySignals: result.skipped.qualitySignals,
+          },
+          'Skipped record because detail page is incomplete',
+        );
+        continue;
+      }
+
+      failed += 1;
+      failedJobs.push(result.failed);
+      logger.error(
+        {
+          sourceId: inputRecord.listingRecord.sourceId,
+          source: inputRecord.listingRecord.source,
+          detailHtmlPath: inputRecord.detailHtmlPath,
+          errorName: result.failed.errorName,
+          errorMessage: result.failed.errorMessage,
+        },
+        'Failed parsing record',
+      );
     }
   };
 
@@ -757,6 +819,163 @@ const resolveIngestionMongoDbName = (input: {
     explicitDbName: input.mongoDbNameOverride ?? envs.MONGODB_DB_NAME,
   });
 
+export type RunIngestionRecordWorkflowOptions = {
+  runId?: string;
+  crawlRunId?: string | null;
+  searchSpaceId: string;
+  mongoDbNameOverride?: string | null;
+  inputRecord: LocalInputRecord;
+};
+
+export type RunIngestionRecordWorkflowResult = {
+  runId: string;
+  crawlRunId: string | null;
+  searchSpaceId: string;
+  mongoDbName: string;
+  status: IngestionRunStatus;
+  runSummaryDocument: IngestionRunSummary;
+  structuredParsed: UnifiedJobAd[];
+  failed: number;
+  skippedIncomplete: number;
+  skippedIncompleteJobs: SkippedIncompleteJob[];
+  failedJobs: FailedJob[];
+  stats: ParseRunStats;
+  mongoWritesStructured: number;
+  mongoWritesRunSummary: number;
+};
+
+export const runIngestionRecordWorkflow = async (
+  options: RunIngestionRecordWorkflowOptions,
+): Promise<RunIngestionRecordWorkflowResult> => {
+  const runId = options.runId ?? randomUUID();
+  const runStartedAtIso = new Date().toISOString();
+  const resolvedSearchSpaceId = options.searchSpaceId;
+  const resolvedMongoDbName = resolveIngestionMongoDbName({
+    searchSpaceId: resolvedSearchSpaceId,
+    mongoDbNameOverride: options.mongoDbNameOverride,
+  });
+
+  logger.info(
+    {
+      runId,
+      crawlRunId: options.crawlRunId,
+      searchSpaceId: resolvedSearchSpaceId,
+      sourceId: options.inputRecord.listingRecord.sourceId,
+      detailHtmlPath: options.inputRecord.detailHtmlPath,
+      enableMongoWrite: envs.ENABLE_MONGO_WRITE,
+      mongoDbName: resolvedMongoDbName,
+      mongoCollectionStructured: envs.MONGODB_JOBS_COLLECTION,
+      mongoCollectionRunSummaries: envs.MONGODB_RUN_SUMMARIES_COLLECTION,
+    },
+    'Starting single-record ingestion workflow',
+  );
+
+  const startedAt = performance.now();
+  const parserGraph = await getParserGraph(resolvedSearchSpaceId);
+  const parseResult = await parseSingleInputRecord({
+    parserGraph,
+    inputRecord: options.inputRecord,
+    runId,
+    crawlRunId: options.crawlRunId ?? null,
+  });
+
+  const structuredParsed =
+    parseResult.status === 'processed' ? [parseResult.structured] : ([] as UnifiedJobAd[]);
+  const skippedIncompleteJobs =
+    parseResult.status === 'skipped_incomplete'
+      ? [parseResult.skipped]
+      : ([] as SkippedIncompleteJob[]);
+  const failedJobs = parseResult.status === 'failed' ? [parseResult.failed] : ([] as FailedJob[]);
+  const skippedIncomplete = skippedIncompleteJobs.length;
+  const failed = failedJobs.length;
+  const stats = buildRunStats(structuredParsed);
+
+  let mongoWrittenStructured = 0;
+  let mongoWrittenRunSummary = 0;
+  if (envs.ENABLE_MONGO_WRITE) {
+    if (!envs.MONGODB_URI) {
+      throw new Error('ENABLE_MONGO_WRITE=true requires MONGODB_URI to be configured.');
+    }
+
+    if (structuredParsed.length > 0) {
+      mongoWrittenStructured = await writeOutputToMongo(
+        {
+          mongoUri: envs.MONGODB_URI,
+          dbName: resolvedMongoDbName,
+          collectionName: envs.MONGODB_JOBS_COLLECTION,
+        },
+        structuredParsed,
+        logger.child({ component: 'MongoRepository', outputType: 'structured-single' }),
+      );
+    }
+  }
+
+  const runCompletedAtIso = new Date().toISOString();
+  const runDurationSeconds = (performance.now() - startedAt) / 1_000;
+  const runSummaryDocument = buildRunSummaryDocument({
+    runId,
+    searchSpaceId: resolvedSearchSpaceId,
+    mongoDbName: resolvedMongoDbName,
+    startedAtIso: runStartedAtIso,
+    completedAtIso: runCompletedAtIso,
+    runDurationSeconds,
+    stats,
+    structuredParsed,
+    skippedIncomplete,
+    skippedIncompleteJobs,
+    failed,
+    failedJobs,
+    mongoWritesStructured: mongoWrittenStructured,
+    workerCount: 1,
+    sampleSize: 1,
+  });
+
+  if (envs.ENABLE_MONGO_WRITE && envs.MONGODB_URI) {
+    mongoWrittenRunSummary = await writeOutputToMongo(
+      {
+        mongoUri: envs.MONGODB_URI,
+        dbName: resolvedMongoDbName,
+        collectionName: envs.MONGODB_RUN_SUMMARIES_COLLECTION,
+      },
+      [runSummaryDocument],
+      logger.child({ component: 'MongoRepository', outputType: 'run-summary-single' }),
+    );
+  }
+
+  logger.info(
+    {
+      runId,
+      crawlRunId: options.crawlRunId,
+      searchSpaceId: resolvedSearchSpaceId,
+      sourceId: options.inputRecord.listingRecord.sourceId,
+      jobsProcessed: structuredParsed.length,
+      jobsSkippedIncomplete: skippedIncomplete,
+      jobsFailed: failed,
+      mongoWritesStructured: mongoWrittenStructured,
+      mongoWritesRunSummary: mongoWrittenRunSummary,
+      runDurationSeconds,
+    },
+    'Completed single-record ingestion workflow',
+  );
+
+  return {
+    runId,
+    crawlRunId: options.crawlRunId ?? null,
+    searchSpaceId: resolvedSearchSpaceId,
+    mongoDbName: resolvedMongoDbName,
+    status: runSummaryDocument.jobsNonSuccess > 0 ? 'completed_with_errors' : 'succeeded',
+    runSummaryDocument,
+    structuredParsed,
+    failed,
+    skippedIncomplete,
+    skippedIncompleteJobs,
+    failedJobs,
+    stats,
+    mongoWritesStructured: mongoWrittenStructured,
+    mongoWritesRunSummary: mongoWrittenRunSummary,
+  };
+};
+
 export const runIngestionWorkflow = async (
   options: RunIngestionWorkflowOptions = {},
 ): Promise<RunIngestionWorkflowResult> => {
@@ -793,7 +1012,6 @@ export const runIngestionWorkflow = async (
       enableMongoWrite: envs.ENABLE_MONGO_WRITE,
       mongoDbName: resolvedMongoDbName,
       mongoCollectionStructured: envs.MONGODB_JOBS_COLLECTION,
-      mongoCollectionCrawlJobs: envs.MONGODB_CRAWL_JOBS_COLLECTION,
       mongoCollectionRunSummaries: envs.MONGODB_RUN_SUMMARIES_COLLECTION,
       model: envs.GEMINI_MODEL,
       llmExtractorPromptName,
@@ -817,6 +1035,7 @@ export const runIngestionWorkflow = async (
   } = await parseRecords({
     runId,
     crawlRunId: resolvedCrawlRunId,
+    searchSpaceId: resolvedSearchSpaceId,
     inputRootDir: resolvedInputRootDir,
     recordsDirName: resolvedRecordsDirName,
     sampleSize: resolvedSampleSize,
@@ -830,7 +1049,6 @@ export const runIngestionWorkflow = async (
 
   let mongoWrittenStructured = 0;
   let mongoWrittenRunSummary = 0;
-  let mongoPrunedCrawlStateNonSuccess = 0;
   if (envs.ENABLE_MONGO_WRITE) {
     if (!envs.MONGODB_URI) {
       throw new Error('ENABLE_MONGO_WRITE=true requires MONGODB_URI to be configured.');
@@ -844,19 +1062,6 @@ export const runIngestionWorkflow = async (
       },
       structuredParsed,
       logger.child({ component: 'MongoRepository', outputType: 'structured' }),
-    );
-
-    mongoPrunedCrawlStateNonSuccess = await pruneCrawlStateByDocIds(
-      {
-        mongoUri: envs.MONGODB_URI,
-        dbName: resolvedMongoDbName,
-        crawlJobsCollectionName: envs.MONGODB_CRAWL_JOBS_COLLECTION,
-      },
-      [
-        ...skippedIncompleteJobs.map((job) => `${job.source}:${job.sourceId}`),
-        ...failedJobs.map((job) => `${job.source}:${job.sourceId}`),
-      ],
-      logger.child({ component: 'MongoRepository', outputType: 'crawl-state-prune' }),
     );
   }
 
@@ -901,7 +1106,6 @@ export const runIngestionWorkflow = async (
       outputJsonPath: resolvedOutputJsonPath,
       mongoWritesStructured: mongoWrittenStructured,
       mongoWritesRunSummary: mongoWrittenRunSummary,
-      mongoPrunedCrawlStateNonSuccess,
       runDurationSeconds,
     },
     'Completed parse run',
@@ -938,7 +1142,6 @@ export const runIngestionWorkflow = async (
       jobsNonSuccessRate: runSummaryDocument.jobsNonSuccessRate,
       totalTokensUsed: stats.totalTokens,
       totalEstimatedCostUsd: stats.totalEstimatedCostUsd,
-      mongoPrunedCrawlStateNonSuccess,
       runDurationSeconds,
     },
     'Parse run summary',

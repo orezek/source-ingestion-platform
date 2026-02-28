@@ -1,5 +1,5 @@
 import type { Locator } from 'playwright';
-import type { CrawlListingRecord } from './crawl-state.js';
+import type { CrawlListingRecord } from './normalized-jobs-repository.js';
 
 const SALARY_SELECTOR = 'span.Tag--success, [data-test="serp-salary"]';
 

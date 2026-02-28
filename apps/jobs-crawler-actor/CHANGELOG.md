@@ -6,6 +6,14 @@ The app package version is currently `1.0.0` (see `package.json`). This changelo
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the separate crawl-state model with a single trusted state collection: `normalized_job_ads`.
+- Phase one now reconciles live listing coverage directly against existing normalized docs.
+- Phase two now fetches detail HTML only for jobs missing from `normalized_job_ads`.
+- Ingestion handoff is now asynchronous and per-item via `POST /ingestion/item` after artifact persistence.
+- Removed the crawler-side dependency on `crawl_job_states`.
+
 ### Fixed
 
 - Actor input throttling controls are now applied at runtime:

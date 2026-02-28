@@ -1,125 +1,56 @@
 # Spec: `jobs-ingestion-service`
 
-## Status
+## Goal
 
-- Scope: current implementation in `apps/jobs-ingestion-service`
-- Role: downstream parsing/normalization service in the JobCompass pipeline
+Transform crawler artifacts into trusted normalized job documents and record ingestion observability, while supporting both live per-item ingestion and manual bulk backfill ingestion.
 
-## Purpose
+## Trusted state
 
-The ingestion service reads crawler artifacts, converts detail HTML into clean text, extracts structured job data with Gemini, writes normalized documents, records ingestion summaries, and tracks trigger lifecycle.
-
-## Core Design
-
-### Trigger-driven ingestion
-
-Preferred contract:
-
-```json
-{
-  "source": "jobs.cz",
-  "crawlRunId": "<crawlRunId>",
-  "searchSpaceId": "prague-tech-jobs",
-  "mongoDbName": "job-compass-prague-tech-jobs"
-}
-```
-
-This makes each ingestion run explicit about:
-
-- artifact identity
-- search-space identity
-- target Mongo database
-
-### Database naming
-
-Manual/default ingestion runs derive DB as:
-
-- `<JOB_COMPASS_DB_PREFIX>-<SEARCH_SPACE_ID>`
-
-Trigger-driven runs should use:
-
-- explicit `mongoDbName` from the crawler payload
-
-## Responsibilities
-
-Owned here:
-
-- idempotent trigger API
-- HTML load + completeness validation
-- deterministic text extraction
-- LLM cleaning
-- LLM structured extraction
-- normalized output writes
-- ingestion summaries
-- trigger lifecycle tracking
-- crawl-state pruning for non-success jobs
-
-Not owned here:
-
-- list crawling
-- detail-page fetching
-- list reconciliation logic
-
-## Pipeline
-
-1. `loadDetailPage`
-   - read HTML
-   - parse DOM
-   - extract deterministic text
-   - run completeness gate
-
-2. `cleanDetailText`
-   - prompt: `jobcompass-job-ad-text-cleaner`
-   - remove UI/GDPR/cookie/legal noise
-
-3. `extractDetail`
-   - prompt: `jobcompass-job-ad-structured-extractor`
-   - structured Gemini output validated by local schema
-
-4. `merge`
-   - combine listing + extracted detail + ingestion metadata
-
-## Persisted Text Snapshots
-
-Stored in `normalized_job_ads.rawDetailPage`:
-
-- `loadDetailPageText`
-- `cleanDetailText`
-
-Raw HTML remains the audit/reprocessing source of truth on disk.
-
-## Completeness Gate
-
-The completeness gate is structural-first:
-
-- prefer known content containers
-- evaluate the best candidate container
-- keep keyword/noise fallback only for unknown templates
-
-## Mongo Collections
+Persistent truth collection:
 
 - `normalized_job_ads`
-- `crawl_job_states`
-- `ingestion_run_summaries`
-- `ingestion_trigger_requests`
 
-### Crawl-state prune rule
+Rules:
 
-If ingestion skips or fails a job, remove it from `crawl_job_states` so the crawler can fetch it again on the next run.
+- document exists => ingestion succeeded at least once
+- no placeholder docs
+- crawler phase one owns later activity updates on existing normalized docs
 
-## Summary Requirements
+## Inputs
 
-Ingestion summaries must contain:
+### Live item ingestion
 
+Endpoint:
+
+- `POST /ingestion/item`
+
+Required payload:
+
+- `source`
+- `crawlRunId`
 - `searchSpaceId`
 - `mongoDbName`
-- totals and rates
-- skipped/failed audit arrays
-- cleaner/extractor/total LLM stats
+- `listingRecord`
+- `detailHtmlPath`
+- `datasetFileName`
+- `datasetRecordIndex`
 
-## Important Runtime Fields
+### Manual bulk ingestion
 
-Env:
+Endpoint:
+
+- `POST /ingestion/start`
+
+Required payload:
+
+- `source`
+- `crawlRunId`
+- `searchSpaceId`
+- `mongoDbName`
+
+Manual direct app execution may also use local env plus artifact folder discovery.
+
+## Runtime env
 
 - `JOB_COMPASS_DB_PREFIX`
 - `SEARCH_SPACE_ID`
@@ -127,9 +58,73 @@ Env:
 - `ENABLE_MONGO_WRITE`
 - `MONGODB_URI`
 - `MONGODB_JOBS_COLLECTION`
-- `MONGODB_CRAWL_JOBS_COLLECTION`
 - `MONGODB_RUN_SUMMARIES_COLLECTION`
 - `MONGODB_INGESTION_TRIGGERS_COLLECTION`
 - `INPUT_ROOT_DIR`
+- `INPUT_RECORDS_DIR_NAME`
 - `CRAWL_RUNS_SUBDIR`
+- `INGESTION_SAMPLE_SIZE`
+- `INGESTION_CONCURRENCY`
+- `INGESTION_API_HOST`
 - `INGESTION_API_PORT`
+- LLM prompt/model settings
+
+## Document ownership
+
+Newly created normalized docs must include:
+
+- `searchSpaceId`
+- `isActive = true`
+- `firstSeenAt`
+- `lastSeenAt`
+- `firstSeenRunId`
+- `lastSeenRunId`
+
+Those are seeded from the crawler listing record and crawl context during first successful ingestion.
+
+## Pipeline
+
+1. load detail HTML
+2. perform deterministic completeness validation
+3. run text cleaner prompt
+4. run structured extractor prompt
+5. merge listing + extracted detail + ingestion metadata
+6. upsert trusted normalized doc
+7. write ingestion run summary
+
+## Raw text snapshots
+
+Persist in `normalized_job_ads.rawDetailPage`:
+
+- `loadDetailPageText`
+- `cleanDetailText`
+
+Both snapshots must include:
+
+- `text`
+- `charCount`
+- `tokenCountApprox`
+- `tokenCountMethod`
+
+## Idempotency
+
+- trigger lifecycle is persisted in `ingestion_trigger_requests`
+- live item triggers are keyed per item and crawl run
+- duplicate accepted triggers must be safe
+- normalized upserts are keyed by document `id`
+
+## Collections
+
+Default collections:
+
+- `normalized_job_ads`
+- `ingestion_run_summaries`
+- `ingestion_trigger_requests`
+
+## Non-goals
+
+This app does not:
+
+- decide list visibility
+- mark jobs inactive from list absence on its own
+- maintain a separate crawl-state collection

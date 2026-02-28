@@ -1,6 +1,6 @@
 import { MongoClient, type AnyBulkWriteOperation, type Collection } from 'mongodb';
 
-type ListingSnapshot = {
+export type ListingSnapshot = {
   adUrl: string;
   jobTitle: string;
   companyName: string;
@@ -14,41 +14,29 @@ export type CrawlListingRecord = ListingSnapshot & {
   sourceId: string;
 };
 
-export type CrawlDetailSnapshot = {
-  sourceId: string;
-  requestedDetailUrl: string;
-  finalDetailUrl: string;
-  finalDetailHost: string;
-  detailRedirected: boolean;
-  detailRenderType: 'jobscz-template' | 'widget' | 'vacancy-detail' | 'unknown';
-  detailRenderSignal: 'none' | 'widget_container_text' | 'vacancy_detail_text';
-  detailRenderTextChars: number;
-  detailRenderWaitMs: number;
-  detailRenderComplete: boolean;
-  htmlDetailPageKey: string;
-  detailHtmlByteSize: number;
-  detailHtmlSha256: string;
-  scrapedAt: string;
-};
-
-export type CrawlJobsStateDoc = {
-  _id: string;
+type NormalizedJobDoc = {
+  id: string;
   source: string;
   sourceId: string;
+  searchSpaceId: string;
   isActive: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
   firstSeenRunId: string;
   lastSeenRunId: string;
-  lastInactiveRunId?: string;
-  inactiveAt?: string;
-  listing: ListingSnapshot;
-  detail?: CrawlDetailSnapshot;
-  createdAt: string;
-  updatedAt: string;
+  adUrl?: string;
+  scrapedAt?: string;
+  listing?: {
+    jobTitle: string;
+    companyName: string | null;
+    locationText: string | null;
+    salaryText: string | null;
+    publishedInfoText: string | null;
+  };
+  updatedAt?: string;
 };
 
-export type CrawlStateRepositoryConfig = {
+export type NormalizedJobsRepositoryConfig = {
   mongoUri: string;
   dbName: string;
   collectionName: string;
@@ -56,6 +44,7 @@ export type CrawlStateRepositoryConfig = {
 
 export type ReconcileListingsInput = {
   source: string;
+  searchSpaceId: string;
   crawlRunId: string;
   observedAtIso: string;
   listings: CrawlListingRecord[];
@@ -73,9 +62,8 @@ export type ReconcileListingsResult = {
   inactiveMarkedCount: number;
   inactiveMarkingSkipped: boolean;
   inactiveMarkingSkipReason: string | null;
+  existingSeenUpdatedCount: number;
 };
-
-type ExistingSourceIdDoc = Pick<CrawlJobsStateDoc, 'sourceId'>;
 
 const DEFAULT_IN_QUERY_CHUNK_SIZE = 1000;
 
@@ -91,14 +79,12 @@ const chunkArray = <T>(items: T[], chunkSize: number): T[][] => {
   return chunks;
 };
 
-const crawlJobDocId = (source: string, sourceId: string): string => `${source}:${sourceId}`;
-
-export class CrawlStateRepository {
+export class NormalizedJobsRepository {
   private readonly client: MongoClient;
 
   private connected = false;
 
-  constructor(private readonly config: CrawlStateRepositoryConfig) {
+  constructor(private readonly config: NormalizedJobsRepositoryConfig) {
     this.client = new MongoClient(config.mongoUri);
   }
 
@@ -120,28 +106,31 @@ export class CrawlStateRepository {
     this.connected = false;
   }
 
-  private collection(): Collection<CrawlJobsStateDoc> {
+  private collection(): Collection<NormalizedJobDoc> {
     return this.client
       .db(this.config.dbName)
-      .collection<CrawlJobsStateDoc>(this.config.collectionName);
+      .collection<NormalizedJobDoc>(this.config.collectionName);
   }
 
   async ensureIndexes(): Promise<void> {
     const collection = this.collection();
     await collection.createIndexes([
-      { key: { source: 1, sourceId: 1 }, name: 'source_sourceId_unique', unique: true },
-      { key: { source: 1, isActive: 1 }, name: 'source_isActive' },
-      { key: { source: 1, lastSeenRunId: 1 }, name: 'source_lastSeenRunId' },
-      { key: { source: 1, updatedAt: 1 }, name: 'source_updatedAt' },
+      { key: { id: 1 }, name: 'id_unique', unique: true },
+      { key: { source: 1, sourceId: 1 }, name: 'source_sourceId' },
+      { key: { searchSpaceId: 1, isActive: 1 }, name: 'searchSpaceId_isActive' },
+      { key: { searchSpaceId: 1, lastSeenRunId: 1 }, name: 'searchSpaceId_lastSeenRunId' },
+      { key: { searchSpaceId: 1, updatedAt: 1 }, name: 'searchSpaceId_updatedAt' },
     ]);
   }
 
   async reconcileListings(input: ReconcileListingsInput): Promise<ReconcileListingsResult> {
-    const { source, crawlRunId, observedAtIso, listings } = input;
+    const { source, searchSpaceId, crawlRunId, observedAtIso, listings } = input;
     const collection = this.collection();
 
+    const activeFilter = { source, searchSpaceId, isActive: true };
+    const activeBeforeCount = await collection.countDocuments(activeFilter);
+
     if (listings.length === 0) {
-      const activeBeforeCount = await collection.countDocuments({ source, isActive: true });
       const shouldSkipInactiveMarking =
         input.forceSkipInactiveMarking ||
         (activeBeforeCount >= input.massInactivationGuardMinActiveCount &&
@@ -157,17 +146,12 @@ export class CrawlStateRepository {
           input.forceSkipInactiveMarkingReason ??
           (input.forceSkipInactiveMarking ? 'forced_skip' : 'zero_listings_seen_guard');
       } else {
-        const inactiveResult = await collection.updateMany(
-          { source, isActive: true },
-          {
-            $set: {
-              isActive: false,
-              inactiveAt: observedAtIso,
-              lastInactiveRunId: crawlRunId,
-              updatedAt: observedAtIso,
-            },
+        const inactiveResult = await collection.updateMany(activeFilter, {
+          $set: {
+            isActive: false,
+            updatedAt: observedAtIso,
           },
-        );
+        });
         inactiveMarkedCount = inactiveResult.modifiedCount;
       }
 
@@ -179,16 +163,19 @@ export class CrawlStateRepository {
         inactiveMarkedCount,
         inactiveMarkingSkipped,
         inactiveMarkingSkipReason,
+        existingSeenUpdatedCount: 0,
       };
     }
 
-    const sourceIds = listings.map((item) => item.sourceId);
+    const seenSourceIds = listings.map((item) => item.sourceId);
     const existingSourceIds = new Set<string>();
-    for (const sourceIdsChunk of chunkArray(sourceIds, DEFAULT_IN_QUERY_CHUNK_SIZE)) {
+
+    for (const sourceIdsChunk of chunkArray(seenSourceIds, DEFAULT_IN_QUERY_CHUNK_SIZE)) {
       const docs = await collection
-        .find<ExistingSourceIdDoc>(
+        .find(
           {
             source,
+            searchSpaceId,
             sourceId: { $in: sourceIdsChunk },
           },
           { projection: { _id: 0, sourceId: 1 } },
@@ -196,54 +183,42 @@ export class CrawlStateRepository {
         .toArray();
 
       for (const doc of docs) {
-        existingSourceIds.add(doc.sourceId);
+        if (typeof doc.sourceId === 'string') {
+          existingSourceIds.add(doc.sourceId);
+        }
       }
     }
 
     const newListings = listings.filter((listing) => !existingSourceIds.has(listing.sourceId));
-    const existingCount = listings.length - newListings.length;
+    const existingListings = listings.filter((listing) => existingSourceIds.has(listing.sourceId));
+    const existingCount = existingListings.length;
 
-    const activeBeforeCount = await collection.countDocuments({ source, isActive: true });
-
-    const upsertOperations: AnyBulkWriteOperation<CrawlJobsStateDoc>[] = listings.map(
-      (listing) => ({
+    const updateExistingOperations: AnyBulkWriteOperation<NormalizedJobDoc>[] =
+      existingListings.map((listing) => ({
         updateOne: {
-          filter: { source, sourceId: listing.sourceId },
+          filter: { source, searchSpaceId, sourceId: listing.sourceId },
           update: {
             $set: {
-              source,
-              sourceId: listing.sourceId,
               isActive: true,
               lastSeenAt: observedAtIso,
               lastSeenRunId: crawlRunId,
+              adUrl: listing.adUrl,
+              scrapedAt: observedAtIso,
               listing: {
-                adUrl: listing.adUrl,
                 jobTitle: listing.jobTitle,
-                companyName: listing.companyName,
-                location: listing.location,
-                salary: listing.salary,
-                publishedInfoText: listing.publishedInfoText,
+                companyName: listing.companyName || null,
+                locationText: listing.location || null,
+                salaryText: listing.salary,
+                publishedInfoText: listing.publishedInfoText || null,
               },
               updatedAt: observedAtIso,
             },
-            $setOnInsert: {
-              _id: crawlJobDocId(source, listing.sourceId),
-              firstSeenAt: observedAtIso,
-              firstSeenRunId: crawlRunId,
-              createdAt: observedAtIso,
-            },
-            $unset: {
-              inactiveAt: 1,
-              lastInactiveRunId: 1,
-            },
           },
-          upsert: true,
         },
-      }),
-    );
+      }));
 
-    if (upsertOperations.length > 0) {
-      await collection.bulkWrite(upsertOperations, { ordered: false });
+    if (updateExistingOperations.length > 0) {
+      await collection.bulkWrite(updateExistingOperations, { ordered: false });
     }
 
     const seenRatio = activeBeforeCount > 0 ? listings.length / activeBeforeCount : 1;
@@ -262,15 +237,12 @@ export class CrawlStateRepository {
     } else {
       const inactiveResult = await collection.updateMany(
         {
-          source,
-          isActive: true,
-          lastSeenRunId: { $ne: crawlRunId },
+          ...activeFilter,
+          sourceId: { $nin: seenSourceIds },
         },
         {
           $set: {
             isActive: false,
-            inactiveAt: observedAtIso,
-            lastInactiveRunId: crawlRunId,
             updatedAt: observedAtIso,
           },
         },
@@ -286,35 +258,7 @@ export class CrawlStateRepository {
       inactiveMarkedCount,
       inactiveMarkingSkipped,
       inactiveMarkingSkipReason,
+      existingSeenUpdatedCount: existingListings.length,
     };
-  }
-
-  async updateDetailSnapshots(params: {
-    source: string;
-    detailSnapshots: CrawlDetailSnapshot[];
-    updatedAtIso: string;
-  }): Promise<number> {
-    const { source, detailSnapshots, updatedAtIso } = params;
-    if (detailSnapshots.length === 0) {
-      return 0;
-    }
-
-    const collection = this.collection();
-    const operations: AnyBulkWriteOperation<CrawlJobsStateDoc>[] = detailSnapshots.map(
-      (detailSnapshot) => ({
-        updateOne: {
-          filter: { source, sourceId: detailSnapshot.sourceId },
-          update: {
-            $set: {
-              detail: detailSnapshot,
-              updatedAt: updatedAtIso,
-            },
-          },
-        },
-      }),
-    );
-
-    const result = await collection.bulkWrite(operations, { ordered: false });
-    return result.modifiedCount + result.upsertedCount;
   }
 }

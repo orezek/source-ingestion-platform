@@ -14,7 +14,6 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "start-server": "node dist/server.js",
-    "align-crawl-state": "node dist/align-crawl-state.js",
     "dev": "tsx watch src/app.ts",
     "dev-server": "tsx watch src/server.ts",
     "lint": "eslint . --max-warnings 0",

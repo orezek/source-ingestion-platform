@@ -1,45 +1,83 @@
 # Jobs Crawler Actor
 
-`jobs-crawler-actor` crawls `jobs.cz` list pages, reconciles listing state in MongoDB, fetches detail HTML only for selected jobs, writes local handoff artifacts for ingestion, and can trigger `jobs-ingestion-service` after the crawl finishes.
+`jobs-crawler-actor` crawls `jobs.cz` list pages, reconciles live listing coverage against trusted normalized documents, fetches detail HTML only for jobs missing from `normalized_job_ads`, writes shared artifacts, and asynchronously triggers ingestion per persisted detail artifact.
 
 ## Purpose
 
 This app owns:
 
 - list-page crawling and pagination
-- listing-card extraction
-- crawl-state reconciliation in `crawl_job_states`
+- search-space resolution
+- phase-one reconciliation against `normalized_job_ads`
 - inactive marking for full/allowed runs
-- detail-page HTML snapshot capture
+- detail-page HTML snapshot capture for missing jobs
 - crawl run summaries
-- local handoff to ingestion
-- optional ingestion trigger
+- local shared artifact writes
+- asynchronous per-item ingestion triggers
 
 This app does not own:
 
 - text cleaning
 - LLM extraction
-- normalized job document generation
-- writes to `normalized_job_ads`
+- normalized job document creation
+- batch ingestion logic
+
+## Trusted State Model
+
+The crawler no longer maintains a separate crawl-state collection.
+
+Trusted persistent state is:
+
+- `normalized_job_ads`
+
+Rules:
+
+- if a normalized document exists, the job was successfully ingested at least once
+- phase one updates only existing normalized docs
+- phase two processes only jobs missing from `normalized_job_ads`
+- partial runs may refresh seen documents, but must not mark unseen documents inactive
+
+## Two-Phase Flow
+
+### Phase 1: listing reconciliation
+
+The crawler scans the list pages for the selected search space and builds the current set of seen `sourceId`s.
+
+Against existing `normalized_job_ads` documents in the search-space database:
+
+- seen existing docs:
+  - `isActive = true`
+  - `lastSeenAt = <run timestamp>`
+  - `lastSeenRunId = <crawlRunId>`
+- unseen existing docs:
+  - `isActive = false` only on full allowed reconciliation
+- seen missing docs:
+  - treated as new work for phase two
+
+### Phase 2: detail artifacts + async ingestion
+
+For jobs missing from `normalized_job_ads`:
+
+1. fetch detail page
+2. persist HTML artifact locally
+3. append the listing snapshot to run dataset output
+4. asynchronously trigger ingestion for that single artifact
+
+The crawler does not wait for ingestion to finish.
 
 ## Operator Flow
 
-Use this app in the following order:
-
 1. configure runtime and infrastructure in `apps/jobs-crawler-actor/.env`
 2. define crawl behavior in `apps/jobs-crawler-actor/search-spaces/*.json`
-3. run the crawler with `--search-space <id>`
-4. let the crawler trigger ingestion or start ingestion separately
+3. build the app
+4. run with a search space
 
-The important separation is:
-
-- `.env` = runtime, secrets, paths, Mongo, trigger URL
-- `search-spaces/*.json` = what to crawl and how that search space behaves
-- actor input / CLI = `searchSpaceId` plus optional overrides
+```bash
+pnpm -C apps/jobs-crawler-actor build
+pnpm -C apps/jobs-crawler-actor start -- --search-space prague-tech-jobs --max-items 100
+```
 
 ## Search Spaces
-
-The crawler is generic for any `jobs.cz` search URL, but local operator workflow is based on **search spaces**.
 
 A search space is a checked-in JSON config under:
 
@@ -52,25 +90,16 @@ Each search space defines:
 - `startUrls`
 - crawl defaults
 - reconciliation policy
-- optional ingestion default
+- optional ingestion defaults
 
 Current search spaces:
 
 - `default`
 - `prague-tech-jobs`
 
-### Why search spaces exist
-
-They give you:
-
-- a human-maintained config source
-- stable operational naming
-- automatic MongoDB database derivation
-- a single canonical crawl definition for local runs and Apify runs
-
 ## Database Naming
 
-By default, the crawler derives the MongoDB database name as:
+Default DB derivation:
 
 - `<JOB_COMPASS_DB_PREFIX>-<searchSpaceId>`
 
@@ -80,15 +109,11 @@ Example:
 - `searchSpaceId=prague-tech-jobs`
 - resolved DB: `job-compass-prague-tech-jobs`
 
-You can still override this explicitly with:
-
-- `MONGODB_DB_NAME`
-
-That override should be used rarely.
+`MONGODB_DB_NAME` is an explicit override and should be used rarely.
 
 ## Reconciliation Safety Rule
 
-Search spaces explicitly control whether a **partial run** may mark unseen jobs inactive.
+Search spaces explicitly control whether a partial run may mark unseen jobs inactive.
 
 Config field:
 
@@ -100,14 +125,12 @@ Recommended default:
 
 Meaning:
 
-- full run: inactive marking is allowed
-- partial run: unseen jobs are **not** marked inactive
-
-This is the key safety rule that prevents sample runs from corrupting crawl state.
+- full allowed run: unseen existing normalized docs may be marked inactive
+- partial run: seen existing docs are refreshed, unseen docs are not marked inactive
 
 ## Runtime Input
 
-The crawler runtime uses standard Apify/Crawlee actor input, but the canonical operator input is:
+Canonical operator input is:
 
 - `searchSpaceId`
 - optional overrides:
@@ -118,40 +141,17 @@ The crawler runtime uses standard Apify/Crawlee actor input, but the canonical o
   - `debugLog`
   - `allowInactiveMarkingOnPartialRuns`
 
-The actor resolves:
-
-- `startUrls`
-- crawl defaults
-- reconciliation policy
-
-from the checked-in search-space definition at runtime.
-
-### Local workflow
-
-Local operators should not maintain `INPUT.json` directly.
-
-Run from a search space:
-
-```bash
-pnpm -C apps/jobs-crawler-actor start -- --search-space prague-tech-jobs --max-items 100
-```
+The actor resolves start URLs and defaults from the search-space definition at runtime.
 
 ## Apify Compatibility
 
 Apify compatibility is preserved.
 
-The runtime contract is still actor input.
+The actor input contract remains JSON, but the human-maintained crawl definition is the search-space file. A local operator or Apify run selects a search space and optional overrides.
 
-That means:
+## Shared Local Output
 
-- local runs pass `--search-space <id>` and optional overrides
-- Apify platform provides the same operator-facing input shape directly
-
-So search-space JSON is the canonical crawl config, and operator input only selects a search space plus optional runtime overrides.
-
-## Local Handoff to Ingestion
-
-When a run finishes, the crawler writes:
+Crawler artifacts are written to:
 
 ```text
 <LOCAL_SHARED_SCRAPED_JOBS_DIR>/
@@ -170,7 +170,7 @@ Default:
 
 When enabled, the crawler calls:
 
-- `POST /ingestion/start`
+- `POST /ingestion/item`
 
 Payload:
 
@@ -179,11 +179,29 @@ Payload:
   "source": "jobs.cz",
   "crawlRunId": "<crawl-run-id>",
   "searchSpaceId": "prague-tech-jobs",
-  "mongoDbName": "job-compass-prague-tech-jobs"
+  "mongoDbName": "job-compass-prague-tech-jobs",
+  "listingRecord": {
+    "sourceId": "2001077729",
+    "adUrl": "https://www.jobs.cz/rpd/2001077729/...",
+    "jobTitle": "Senior Engineer - F# powered distributed systems on kubernetes",
+    "companyName": "Alma Career Czechia s.r.o.",
+    "location": "Praha – Libeň + 1 další lokalita",
+    "salary": "75 000 – 90 000 Kč",
+    "publishedInfoText": "Příležitost dne",
+    "scrapedAt": "2026-02-28T12:00:00.000Z",
+    "source": "jobs.cz",
+    "htmlDetailPageKey": "job-html-2001077729.html"
+  },
+  "detailHtmlPath": "/abs/path/to/scrapped_jobs/runs/<crawlRunId>/records/job-html-2001077729.html",
+  "datasetFileName": "dataset.json",
+  "datasetRecordIndex": 0
 }
 ```
 
-This makes ingestion deterministic and removes hidden DB assumptions.
+The ingestion boundary is:
+
+- HTML artifact persisted successfully
+- trigger accepted successfully
 
 ## Environment
 
@@ -197,7 +215,7 @@ Key variables:
 - `JOB_COMPASS_DB_PREFIX`
 - `MONGODB_DB_NAME`
 - `MONGODB_URI`
-- `MONGODB_CRAWL_JOBS_COLLECTION`
+- `MONGODB_JOBS_COLLECTION`
 - `ENABLE_MONGO_RUN_SUMMARY_WRITE`
 - `MONGODB_CRAWL_RUN_SUMMARIES_COLLECTION`
 - `LOCAL_SHARED_SCRAPED_JOBS_DIR`
@@ -210,17 +228,17 @@ Key variables:
 ## Key Files
 
 - `src/main.ts`
-  - crawl orchestration and runtime search-space resolution
+  - crawl orchestration
 - `src/search-space.ts`
   - search-space loading, CLI parsing, DB derivation
-- `src/crawl-state.ts`
-  - Mongo reconciliation and crawl-state updates
+- `src/normalized-jobs-repository.ts`
+  - phase-one reconciliation against normalized docs
 - `src/detail-rendering.ts`
   - detail-page readiness heuristics
 - `src/listing-card-parser.ts`
   - list-card extraction
 - `src/local-shared-output.ts`
-  - local handoff artifact writing
+  - shared artifact writes
 - `search-spaces/*.json`
   - operator-maintained crawl definitions
 

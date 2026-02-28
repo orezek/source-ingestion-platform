@@ -1,40 +1,66 @@
 # Jobs Ingestion Service
 
-`jobs-ingestion-service` reads crawler artifacts, cleans raw job-ad text, extracts structured job data with Gemini via LangGraph, writes normalized documents to MongoDB, records run summaries, and exposes an idempotent Fastify trigger API for crawler-driven ingestion.
+`jobs-ingestion-service` reads crawler artifacts, cleans raw job-ad text, extracts structured job data with Gemini via LangGraph, writes normalized documents to MongoDB, records run summaries, and exposes idempotent Fastify trigger endpoints for crawler-driven ingestion.
 
 ## Purpose
 
 This app owns:
 
-- loading crawler handoff artifacts
+- loading crawler artifacts
 - deterministic HTML parsing and completeness checks
 - LLM text cleaning
 - LLM structured extraction
 - normalized output writes
 - ingestion summaries
 - trigger lifecycle persistence
-- pruning non-success jobs from `crawl_job_states`
+- asynchronous item ingestion
+- manual/bulk backfill ingestion
 
 This app does not own:
 
 - list crawling
 - detail-page fetching
-- crawl-state reconciliation on list coverage
+- list reconciliation and inactive marking
+
+## Trusted State Model
+
+Trusted persistent state is:
+
+- `normalized_job_ads`
+
+Rules:
+
+- a normalized document exists only after successful ingestion
+- ingestion does not create placeholder state
+- crawler phase one updates activity on existing normalized docs
+- missing normalized docs are retried by the crawler on later runs
+
+## Trigger Modes
+
+### Live item ingestion
+
+Endpoint:
+
+- `POST /ingestion/item`
+
+Used by the crawler after a detail HTML artifact is durably written.
+
+This is the primary production path.
+
+### Manual/bulk ingestion
+
+Endpoint:
+
+- `POST /ingestion/start`
+
+Used for backfills, local testing, or reprocessing an existing crawl-run artifact folder.
 
 ## Operator Flow
 
-Use this app in the following order:
-
 1. configure runtime and infrastructure in `apps/jobs-ingestion-service/.env`
 2. start the ingestion API if crawler-triggered ingestion is enabled
-3. run the crawler for a chosen search space
-4. let the crawler trigger ingestion, or run ingestion manually for the selected crawl run
-
-The important separation is:
-
-- crawler search spaces define the crawl scope
-- ingestion `.env` defines runtime, model, paths, Mongo, and API settings
-- trigger payload carries `crawlRunId`, `searchSpaceId`, and `mongoDbName`, so ingestion follows the crawler run instead of redefining scope
+3. run the crawler for a selected search space
+4. let the crawler trigger ingestion per artifact, or run manual bulk ingestion
 
 ## Input Contract
 
@@ -49,13 +75,35 @@ scrapped_jobs/
         job-html-<sourceId>.html
 ```
 
-## Trigger Contract
+## Trigger Contracts
 
-Endpoint:
+### `POST /ingestion/item`
 
-- `POST /ingestion/start`
+```json
+{
+  "source": "jobs.cz",
+  "crawlRunId": "<crawl-run-id>",
+  "searchSpaceId": "prague-tech-jobs",
+  "mongoDbName": "job-compass-prague-tech-jobs",
+  "listingRecord": {
+    "sourceId": "2001077729",
+    "adUrl": "https://www.jobs.cz/rpd/2001077729/...",
+    "jobTitle": "Senior Engineer - F# powered distributed systems on kubernetes",
+    "companyName": "Alma Career Czechia s.r.o.",
+    "location": "Praha – Libeň + 1 další lokalita",
+    "salary": "75 000 – 90 000 Kč",
+    "publishedInfoText": "Příležitost dne",
+    "scrapedAt": "2026-02-28T12:00:00.000Z",
+    "source": "jobs.cz",
+    "htmlDetailPageKey": "job-html-2001077729.html"
+  },
+  "detailHtmlPath": "/abs/path/to/job-html-2001077729.html",
+  "datasetFileName": "dataset.json",
+  "datasetRecordIndex": 0
+}
+```
 
-Request body:
+### `POST /ingestion/start`
 
 ```json
 {
@@ -66,25 +114,13 @@ Request body:
 }
 ```
 
-This payload is intentionally explicit:
-
-- `crawlRunId` selects the artifact folder
-- `searchSpaceId` makes the run operationally traceable
-- `mongoDbName` removes ambiguity about which database this ingestion belongs to
-
 ## Database Naming
 
-By default, the service derives the DB name as:
+Manual runs derive the DB name as:
 
 - `<JOB_COMPASS_DB_PREFIX>-<SEARCH_SPACE_ID>`
 
-Example:
-
-- `JOB_COMPASS_DB_PREFIX=job-compass`
-- `SEARCH_SPACE_ID=default`
-- resolved DB: `job-compass-default`
-
-Trigger-driven runs can override this with the explicit `mongoDbName` sent by the crawler.
+Triggered runs can override this with explicit `mongoDbName` supplied by the crawler.
 
 ## Pipeline
 
@@ -92,23 +128,16 @@ The LangGraph flow is:
 
 1. `loadDetailPage`
    - reads raw HTML
-   - handles compressed/plain HTML
    - parses DOM with Cheerio
-   - extracts static text
+   - extracts deterministic text
    - validates completeness
-
 2. `cleanDetailText`
    - runs prompt `jobcompass-job-ad-text-cleaner`
    - removes UI/GDPR/cookie/legal noise
-   - outputs the clean text used by extraction
-
 3. `extractDetail`
    - runs prompt `jobcompass-job-ad-structured-extractor`
-   - uses structured output with the local canonical schema
-
-4. `merge`
-   - combines listing + extracted detail + ingestion metadata
-   - validates final unified output
+   - produces structured output using the canonical local schema
+4. merge into unified normalized document
 
 ## Persisted Raw Text Snapshots
 
@@ -116,46 +145,42 @@ The service stores:
 
 - raw HTML on disk in crawler artifacts
 - `rawDetailPage.loadDetailPageText`
-  - step-1 deterministic text extraction
+  - deterministic step-1 extraction
 - `rawDetailPage.cleanDetailText`
-  - step-2 LLM-cleaned text used by extraction
+  - step-2 LLM cleaner output
 
-This gives you:
+This supports:
 
 - reproducibility from raw HTML
-- a cheap deterministic intermediate
-- a token-saving clean text snapshot for future reprocessing
+- cheaper reprocessing from clean text
+- better token control for later workflows
 
-## Completeness Gate
+## Normalized Document Ownership
 
-The completeness gate is structural-first.
+`normalized_job_ads` now also owns activity state for the search space:
 
-It prefers known job-content containers and accepts the **best** candidate rather than the first match.
+- `searchSpaceId`
+- `isActive`
+- `firstSeenAt`
+- `lastSeenAt`
+- `firstSeenRunId`
+- `lastSeenRunId`
 
-Fallback keyword/noise heuristics are retained only for unknown templates.
+Ingestion sets those fields for newly created documents.
 
-This reduces false negatives on custom employer pages while still filtering cookie/legal-only captures.
+Later crawler phase-one runs update them for existing documents.
 
 ## Mongo Collections
 
 Default collection names:
 
 - `normalized_job_ads`
-- `crawl_job_states`
 - `ingestion_run_summaries`
 - `ingestion_trigger_requests`
 
-### Why `crawl_job_states` is modified here
-
-If ingestion skips or fails a job, the service removes that job from `crawl_job_states`.
-
-That means the next crawler run can fetch it again.
-
-This keeps crawl state aligned with practically usable normalized output without introducing extra ingestion-state fields into crawl state.
-
 ## Ingestion Run Summaries
 
-Run summaries now include:
+Run summaries include:
 
 - `searchSpaceId`
 - `mongoDbName`
@@ -163,8 +188,6 @@ Run summaries now include:
 - skipped/failed audit arrays
 - cleaner/extractor/total LLM stats
 - timing percentiles
-
-That makes summaries queryable without unpacking nested context elsewhere.
 
 ## Environment
 
@@ -180,7 +203,6 @@ Key variables:
 - `ENABLE_MONGO_WRITE`
 - `MONGODB_URI`
 - `MONGODB_JOBS_COLLECTION`
-- `MONGODB_CRAWL_JOBS_COLLECTION`
 - `MONGODB_RUN_SUMMARIES_COLLECTION`
 - `MONGODB_INGESTION_TRIGGERS_COLLECTION`
 - `INPUT_ROOT_DIR`
@@ -199,20 +221,19 @@ pnpm -C apps/jobs-ingestion-service lint
 pnpm -C apps/jobs-ingestion-service check-types
 pnpm -C apps/jobs-ingestion-service start
 pnpm -C apps/jobs-ingestion-service start-server
-pnpm -C apps/jobs-ingestion-service align-crawl-state
 ```
 
 ## Key Files
 
 - `src/app.ts`
-  - workflow entrypoint, env resolution, run summary creation
+  - ingestion workflow entrypoints and run summaries
 - `src/server.ts`
   - Fastify trigger API and idempotent trigger lifecycle
 - `src/job-parsing-graph.ts`
   - LangGraph workflow
 - `src/html-detail-loader.ts`
-  - deterministic HTML load + completeness validation
+  - deterministic HTML load and completeness validation
 - `src/repository.ts`
-  - Mongo writes and crawl-state prune/alignment
+  - Mongo/file writes
 - `src/input-provider.ts`
-  - local dataset + HTML record loading
+  - local dataset + record loading

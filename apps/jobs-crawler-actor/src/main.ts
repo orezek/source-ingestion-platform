@@ -12,11 +12,7 @@ import {
   type ResolvedActorRuntimeInput,
 } from '@repo/job-search-spaces';
 import { envs } from './env-setup.js';
-import {
-  CrawlStateRepository,
-  type CrawlDetailSnapshot,
-  type CrawlListingRecord,
-} from './crawl-state.js';
+import { NormalizedJobsRepository, type CrawlListingRecord } from './normalized-jobs-repository.js';
 import {
   buildSharedRunOutputPaths,
   prepareSharedRunOutput,
@@ -172,6 +168,28 @@ type IngestionTriggerConfig = {
   timeoutMs: number;
 };
 
+type IngestionItemTriggerPayload = {
+  source: string;
+  crawlRunId: string;
+  searchSpaceId: string;
+  mongoDbName: string;
+  listingRecord: {
+    sourceId: string;
+    adUrl: string;
+    jobTitle: string;
+    companyName: string | null;
+    location: string | null;
+    salary: string | null;
+    publishedInfoText: string | null;
+    scrapedAt: string;
+    source: string;
+    htmlDetailPageKey: string;
+  };
+  detailHtmlPath: string;
+  datasetFileName: string;
+  datasetRecordIndex: number;
+};
+
 type IngestionTriggerResult = {
   enabled: boolean;
   attempted: boolean;
@@ -277,9 +295,9 @@ async function upsertRunSummaryToMongoBestEffort(
   }
 }
 
-async function triggerIngestionStartBestEffort(
+async function triggerIngestionItemBestEffort(
   config: IngestionTriggerConfig,
-  payload: { source: string; crawlRunId: string; searchSpaceId: string; mongoDbName: string },
+  payload: IngestionItemTriggerPayload,
 ): Promise<IngestionTriggerResult> {
   if (!config.enabled) {
     return {
@@ -331,8 +349,9 @@ async function triggerIngestionStartBestEffort(
     }
 
     if (response.ok) {
-      log.info('Triggered ingestion service after crawl completion', {
+      log.info('Triggered ingestion service for detail artifact', {
         source: payload.source,
+        sourceId: payload.listingRecord.sourceId,
         crawlRunId: payload.crawlRunId,
         searchSpaceId: payload.searchSpaceId,
         mongoDbName: payload.mongoDbName,
@@ -342,8 +361,9 @@ async function triggerIngestionStartBestEffort(
         deduplicated: result.deduplicated,
       });
     } else {
-      log.warning('Ingestion trigger request returned non-OK response (best effort)', {
+      log.warning('Ingestion item trigger returned non-OK response (best effort)', {
         source: payload.source,
+        sourceId: payload.listingRecord.sourceId,
         crawlRunId: payload.crawlRunId,
         searchSpaceId: payload.searchSpaceId,
         mongoDbName: payload.mongoDbName,
@@ -356,8 +376,9 @@ async function triggerIngestionStartBestEffort(
     return result;
   } catch (error) {
     const normalizedError = serializeErrorForSummary(error);
-    log.warning('Failed to trigger ingestion service after crawl completion (best effort)', {
+    log.warning('Failed to trigger ingestion service for detail artifact (best effort)', {
       source: payload.source,
+      sourceId: payload.listingRecord.sourceId,
       crawlRunId: payload.crawlRunId,
       searchSpaceId: payload.searchSpaceId,
       mongoDbName: payload.mongoDbName,
@@ -411,8 +432,17 @@ let inactiveMarkedCount = 0;
 let inactiveMarkingSkipped = false;
 let inactiveMarkingSkipReason: string | null = null;
 let activeJobsCountBeforeReconcile = 0;
-let detailStateSnapshotsApplied = 0;
+let existingSeenUpdatedCount = 0;
 let localSharedHtmlFilesWritten = 0;
+let ingestionTriggerAttemptedCount = 0;
+let ingestionTriggerAcceptedCount = 0;
+let ingestionTriggerDeduplicatedCount = 0;
+let ingestionTriggerFailedCount = 0;
+const ingestionTriggerFailureSamples: Array<{
+  sourceId: string;
+  error?: { name: string; message: string; stack?: string };
+  responseStatus?: number;
+}> = [];
 let localSharedDatasetRecordsWritten = 0;
 let localSharedDatasetJsonPath: string | null = null;
 const detailRenderTypeCounts: Record<DetailRenderType, number> = {
@@ -429,7 +459,6 @@ const detailRenderSignalCounts: Record<DetailRenderSignal, number> = {
 const seedListSummaries = new Map<string, SeedListSummary>();
 const collectedListingsBySourceId = new Map<string, CrawlListingRecord>();
 const sharedDatasetRecords: z.infer<typeof internalJobAdSchema>[] = [];
-const detailSnapshotsForState: CrawlDetailSnapshot[] = [];
 let sharedRunOutputPaths: SharedRunOutputPaths | null = null;
 
 router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
@@ -514,30 +543,20 @@ router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
     contentType: 'text/html',
   });
   htmlSnapshotsSaved += 1;
+
+  let detailHtmlPath: string | null = null;
   if (sharedRunOutputPaths) {
-    await writeSharedDetailHtml(sharedRunOutputPaths, htmlDetailPageKey, jobDetailHtml);
+    detailHtmlPath = await writeSharedDetailHtml(
+      sharedRunOutputPaths,
+      htmlDetailPageKey,
+      jobDetailHtml,
+    );
     localSharedHtmlFilesWritten += 1;
   }
 
   if (safeResult.success) {
     detailsValidationSucceeded += 1;
     sharedDatasetRecords.push(safeResult.data);
-    detailSnapshotsForState.push({
-      sourceId: safeResult.data.sourceId,
-      requestedDetailUrl: safeResult.data.requestedDetailUrl,
-      finalDetailUrl: safeResult.data.finalDetailUrl,
-      finalDetailHost: safeResult.data.finalDetailHost,
-      detailRedirected: safeResult.data.detailRedirected,
-      detailRenderType: safeResult.data.detailRenderType,
-      detailRenderSignal: safeResult.data.detailRenderSignal,
-      detailRenderTextChars: safeResult.data.detailRenderTextChars,
-      detailRenderWaitMs: safeResult.data.detailRenderWaitMs,
-      detailRenderComplete: safeResult.data.detailRenderComplete,
-      htmlDetailPageKey: safeResult.data.htmlDetailPageKey,
-      detailHtmlByteSize: safeResult.data.detailHtmlByteSize,
-      detailHtmlSha256: safeResult.data.detailHtmlSha256,
-      scrapedAt: safeResult.data.scrapedAt.toISOString(),
-    });
     routerDetailsLog.info(`✅ Saved job: ${result.sourceId} | ${result.jobTitle}`, {
       sourceId: result.sourceId,
       requestedDetailUrl,
@@ -553,6 +572,51 @@ router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
       detailHtmlByteSize,
     });
     await Dataset.pushData(safeResult.data);
+
+    if (detailHtmlPath) {
+      const listingRecord = {
+        sourceId: safeResult.data.sourceId,
+        adUrl: safeResult.data.adUrl,
+        jobTitle: safeResult.data.jobTitle,
+        companyName: safeResult.data.companyName,
+        location: safeResult.data.location,
+        salary: safeResult.data.salary,
+        publishedInfoText: safeResult.data.publishedInfoText,
+        scrapedAt: safeResult.data.scrapedAt.toISOString(),
+        source: safeResult.data.source,
+        htmlDetailPageKey: safeResult.data.htmlDetailPageKey,
+      };
+
+      ingestionTriggerAttemptedCount += 1;
+      const triggerResult = await triggerIngestionItemBestEffort(ingestionTriggerConfig, {
+        source: safeResult.data.source,
+        crawlRunId,
+        searchSpaceId: input.searchSpaceId,
+        mongoDbName,
+        listingRecord,
+        detailHtmlPath,
+        datasetFileName: 'dataset.json',
+        datasetRecordIndex: sharedDatasetRecords.length - 1,
+      });
+
+      if (triggerResult.accepted) {
+        ingestionTriggerAcceptedCount += 1;
+      }
+      if (triggerResult.deduplicated) {
+        ingestionTriggerDeduplicatedCount += 1;
+      }
+      if (
+        (triggerResult.ok === false || triggerResult.accepted === false) &&
+        !triggerResult.deduplicated
+      ) {
+        ingestionTriggerFailedCount += 1;
+        ingestionTriggerFailureSamples.push({
+          sourceId: safeResult.data.sourceId,
+          error: triggerResult.error,
+          responseStatus: triggerResult.responseStatus,
+        });
+      }
+    }
   } else {
     detailsValidationFailed += 1;
     routerDetailsLog.error(`⚠️ Validation failed for ${result.sourceId}`, {
@@ -768,18 +832,18 @@ const ingestionTriggerConfig: IngestionTriggerConfig = {
 };
 if (!envs.MONGODB_URI) {
   throw new Error(
-    'MONGODB_URI is required for incremental crawl reconciliation (crawl state collection).',
+    'MONGODB_URI is required for phase-one reconciliation against normalized_job_ads.',
   );
 }
-const crawlStateRepo = new CrawlStateRepository({
+const normalizedJobsRepo = new NormalizedJobsRepository({
   mongoUri: envs.MONGODB_URI,
   dbName: mongoDbName,
-  collectionName: envs.MONGODB_CRAWL_JOBS_COLLECTION,
+  collectionName: envs.MONGODB_JOBS_COLLECTION,
 });
 
 await prepareSharedRunOutput(sharedRunOutputPaths);
-await crawlStateRepo.connect();
-await crawlStateRepo.ensureIndexes();
+await normalizedJobsRepo.connect();
+await normalizedJobsRepo.ensureIndexes();
 
 for (const startUrl of startUrls) {
   if (!seedListSummaries.has(startUrl.url)) {
@@ -896,8 +960,9 @@ try {
     maxItemsEnqueueGuardTriggered && !input.allowInactiveMarkingOnPartialRuns;
 
   const reconcileObservedAtIso = new Date().toISOString();
-  const reconcileResult = await crawlStateRepo.reconcileListings({
+  const reconcileResult = await normalizedJobsRepo.reconcileListings({
     source: 'jobs.cz',
+    searchSpaceId: input.searchSpaceId,
     crawlRunId,
     observedAtIso: reconcileObservedAtIso,
     listings: Array.from(collectedListingsBySourceId.values()),
@@ -918,13 +983,15 @@ try {
   inactiveMarkedCount = reconcileResult.inactiveMarkedCount;
   inactiveMarkingSkipped = reconcileResult.inactiveMarkingSkipped;
   inactiveMarkingSkipReason = reconcileResult.inactiveMarkingSkipReason;
+  existingSeenUpdatedCount = reconcileResult.existingSeenUpdatedCount;
   enqueuedDetailRequests = reconcileResult.newListings.length;
 
-  log.info('Reconciled listings against crawl state collection', {
+  log.info('Reconciled listings against normalized job documents', {
     crawlRunId,
     totalSeen: reconcileResult.totalSeen,
     newJobs: reconcileNewJobsCount,
     existingJobs: reconcileExistingJobsCount,
+    existingSeenUpdatedCount,
     activeJobsCountBeforeReconcile,
     inactiveMarkedCount,
     inactiveMarkingSkipped,
@@ -932,7 +999,7 @@ try {
     failedListRequests,
     searchSpaceId: input.searchSpaceId,
     mongoDbName,
-    mongoCollection: envs.MONGODB_CRAWL_JOBS_COLLECTION,
+    mongoCollection: envs.MONGODB_JOBS_COLLECTION,
   });
 
   if (reconcileResult.newListings.length > 0) {
@@ -949,6 +1016,7 @@ try {
           location: listing.location,
           salary: listing.salary,
           publishedInfoText: listing.publishedInfoText,
+          source: listing.source,
         },
       })),
     );
@@ -957,14 +1025,6 @@ try {
     detailPhaseCompleted = true;
     log.info('Skipping detail crawl phase because no new jobs were discovered in reconciliation', {
       crawlRunId,
-    });
-  }
-
-  if (detailSnapshotsForState.length > 0) {
-    detailStateSnapshotsApplied = await crawlStateRepo.updateDetailSnapshots({
-      source: 'jobs.cz',
-      detailSnapshots: detailSnapshotsForState,
-      updatedAtIso: new Date().toISOString(),
     });
   }
 
@@ -1000,7 +1060,8 @@ const averageDetailRenderWaitMs =
 const averageDetailHtmlByteSize =
   htmlSnapshotsSaved > 0 ? Math.round(totalDetailHtmlBytes / htmlSnapshotsSaved) : 0;
 
-const runHadNonFatalErrors = failedRequests > 0 || detailsValidationFailed > 0;
+const runHadNonFatalErrors =
+  failedRequests > 0 || detailsValidationFailed > 0 || ingestionTriggerFailedCount > 0;
 const runStatus: CrawlRunStatus = crawlerRunError
   ? 'failed'
   : runHadNonFatalErrors
@@ -1014,19 +1075,14 @@ const runStopReason = crawlerRunError
       ? 'max_items_reached'
       : 'completed';
 
-const shouldTriggerIngestion = runStatus === 'succeeded' || runStatus === 'completed_with_errors';
-const ingestionTrigger = shouldTriggerIngestion
-  ? await triggerIngestionStartBestEffort(ingestionTriggerConfig, {
-      source: 'jobs.cz',
-      crawlRunId,
-      searchSpaceId: input.searchSpaceId,
-      mongoDbName,
-    })
-  : ({
-      enabled: ingestionTriggerConfig.enabled,
-      attempted: false,
-      skippedReason: 'run_failed',
-    } satisfies IngestionTriggerResult);
+const ingestionTrigger = {
+  enabled: ingestionTriggerConfig.enabled,
+  attempted: ingestionTriggerAttemptedCount,
+  accepted: ingestionTriggerAcceptedCount,
+  deduplicated: ingestionTriggerDeduplicatedCount,
+  failed: ingestionTriggerFailedCount,
+  failureSamples: ingestionTriggerFailureSamples.slice(0, 20),
+};
 
 const runSummary = {
   crawlRunId,
@@ -1073,6 +1129,7 @@ const runSummary = {
     listListingsDuplicateSourceIds,
     reconcileNewJobsCount,
     reconcileExistingJobsCount,
+    existingSeenUpdatedCount,
     activeJobsCountBeforeReconcile,
     inactiveMarkedCount,
     detailsEnqueuedUnique: enqueuedDetailRequests,
@@ -1086,7 +1143,6 @@ const runSummary = {
     detailsValidationFailed,
     detailRedirects,
     dynamicRenderedPagesCount,
-    detailStateSnapshotsApplied,
   },
   listPageResults: {
     parsedSeedCountsFound: parsedListingResultsCounts.length,
@@ -1109,10 +1165,10 @@ const runSummary = {
     datasetJsonPath: localSharedDatasetJsonPath,
   },
   ingestionTrigger,
-  crawlState: {
+  normalizedJobsState: {
     searchSpaceId: input.searchSpaceId,
     mongoDbName,
-    mongoCollection: envs.MONGODB_CRAWL_JOBS_COLLECTION,
+    mongoCollection: envs.MONGODB_JOBS_COLLECTION,
   },
   failedRequestUrls,
   error: crawlerRunError ? serializeErrorForSummary(crawlerRunError) : null,
@@ -1136,6 +1192,8 @@ await upsertRunSummaryToMongoBestEffort(
     newJobsCount: runSummary.counters.reconcileNewJobsCount,
     existingJobsCount: runSummary.counters.reconcileExistingJobsCount,
     inactiveMarkedCount: runSummary.counters.inactiveMarkedCount,
+    ingestionTriggerAcceptedCount: runSummary.ingestionTrigger.accepted,
+    ingestionTriggerFailedCount: runSummary.ingestionTrigger.failed,
     datasetRecordsStored: runSummary.counters.datasetRecordsStored,
     failedRequests: runSummary.outcome.failedRequests,
     runSummary,
@@ -1143,7 +1201,7 @@ await upsertRunSummaryToMongoBestEffort(
   'final',
 );
 
-await crawlStateRepo.close();
+await normalizedJobsRepo.close();
 
 if (crawlerRunError) {
   throw crawlerRunError;
