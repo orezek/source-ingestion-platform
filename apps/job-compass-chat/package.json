@@ -1,0 +1,44 @@
+{
+  "name": "job-compass-chat",
+  "version": "1.0.0",
+  "description": "Terminal-first LangGraph chat playground for JobCompass planning and observability.",
+  "license": "ISC",
+  "author": "Oldrich Rezek oldrich.rezek@oldrichrezek.com",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "tsx watch src/app.ts",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "test": "pnpm run test:unit && pnpm run test:integration",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "test:e2e": "pnpm build && vitest run test/e2e"
+  },
+  "dependencies": {
+    "@langchain/google-genai": "catalog:",
+    "@langchain/langgraph": "catalog:",
+    "@repo/env-config": "workspace:*",
+    "ink": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

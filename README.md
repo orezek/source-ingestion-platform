@@ -43,7 +43,8 @@ This repository is not just a collection of files; it is an opinionated engineer
 .
 ├── .aiassistant/rules        # AI Persona & Rules definition (see monorepo.md)
 ├── apps/                     # Deployable applications
-│   └── app-template/         # Canonical scaffold template for new apps
+│   ├── app-template/         # Canonical scaffold template for new apps
+│   └── job-compass-chat/     # Terminal-first LangGraph planning playground
 ├── packages/                 # Shared internal libraries
 │   ├── env-config/           # Type-safe environment variable parsing
 │   ├── eslint-config/        # Shared ESLint Flat Configurations (Base, React, Next)
