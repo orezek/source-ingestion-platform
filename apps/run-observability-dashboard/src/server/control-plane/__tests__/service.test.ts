@@ -130,10 +130,12 @@ describe('control-plane service', () => {
     expect(detail?.runView.run.runId).toBe(runView.run.runId);
     expect(detail?.generatedInput.exists).toBe(true);
     expect(detail?.generatedInput.contents).toContain(searchSpace.id);
-    expect(detail?.brokerEvents).toHaveLength(3);
+    expect(detail?.brokerEvents).toHaveLength(5);
     expect(detail?.artifactCaptures).toHaveLength(1);
+    expect(detail?.structuredOutputCaptures).toHaveLength(1);
     expect(detail?.artifactCaptures[0]?.sourceId).toBe('fixture-001');
     expect(detail?.artifactCaptures[0]?.artifactPath).toContain('job-html-fixture-001.html');
+    expect(detail?.structuredOutputCaptures[0]?.fileName).toBe('normalized-job-fixture-001.json');
     expect(detail?.runView.manifest?.artifactStorageSnapshot.type).toBe('local_filesystem');
   });
 

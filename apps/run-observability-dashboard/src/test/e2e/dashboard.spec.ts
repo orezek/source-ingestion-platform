@@ -51,8 +51,23 @@ test('control plane can create a pipeline and run it in fixture mode', async ({ 
   await expect(page.getByRole('heading', { name: 'Fixture platform engineer' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Artifact preview' })).toBeVisible();
 
-  const downloadPromise = page.waitForEvent('download');
+  const htmlDownloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Download HTML' }).click();
-  const download = await downloadPromise;
-  expect(await download.suggestedFilename()).toBe('job-html-fixture-001.html');
+  const htmlDownload = await htmlDownloadPromise;
+  expect(await htmlDownload.suggestedFilename()).toBe('job-html-fixture-001.html');
+
+  await page.goto('/control-plane');
+  await page
+    .getByTestId('control-plane-runs')
+    .getByRole('link', { name: /crawl-run-/i })
+    .first()
+    .click();
+  await page.getByTestId('output-browse-downloadable-json-fixture-001').click();
+  await expect(page.getByRole('heading', { name: 'JSON preview' })).toBeVisible();
+  await expect(page.getByText('DESTINATION: Downloadable JSON')).toBeVisible();
+
+  const jsonDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Download JSON' }).click();
+  const jsonDownload = await jsonDownloadPromise;
+  expect(await jsonDownload.suggestedFilename()).toBe('normalized-job-fixture-001.json');
 });

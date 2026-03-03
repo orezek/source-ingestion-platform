@@ -16,13 +16,15 @@ The app reads run-summary collections and presents:
 
 - `/` overview dashboard
 - `/control-plane` local v1 control plane
-- `/control-plane/runs/[runId]` operator run detail with manifest, logs, events, and artifacts
+- `/control-plane/runs/[runId]` operator run detail with manifest, logs, events, artifacts, and downloadable JSON outputs
 - `/control-plane/runs/[runId]/artifacts/[sourceId]` artifact browser for captured HTML
+- `/control-plane/runs/[runId]/outputs/[destinationId]/[sourceId]` structured output browser for normalized JSON
 - `/crawler/runs/[crawlRunId]` crawler run detail
 - `/ingestion/runs/[runId]` ingestion run detail
 - `/pipeline/[crawlRunId]` linked pipeline detail
 - `/api/control-plane/[resource]` JSON API for local control-plane resources and run starts
 - `/api/control-plane/runs/[runId]/artifacts/[sourceId]` artifact preview/download endpoint
+- `/api/control-plane/runs/[runId]/outputs/[destinationId]/[sourceId]` structured output preview/download endpoint
 
 ## Data Sources
 
@@ -71,6 +73,7 @@ Operator-facing artifact access:
 - local filesystem paths are treated as backend references, not the primary operator workflow
 - GCS-backed artifacts are previewed/downloaded through the same route when Google credentials are
   available to the dashboard process
+- downloadable JSON outputs follow the same dashboard-first browse/download flow
 
 Managed storage backends:
 

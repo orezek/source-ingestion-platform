@@ -79,6 +79,11 @@ export default async function ControlPlaneRunDetailPage({
             hint="Captured detail pages"
           />
           <KpiCard
+            label="JSON OUTPUTS"
+            value={formatNumber(detail.structuredOutputCaptures.length)}
+            hint="Downloadable normalized results"
+          />
+          <KpiCard
             label="OUTPUT SINKS"
             value={formatNumber(
               detail.runView.manifest?.structuredOutputDestinationSnapshots.length ?? 0,
@@ -233,6 +238,62 @@ export default async function ControlPlaneRunDetailPage({
               </div>
             )}
           </section>
+        </section>
+
+        <section className="panel">
+          <SectionHeading
+            eyebrow="Outputs"
+            title="Downloadable JSON results"
+            description="Browse and download normalized JSON outputs directly from the control plane."
+          />
+          {detail.structuredOutputCaptures.length === 0 ? (
+            <p className="empty-copy">
+              No downloadable structured outputs are recorded for this run.
+            </p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>DESTINATION</th>
+                    <th>SOURCE ID</th>
+                    <th>DOCUMENT ID</th>
+                    <th>STORAGE</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.structuredOutputCaptures.map((output) => (
+                    <tr key={`${output.destinationId}-${output.sourceId}`}>
+                      <td>{output.destinationName}</td>
+                      <td>{output.sourceId}</td>
+                      <td className="data-table__cell--wrap">{output.documentId ?? 'N/A'}</td>
+                      <td>{output.outputStorageType}</td>
+                      <td>
+                        <div className="table-action-group">
+                          <Link
+                            href={`/control-plane/runs/${detail.runView.run.runId}/outputs/${output.destinationId}/${output.sourceId}`}
+                            className="primary-link"
+                            data-testid={`output-browse-${output.destinationId}-${output.sourceId}`}
+                          >
+                            Browse
+                          </Link>
+                          <Link
+                            href={`/api/control-plane/runs/${detail.runView.run.runId}/outputs/${output.destinationId}/${output.sourceId}?download=1`}
+                            className="primary-link"
+                            data-testid={`output-download-${output.destinationId}-${output.sourceId}`}
+                            download={output.fileName}
+                          >
+                            Download
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
 
         <section className="chart-grid">

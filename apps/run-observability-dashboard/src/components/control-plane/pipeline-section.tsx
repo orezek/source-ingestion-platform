@@ -21,6 +21,16 @@ type PipelineSectionProps = {
   structuredOutputDestinations: StructuredOutputDestination[];
 };
 
+function getPipelineModeLabel(mode: Pipeline['mode']): string {
+  return mode === 'crawl_and_ingest' ? 'Crawl and ingest' : 'Crawl only';
+}
+
+function getStructuredOutputLabel(destination: StructuredOutputDestination): string {
+  return `${destination.name} · ${
+    destination.type === 'downloadable_json' ? 'Downloadable JSON' : 'MongoDB'
+  }`;
+}
+
 function renderStructuredOutputChoices(input: {
   destinations: StructuredOutputDestination[];
   selectedIds: string[];
@@ -39,9 +49,7 @@ function renderStructuredOutputChoices(input: {
             value={destination.id}
             defaultChecked={input.selectedIds.includes(destination.id)}
           />
-          <span>
-            {destination.name} · {destination.type}
-          </span>
+          <span>{getStructuredOutputLabel(destination)}</span>
         </label>
       ))}
     </div>
@@ -78,7 +86,7 @@ export function PipelineSection({
               <tr key={pipeline.id}>
                 <td>{pipeline.id}</td>
                 <td>{pipeline.searchSpaceId}</td>
-                <td>{pipeline.mode}</td>
+                <td>{getPipelineModeLabel(pipeline.mode)}</td>
                 <td>
                   {pipeline.structuredOutputDestinationIds.length > 0
                     ? pipeline.structuredOutputDestinationIds.join(', ')
@@ -136,8 +144,8 @@ export function PipelineSection({
                     <label>
                       <span>MODE</span>
                       <select name="mode" defaultValue={pipeline.mode}>
-                        <option value="crawl_and_ingest">crawl_and_ingest</option>
-                        <option value="crawl_only">crawl_only</option>
+                        <option value="crawl_and_ingest">Crawl and ingest</option>
+                        <option value="crawl_only">Crawl only</option>
                       </select>
                     </label>
                   </div>
@@ -203,8 +211,8 @@ export function PipelineSection({
             <label>
               <span>MODE</span>
               <select name="mode" defaultValue="crawl_and_ingest">
-                <option value="crawl_and_ingest">crawl_and_ingest</option>
-                <option value="crawl_only">crawl_only</option>
+                <option value="crawl_and_ingest">Crawl and ingest</option>
+                <option value="crawl_only">Crawl only</option>
               </select>
             </label>
           </div>

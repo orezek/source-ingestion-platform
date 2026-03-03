@@ -32,6 +32,10 @@ import {
   buildArtifactCaptures,
   type ControlPlaneArtifactCapture,
 } from '@/server/control-plane/artifacts';
+import {
+  buildStructuredOutputCaptures,
+  type ControlPlaneStructuredOutputCapture,
+} from '@/server/control-plane/outputs';
 import { ensureControlPlaneBootstrap } from '@/server/control-plane/bootstrap';
 import {
   readOptionalTextPreview,
@@ -95,6 +99,7 @@ export type ControlPlaneRunDetail = {
   ingestionLog: ControlPlaneFilePreview | null;
   brokerEvents: BrokerEvent[];
   artifactCaptures: ControlPlaneArtifactCapture[];
+  structuredOutputCaptures: ControlPlaneStructuredOutputCapture[];
   mongoDatabaseName: string | null;
 };
 
@@ -489,6 +494,12 @@ export async function getControlPlaneRunDetail(
     ingestionLog,
     brokerEvents,
     artifactCaptures: buildArtifactCaptures(brokerEvents),
+    structuredOutputCaptures: runView.manifest
+      ? buildStructuredOutputCaptures({
+          events: brokerEvents,
+          manifest: runView.manifest,
+        })
+      : [],
     mongoDatabaseName: deriveMongoDatabaseName(runView.manifest),
   };
 }

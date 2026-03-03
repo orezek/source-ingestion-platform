@@ -407,6 +407,11 @@ export type BrokerEvent = z.infer<typeof brokerEventSchema>;
 export type CrawlerRunRequestedEvent = z.infer<typeof crawlerRunRequestedEventSchema>;
 export type CrawlerDetailCapturedEvent = z.infer<typeof crawlerDetailCapturedEventSchema>;
 export type CrawlerRunFinishedEvent = z.infer<typeof crawlerRunFinishedEventSchema>;
+export type IngestionLifecycleEvent =
+  | z.infer<typeof ingestionItemStartedEventSchema>
+  | z.infer<typeof ingestionItemSucceededEventSchema>
+  | z.infer<typeof ingestionItemFailedEventSchema>
+  | z.infer<typeof ingestionItemRejectedEventSchema>;
 
 export const nowIso = (): string => new Date().toISOString();
 
@@ -530,6 +535,50 @@ export const buildCrawlerRunFinishedEvent = (input: {
       newJobsCount: input.newJobsCount,
       failedRequests: input.failedRequests,
       stopReason: input.stopReason,
+    },
+  });
+
+export const buildIngestionLifecycleEvent = (input: {
+  eventType:
+    | 'ingestion.item.started'
+    | 'ingestion.item.succeeded'
+    | 'ingestion.item.failed'
+    | 'ingestion.item.rejected';
+  runId: string;
+  crawlRunId: string;
+  source: string;
+  sourceId: string;
+  dedupeKey: string;
+  documentId?: string;
+  sinkResults?: Array<{
+    sinkType: 'mongodb' | 'downloadable_json';
+    targetRef: string;
+    writeMode: 'upsert' | 'overwrite';
+  }>;
+  error?: {
+    name: string;
+    message: string;
+  };
+  reason?: string;
+  producer?: string;
+}): BrokerEvent =>
+  brokerEventSchema.parse({
+    eventId: `evt-${randomUUID()}`,
+    eventType: input.eventType,
+    eventVersion: 'v1',
+    occurredAt: nowIso(),
+    runId: input.runId,
+    correlationId: input.dedupeKey,
+    producer: input.producer ?? 'jobs-ingestion-service-worker',
+    payload: {
+      crawlRunId: input.crawlRunId,
+      source: input.source,
+      sourceId: input.sourceId,
+      dedupeKey: input.dedupeKey,
+      documentId: input.documentId,
+      sinkResults: input.sinkResults,
+      error: input.error,
+      reason: input.reason,
     },
   });
 

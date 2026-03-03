@@ -13,6 +13,10 @@ type StructuredOutputSectionProps = {
   structuredOutputDestinations: StructuredOutputDestination[];
 };
 
+function getStructuredOutputTypeLabel(type: StructuredOutputDestination['type']): string {
+  return type === 'downloadable_json' ? 'Downloadable JSON' : 'MongoDB';
+}
+
 function describeStructuredOutputConfig(destination: StructuredOutputDestination): string {
   if (destination.type === 'downloadable_json') {
     return 'Managed dashboard download';
@@ -46,7 +50,7 @@ export function StructuredOutputSection({
             {structuredOutputDestinations.map((destination) => (
               <tr key={destination.id}>
                 <td>{destination.id}</td>
-                <td>{destination.type}</td>
+                <td>{getStructuredOutputTypeLabel(destination.type)}</td>
                 <td>{describeStructuredOutputConfig(destination)}</td>
                 <td>{destination.status}</td>
               </tr>
@@ -66,28 +70,24 @@ export function StructuredOutputSection({
                 <summary>{destination.name}</summary>
                 <form action={updateStructuredOutputDestinationAction} className="control-form">
                   <input type="hidden" name="id" value={destination.id} />
+                  <input type="hidden" name="type" value={destination.type} />
                   <label>
                     <span>NAME</span>
                     <input name="name" defaultValue={destination.name} required />
                   </label>
                   <label>
                     <span>TYPE</span>
-                    <select name="type" defaultValue={destination.type}>
-                      <option value="downloadable_json">downloadable_json</option>
-                      <option value="mongodb">mongodb</option>
-                    </select>
+                    <input value={getStructuredOutputTypeLabel(destination.type)} disabled />
                   </label>
-                  <label>
-                    <span>MONGODB CONNECTION URI</span>
-                    <input
-                      name="connectionUri"
-                      defaultValue={
-                        destination.type === 'mongodb'
-                          ? (destination.config.connectionUri ?? 'env:MONGODB_URI')
-                          : 'env:MONGODB_URI'
-                      }
-                    />
-                  </label>
+                  {destination.type === 'mongodb' ? (
+                    <label>
+                      <span>MONGODB CONNECTION URI</span>
+                      <input
+                        name="connectionUri"
+                        defaultValue={destination.config.connectionUri ?? 'env:MONGODB_URI'}
+                      />
+                    </label>
+                  ) : null}
                   <p className="empty-copy">
                     Downloadable JSON uses the managed platform store and is accessed through the
                     dashboard. MongoDB keeps the current automatic per-search-space database naming
@@ -110,28 +110,43 @@ export function StructuredOutputSection({
         title="Create structured output"
         description="Register reusable output choices without exposing bucket, prefix, or local path settings in the operator UI."
       >
-        <form action={createStructuredOutputDestinationAction} className="control-form">
-          <label>
-            <span>NAME</span>
-            <input name="name" placeholder="Downloadable JSON" required />
-          </label>
-          <label>
-            <span>TYPE</span>
-            <select name="type" defaultValue="downloadable_json">
-              <option value="downloadable_json">downloadable_json</option>
-              <option value="mongodb">mongodb</option>
-            </select>
-          </label>
-          <label>
-            <span>MONGODB CONNECTION URI</span>
-            <input name="connectionUri" defaultValue="env:MONGODB_URI" />
-          </label>
-          <p className="empty-copy">
-            Downloadable JSON is stored in a managed backend and surfaced through dashboard browse
-            and download flows.
-          </p>
-          <button type="submit">Create structured output</button>
-        </form>
+        <div className="resource-edit-grid">
+          <form
+            action={createStructuredOutputDestinationAction}
+            className="control-form resource-card"
+          >
+            <input type="hidden" name="type" value="downloadable_json" />
+            <label>
+              <span>NAME</span>
+              <input name="name" placeholder="Downloadable JSON" required />
+            </label>
+            <p className="empty-copy">
+              Downloadable JSON is stored in a managed backend and surfaced through dashboard browse
+              and download flows.
+            </p>
+            <button type="submit">Create downloadable JSON output</button>
+          </form>
+
+          <form
+            action={createStructuredOutputDestinationAction}
+            className="control-form resource-card"
+          >
+            <input type="hidden" name="type" value="mongodb" />
+            <label>
+              <span>NAME</span>
+              <input name="name" placeholder="MongoDB sink" required />
+            </label>
+            <label>
+              <span>MONGODB CONNECTION URI</span>
+              <input name="connectionUri" defaultValue="env:MONGODB_URI" />
+            </label>
+            <p className="empty-copy">
+              MongoDB keeps the current automatic per-search-space database naming and collection
+              layout in V1.
+            </p>
+            <button type="submit">Create MongoDB output</button>
+          </form>
+        </div>
       </DisclosurePanel>
     </section>
   );

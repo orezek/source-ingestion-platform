@@ -19,9 +19,11 @@ import type {
 } from '@repo/control-plane-contracts';
 import {
   buildArtifactHtmlFileName,
+  buildDedupeKey,
   buildCrawlerDetailCapturedEvent,
   buildCrawlerRunFinishedEvent,
   buildCrawlerRunRequestedEvent,
+  buildIngestionLifecycleEvent,
   nowIso,
 } from '@repo/control-plane-contracts';
 import { env } from '@/server/env';
@@ -432,6 +434,50 @@ async function simulateFixtureExecution({ run, manifest }: ExecuteRunInput): Pro
           }),
         ),
     );
+
+    const dedupeKey = buildDedupeKey({
+      source: listingRecord.source,
+      searchSpaceId: manifest.searchSpaceSnapshot.id,
+      crawlRunId: manifest.runId,
+      sourceId: listingRecord.sourceId,
+    });
+
+    await publishBrokerEvent({
+      broker: brokerTransport,
+      event: buildIngestionLifecycleEvent({
+        eventType: 'ingestion.item.started',
+        runId: run.runId,
+        crawlRunId: manifest.runId,
+        source: listingRecord.source,
+        sourceId: listingRecord.sourceId,
+        dedupeKey,
+        producer: 'jobs-ingestion-service-fixture',
+      }),
+    });
+
+    await publishBrokerEvent({
+      broker: brokerTransport,
+      event: buildIngestionLifecycleEvent({
+        eventType: 'ingestion.item.succeeded',
+        runId: run.runId,
+        crawlRunId: manifest.runId,
+        source: listingRecord.source,
+        sourceId: listingRecord.sourceId,
+        dedupeKey,
+        documentId: normalizedDocument.id,
+        sinkResults: manifest.structuredOutputDestinationSnapshots.map((destination) => ({
+          sinkType: destination.type,
+          targetRef:
+            destination.type === 'downloadable_json'
+              ? destination.config.storageType === 'local_filesystem'
+                ? destination.config.basePath
+                : destination.config.bucket
+              : destination.config.connectionUri || 'env:MONGODB_URI',
+          writeMode: destination.type === 'mongodb' ? 'upsert' : 'overwrite',
+        })),
+        producer: 'jobs-ingestion-service-fixture',
+      }),
+    });
 
     await updateRuntimeStatus(run.runId, {
       workerType: 'ingestion',

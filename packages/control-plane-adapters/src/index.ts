@@ -22,7 +22,10 @@ import {
 } from '@repo/control-plane-contracts';
 
 type ArtifactStorageLike = ArtifactStorageSnapshot;
-type StructuredOutputDestinationLike = StructuredOutputDestinationSnapshot;
+type DownloadableJsonDestinationLike = Extract<
+  StructuredOutputDestinationSnapshot,
+  { type: 'downloadable_json' }
+>;
 
 export type BrokerTransportConfig =
   | {
@@ -436,52 +439,38 @@ export async function downloadStoredArtifact(input: {
 }
 
 export async function writeStructuredJsonDocument(input: {
-  destination: StructuredOutputDestinationLike;
+  destination: DownloadableJsonDestinationLike;
   crawlRunId: string;
   sourceId: string;
   document: unknown;
   projectId?: string;
 }): Promise<{ targetRef: string; writeMode: 'overwrite' }> {
   const raw = `${JSON.stringify(input.document, null, 2)}\n`;
+  const resolvedTarget = buildStructuredJsonStorageRef({
+    destination: input.destination,
+    crawlRunId: input.crawlRunId,
+    sourceId: input.sourceId,
+  });
 
-  if (
-    input.destination.type === 'downloadable_json' &&
-    input.destination.config.storageType === 'local_filesystem'
-  ) {
-    const runDir = buildStructuredRunDir(
-      path.resolve(input.destination.config.basePath),
-      input.crawlRunId,
-    );
-    await mkdir(runDir, { recursive: true });
-    const targetPath = path.join(runDir, buildStructuredJsonFileName(input.sourceId));
-    await writeFile(targetPath, raw, 'utf8');
+  if (resolvedTarget.storageType === 'local_filesystem') {
+    await mkdir(path.dirname(resolvedTarget.storagePath), { recursive: true });
+    await writeFile(resolvedTarget.storagePath, raw, 'utf8');
     return {
-      targetRef: targetPath,
+      targetRef: resolvedTarget.storagePath,
       writeMode: 'overwrite',
     };
   }
 
-  if (
-    input.destination.type === 'downloadable_json' &&
-    input.destination.config.storageType === 'gcs'
-  ) {
+  if (resolvedTarget.storageType === 'gcs') {
     const storage = getStorageClient(input.projectId);
-    const objectPath = buildGcsObjectPath(
-      input.destination.config.prefix,
-      path.posix.join(
-        'runs',
-        input.crawlRunId,
-        'records',
-        buildStructuredJsonFileName(input.sourceId),
-      ),
-    );
-    await storage.bucket(input.destination.config.bucket).file(objectPath).save(raw, {
+    const { bucket, objectPath } = parseGsUri(resolvedTarget.storagePath);
+    await storage.bucket(bucket).file(objectPath).save(raw, {
       resumable: false,
       contentType: 'application/json; charset=utf-8',
     });
 
     return {
-      targetRef: buildGsUri(input.destination.config.bucket, objectPath),
+      targetRef: resolvedTarget.storagePath,
       writeMode: 'overwrite',
     };
   }
@@ -489,6 +478,87 @@ export async function writeStructuredJsonDocument(input: {
   throw new Error(
     `Structured JSON adapter only supports downloadable_json destinations, received "${input.destination.type}".`,
   );
+}
+
+export function buildStructuredJsonStorageRef(input: {
+  destination: DownloadableJsonDestinationLike;
+  crawlRunId: string;
+  sourceId: string;
+}): {
+  storageType: 'local_filesystem' | 'gcs';
+  storagePath: string;
+  fileName: string;
+} {
+  const fileName = buildStructuredJsonFileName(input.sourceId);
+
+  if (input.destination.config.storageType === 'local_filesystem') {
+    return {
+      storageType: 'local_filesystem',
+      storagePath: path.join(
+        buildStructuredRunDir(path.resolve(input.destination.config.basePath), input.crawlRunId),
+        fileName,
+      ),
+      fileName,
+    };
+  }
+
+  if (input.destination.config.storageType === 'gcs') {
+    const objectPath = buildGcsObjectPath(
+      input.destination.config.prefix,
+      path.posix.join('runs', input.crawlRunId, 'records', fileName),
+    );
+    return {
+      storageType: 'gcs',
+      storagePath: buildGsUri(input.destination.config.bucket, objectPath),
+      fileName,
+    };
+  }
+
+  throw new Error('Unsupported downloadable_json storage type.');
+}
+
+export function assertStructuredJsonStoragePathForRun(input: {
+  destination: DownloadableJsonDestinationLike;
+  crawlRunId: string;
+  storagePath: string;
+}): string {
+  if (input.destination.config.storageType === 'local_filesystem') {
+    const expectedRunDir = path.resolve(
+      buildStructuredRunDir(path.resolve(input.destination.config.basePath), input.crawlRunId),
+    );
+    const resolvedStoragePath = path.resolve(input.storagePath);
+    const expectedPrefix = `${expectedRunDir}${path.sep}`;
+    if (resolvedStoragePath !== expectedRunDir && !resolvedStoragePath.startsWith(expectedPrefix)) {
+      throw new Error(
+        `Structured output path "${input.storagePath}" resolved outside the run output directory.`,
+      );
+    }
+
+    return resolvedStoragePath;
+  }
+
+  if (input.destination.config.storageType === 'gcs') {
+    const { bucket, objectPath } = parseGsUri(input.storagePath);
+    if (bucket !== input.destination.config.bucket) {
+      throw new Error(
+        `Structured output bucket "${bucket}" does not match the run destination bucket.`,
+      );
+    }
+
+    const expectedPrefix = buildGcsObjectPath(
+      input.destination.config.prefix,
+      `${path.posix.join('runs', input.crawlRunId)}/`,
+    );
+    if (!objectPath.startsWith(expectedPrefix)) {
+      throw new Error(
+        `Structured output path "${input.storagePath}" is outside the run output prefix.`,
+      );
+    }
+
+    return input.storagePath;
+  }
+
+  throw new Error('Unsupported downloadable_json storage type.');
 }
 
 export async function publishBrokerEvent(input: {
