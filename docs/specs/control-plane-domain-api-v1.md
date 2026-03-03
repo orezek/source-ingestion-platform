@@ -93,38 +93,23 @@ Field notes:
   - `active`
   - `archived`
 
-### ArtifactDestination
+### ManagedArtifactStorage
 
-Represents where HTML artifacts are written.
+Represents the platform-managed HTML artifact backend.
 
-Required fields:
+V1 semantics:
 
-- `id`
-- `name`
-- `type`
-- `config`
-- `status`
-- `createdAt`
-- `updatedAt`
-
-Supported `type` values in v1:
-
-- `local_filesystem`
-- `gcs`
-
-`config` examples:
-
-- local filesystem:
-  - `basePath`
-- gcs:
-  - `bucket`
-  - `prefix`
+- not an operator-managed CRUD resource
+- selected by environment and platform setup
+- may use local filesystem in local development
+- may use GCS in cloud-backed environments
+- always exposed to operators through dashboard browse/download flows
 
 #### HTML artifact layout rule
 
-Artifact destinations in v1 change only the storage root or prefix.
+Managed artifact storage in v1 changes only the storage root or prefix.
 
-They do not change the logical crawler artifact layout.
+It does not change the logical crawler artifact layout.
 
 Required logical layout:
 
@@ -143,9 +128,9 @@ That means:
 
 Examples:
 
-- local filesystem destination:
+- local filesystem backend:
   - `<basePath>/runs/<crawlRunId>/records/job-html-<sourceId>.html`
-- GCS destination:
+- GCS backend:
   - `gs://<bucket>/<prefix>/runs/<crawlRunId>/records/job-html-<sourceId>.html`
 
 ### StructuredOutputDestination
@@ -164,21 +149,15 @@ Required fields:
 
 Supported `type` values in v1:
 
+- `downloadable_json`
 - `mongodb`
-- `local_json`
-- `gcs_json`
 
 `config` examples:
 
+- `downloadable_json`
+  - no operator-facing storage config
 - `mongodb`
-  - `connectionRef`
-  - `databaseName`
-  - `collectionName`
-- `local_json`
-  - `basePath`
-- `gcs_json`
-  - `bucket`
-  - `prefix`
+  - `connectionUri`
 
 #### MongoDB compatibility rule
 
@@ -208,6 +187,17 @@ The control plane may select whether MongoDB is used.
 
 If MongoDB is used, it should not redesign the schema topology in v1.
 
+#### Downloadable JSON rule
+
+If `type = downloadable_json`, v1 should treat the storage backend as a platform-managed detail.
+
+Required behavior:
+
+- operators do not configure base paths, buckets, or prefixes
+- normalized JSON remains browsable and downloadable through the dashboard
+- the backend may be local filesystem or GCS depending on environment
+- the canonical JSON file naming remains deterministic per run and source item
+
 ### Pipeline
 
 Represents an operator-managed runnable configuration.
@@ -218,7 +208,6 @@ Required fields:
 - `name`
 - `searchSpaceId`
 - `runtimeProfileId`
-- `artifactDestinationId`
 - `structuredOutputDestinationIds`
 - `mode`
 - `status`
@@ -242,6 +231,7 @@ V1 notes:
 - `crawl_only` still persists HTML artifacts
 - `crawl_and_ingest` persists HTML and publishes events for ingestion
 - `structuredOutputDestinationIds` may be empty only when `mode = crawl_only`
+- the artifact store is platform-managed and is not selected per pipeline in v1
 
 ### RunManifest
 
@@ -254,7 +244,7 @@ Required fields:
 - `pipelineVersion`
 - `searchSpaceSnapshot`
 - `runtimeProfileSnapshot`
-- `artifactDestinationSnapshot`
+- `artifactStorageSnapshot`
 - `structuredOutputDestinationSnapshots`
 - `mode`
 - `sourceType`
@@ -341,7 +331,6 @@ Required fields:
 
 - one `SearchSpace` can be used by many `Pipeline` records
 - one `RuntimeProfile` can be used by many `Pipeline` records
-- one `ArtifactDestination` can be used by many `Pipeline` records
 - one `Pipeline` may reference zero or many `StructuredOutputDestination` records
 - one `Pipeline` produces many `Run` records
 - one `Run` owns one immutable `RunManifest`
@@ -357,6 +346,8 @@ V1 rules:
 - `startUrls` must be non-empty
 - each `startUrl` must be a valid URL
 - search-space IDs must be unique
+- `maxItemsDefault` remains on the search space
+- concurrency and requests-per-minute remain on the runtime profile
 
 ### Pipeline validation
 
@@ -364,7 +355,6 @@ V1 rules:
 
 - `searchSpaceId` must reference an active search space
 - `runtimeProfileId` must reference an active runtime profile
-- `artifactDestinationId` must reference an active artifact destination
 - `crawl_only` pipelines must not require structured output destinations
 - `crawl_and_ingest` pipelines must reference at least one structured output destination
 - only one active run per pipeline is allowed by default
@@ -433,28 +423,6 @@ Get one runtime profile.
 
 Update a runtime profile.
 
-### Artifact destinations
-
-#### `POST /api/artifact-destinations`
-
-Create an artifact destination.
-
-#### `GET /api/artifact-destinations`
-
-List artifact destinations.
-
-#### `GET /api/artifact-destinations/:id`
-
-Get one artifact destination.
-
-#### `PATCH /api/artifact-destinations/:id`
-
-Update an artifact destination.
-
-#### `POST /api/artifact-destinations/:id/validate`
-
-Validate artifact destination connectivity and write capability.
-
 ### Structured output destinations
 
 #### `POST /api/structured-output-destinations`
@@ -490,8 +458,7 @@ Request body:
   "name": "Prague Jobs Crawl And Ingest",
   "searchSpaceId": "prague-tech-jobs",
   "runtimeProfileId": "default-local-runtime",
-  "artifactDestinationId": "local-html-artifacts",
-  "structuredOutputDestinationIds": ["local-json-output", "mongo-primary"],
+  "structuredOutputDestinationIds": ["downloadable-json", "mongo-primary"],
   "mode": "crawl_and_ingest"
 }
 ```
@@ -579,6 +546,8 @@ List control-plane-visible events for the run.
 - a run is created from an active pipeline
 - a run manifest is immutable once published
 - responses should expose version and status fields explicitly
+- artifact browse/download is the operator-facing access path for raw HTML in v1
+- backend storage paths, buckets, and prefixes are internal implementation details in v1
 
 ## Versioning Rules
 

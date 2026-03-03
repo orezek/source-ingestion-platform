@@ -324,6 +324,12 @@ V1 implementations:
 - local filesystem artifact store
 - Google Cloud Storage artifact store
 
+Operator boundary:
+
+- the artifact store is platform-managed in v1
+- operators browse and download artifacts through the dashboard
+- storage paths, local directories, buckets, and prefixes are internal runtime details
+
 ### Artifact path and naming rule
 
 In v1, the artifact-store adapter must preserve the current logical layout and naming convention.
@@ -364,7 +370,7 @@ Suggested interface:
 
 ```ts
 export type StructuredSinkWriteResult = {
-  sinkType: 'mongodb' | 'local_json' | 'gcs_json';
+  sinkType: 'mongodb' | 'downloadable_json';
   targetRef: string;
   writeMode: 'upsert' | 'overwrite';
 };
@@ -383,8 +389,7 @@ export interface StructuredOutputSink {
 V1 implementations:
 
 - MongoDB canonical-document sink
-- local filesystem JSON sink
-- Google Cloud Storage JSON sink
+- managed downloadable-JSON sink backed by local filesystem or GCS
 
 ### MongoDB sink compatibility requirement
 
@@ -414,6 +419,7 @@ In v1:
 - pipeline configuration selects the active sinks
 - ingestion writes the canonical document to each configured sink
 - success and failure must be reported per sink
+- downloadable JSON remains accessible through the dashboard rather than by exposing raw storage paths
 
 If one sink succeeds and another fails:
 
@@ -425,10 +431,10 @@ If one sink succeeds and another fails:
 V1 should allow:
 
 - local filesystem artifact store
-- local filesystem JSON sink
+- managed downloadable JSON on local filesystem
 - local MongoDB sink
 - local broker adapter
-- optional real Google Cloud Pub/Sub and GCS adapters for integration testing
+- optional real Google Cloud Pub/Sub and GCS-backed downloadable JSON for integration testing
 
 ## Deferred Beyond V1
 

@@ -172,7 +172,7 @@ Owns:
 Primary features:
 
 - create and edit search spaces
-- create and edit output destinations
+- create and edit structured output destinations
 - create and edit pipeline definitions
 - create and edit runtime profiles
 - validate configuration before activation
@@ -246,7 +246,7 @@ Owns normalization and structured output generation.
 Primary features:
 
 - subscribe to detail artifact events
-- load HTML artifacts from configured storage
+- load HTML artifacts from platform-managed storage
 - run deterministic parsing and completeness checks
 - run LLM cleaning and extraction
 - write normalized outputs to one or more sinks
@@ -256,7 +256,7 @@ Primary features:
 V1 structured-output behavior should stay simple:
 
 - ingestion produces one canonical normalized document shape
-- MongoDB and JSON-based sinks receive that canonical shape
+- MongoDB and downloadable JSON outputs receive that canonical shape
 - output-template selection is deferred to v2
 
 ### 5. Storage and Output Routing
@@ -265,13 +265,20 @@ Owns artifacts and normalized output delivery.
 
 Primary features:
 
-- configurable HTML artifact destination
+- managed HTML artifact storage
 - configurable normalized document destinations
-- file output option
+- downloadable JSON output option
 - database output option
 - object storage option
 - support for one or many sinks per pipeline
 - retention and naming policy support
+
+V1 storage boundary:
+
+- raw HTML artifact storage is platform-managed and not configured per pipeline
+- operators browse and download artifacts through the dashboard
+- normalized JSON may be exposed as a downloadable output without exposing storage plumbing in the UI
+- local filesystem and GCS remain valid backend implementations behind the same adapter boundary
 
 ### 6. Eventing and Messaging
 
@@ -323,7 +330,7 @@ Primary features:
 
 - create and edit search spaces
 - configure whether ingestion is enabled
-- configure artifact and output destinations
+- configure structured output destinations
 - support full CRUD, archive, and safe-delete flows for reusable resources
 - start and monitor runs
 - prevent duplicate concurrent starts for the same pipeline by default
@@ -390,10 +397,8 @@ Suggested fields:
 
 Supported destination types in v1:
 
-- `local_filesystem`
-- `object_storage`
 - `mongodb`
-- `json_export`
+- `downloadable_json`
 
 ### PipelineDefinition
 
@@ -405,7 +410,6 @@ Suggested fields:
 - `name`
 - `searchSpaceId`
 - `runtimeProfileId`
-- `artifactDestinationId`
 - `normalizedOutputDestinationIds`
 - `ingestionMode`
 - `runMode`
@@ -428,7 +432,7 @@ Suggested fields:
 - `pipelineVersion`
 - `searchSpaceSnapshot`
 - `runtimeSnapshot`
-- `artifactDestinationSnapshot`
+- `artifactStorageSnapshot`
 - `normalizedOutputDestinationSnapshots`
 - `ingestionMode`
 - `createdAt`
@@ -493,6 +497,11 @@ This section defines the intended shape, not final OpenAPI.
 - `GET /output-destinations/:id`
 - `PATCH /output-destinations/:id`
 - `POST /output-destinations/:id/validate`
+
+V1 note:
+
+- artifact storage itself is not an operator-managed output destination
+- the dashboard and later API expose artifacts for browse/download without exposing backend paths or buckets
 
 ### Pipelines
 
