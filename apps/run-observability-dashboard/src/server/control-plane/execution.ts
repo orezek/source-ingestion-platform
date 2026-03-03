@@ -11,7 +11,11 @@ import {
   writeHtmlArtifact,
   writeStructuredJsonDocument,
 } from '@repo/control-plane-adapters';
-import { actorOperatorInputSchema, deriveMongoDbName } from '@repo/job-search-spaces';
+import {
+  actorOperatorInputSchema,
+  deriveMongoDbName,
+  searchSpaceConfigSchema,
+} from '@repo/job-search-spaces';
 import type {
   ControlPlaneRun,
   RunManifest,
@@ -53,6 +57,7 @@ type CrawlerWorkerEnvInput = {
   runId: string;
   mongoDbName: string;
   crawlerSummaryPath: string;
+  searchSpacesDir: string;
 };
 
 type IngestionWorkerEnvInput = {
@@ -198,6 +203,7 @@ export function buildCrawlerWorkerEnvOverrides(
     ENABLE_MONGO_RUN_SUMMARY_WRITE: 'true',
     CRAWL_RUN_ID: input.runId,
     CRAWL_RUN_SUMMARY_FILE_PATH: input.crawlerSummaryPath,
+    JOB_COMPASS_SEARCH_SPACES_DIR: input.searchSpacesDir,
     LOCAL_BROKER_DIR: controlPlaneBrokerRootDir,
     JOB_COMPASS_BROKER_BACKEND: env.CONTROL_PLANE_BROKER_BACKEND,
     ENABLE_INGESTION_TRIGGER: 'false',
@@ -245,6 +251,7 @@ export function buildIngestionWorkerEnvOverrides(
     MONGODB_DB_NAME: input.mongoDbName,
     LOCAL_BROKER_DIR: controlPlaneBrokerRootDir,
     JOB_COMPASS_BROKER_BACKEND: env.CONTROL_PLANE_BROKER_BACKEND,
+    INGESTION_PARSER_BACKEND: env.CONTROL_PLANE_INGESTION_PARSER_BACKEND,
   };
 
   if (env.CONTROL_PLANE_BROKER_BACKEND === 'gcp_pubsub' && env.CONTROL_PLANE_GCP_PROJECT_ID) {
@@ -276,10 +283,21 @@ export async function assertExecutableRunPrerequisites(manifest: RunManifest): P
     return;
   }
 
+  if (env.CONTROL_PLANE_INGESTION_PARSER_BACKEND === 'fixture') {
+    return;
+  }
+
   const hasGeminiKey = await hasWorkerEnvValueInAppDir(ingestionAppRootDir, 'GEMINI_API_KEY');
   if (!hasGeminiKey) {
     throw new Error(
       'CONTROL_PLANE_EXECUTION_MODE=local_cli with ingestion enabled requires GEMINI_API_KEY in the runtime environment or apps/jobs-ingestion-service/.env(.local).',
+    );
+  }
+
+  const hasLangsmithKey = await hasWorkerEnvValueInAppDir(ingestionAppRootDir, 'LANGSMITH_API_KEY');
+  if (!hasLangsmithKey) {
+    throw new Error(
+      'CONTROL_PLANE_EXECUTION_MODE=local_cli with Gemini ingestion requires LANGSMITH_API_KEY in the runtime environment or apps/jobs-ingestion-service/.env(.local).',
     );
   }
 }
@@ -298,6 +316,39 @@ function buildGeneratedActorInput(manifest: RunManifest) {
     allowInactiveMarkingOnPartialRuns:
       manifest.searchSpaceSnapshot.allowInactiveMarkingOnPartialRuns,
   });
+}
+
+async function writeGeneratedSearchSpaceConfig(manifest: RunManifest): Promise<string> {
+  const searchSpacesDir = path.join(
+    buildControlPlaneRunDir(manifest.runId),
+    'generated-search-spaces',
+  );
+  const filePath = path.join(searchSpacesDir, `${manifest.searchSpaceSnapshot.id}.json`);
+  const generatedSearchSpace = searchSpaceConfigSchema.parse({
+    searchSpaceId: manifest.searchSpaceSnapshot.id,
+    description: `Generated from control-plane run ${manifest.runId}`,
+    startUrls: manifest.searchSpaceSnapshot.startUrls,
+    crawlDefaults: {
+      maxItems: manifest.searchSpaceSnapshot.maxItemsDefault,
+      maxConcurrency: manifest.runtimeProfileSnapshot.crawlerMaxConcurrency,
+      maxRequestsPerMinute: manifest.runtimeProfileSnapshot.crawlerMaxRequestsPerMinute,
+      debugLog: manifest.runtimeProfileSnapshot.debugLog,
+      proxyConfiguration: {
+        useApifyProxy: false,
+      },
+    },
+    reconciliation: {
+      allowInactiveMarkingOnPartialRuns:
+        manifest.searchSpaceSnapshot.allowInactiveMarkingOnPartialRuns,
+    },
+    ingestion: {
+      triggerEnabledByDefault: false,
+    },
+  });
+
+  await mkdir(searchSpacesDir, { recursive: true });
+  await writeFile(filePath, `${JSON.stringify(generatedSearchSpace, null, 2)}\n`, 'utf8');
+  return searchSpacesDir;
 }
 
 export async function writeGeneratedActorInput(
@@ -534,6 +585,7 @@ function spawnWorker(input: {
 async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promise<void> {
   const artifactRoot = getManagedStorageRootLabel(manifest.artifactStorageSnapshot);
   const mongoDbName = getMongoDbName(manifest);
+  const searchSpacesDir = await writeGeneratedSearchSpaceConfig(manifest);
   const crawlerLogPath = buildRunWorkerLogPath(run.runId, 'crawler');
   const ingestionLogPath = buildRunWorkerLogPath(run.runId, 'ingestion');
   const crawlerRuntimePath = buildRunWorkerRuntimePath(run.runId, 'crawler');
@@ -551,6 +603,7 @@ async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promi
     counters: {
       runtimePath: crawlerRuntimePath,
       summaryPath: crawlerSummaryPath,
+      searchSpacesDir,
     },
   });
 
@@ -621,6 +674,7 @@ async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promi
       runId: run.runId,
       mongoDbName,
       crawlerSummaryPath,
+      searchSpacesDir,
     }),
   });
 
@@ -634,6 +688,7 @@ async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promi
       summaryPath: crawlerSummaryPath,
       artifactRoot,
       brokerRoot: controlPlaneBrokerRootDir,
+      searchSpacesDir,
     },
   });
 

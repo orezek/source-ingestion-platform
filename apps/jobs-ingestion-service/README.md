@@ -218,8 +218,15 @@ Key variables:
 - `CRAWL_RUNS_SUBDIR`
 - `INGESTION_SAMPLE_SIZE`
 - `INGESTION_CONCURRENCY`
+- `INGESTION_PARSER_BACKEND`
+- `GEMINI_API_KEY`
+- `LANGSMITH_API_KEY`
 - `INGESTION_API_HOST`
 - `INGESTION_API_PORT`
+
+`INGESTION_PARSER_BACKEND=gemini` is the default production-like path and requires both Gemini and
+LangSmith credentials. `INGESTION_PARSER_BACKEND=fixture` is available for deterministic local
+worker validation without external LLM calls.
 
 ## Commands
 

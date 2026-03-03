@@ -29,6 +29,7 @@ const envSchema = z.object({
     'Crawlee logger constant for setting up logging levels.',
   ),
   JOB_COMPASS_DB_PREFIX: z.string().trim().min(1).default('job-compass'),
+  JOB_COMPASS_SEARCH_SPACES_DIR: toOptionalString,
   JOB_COMPASS_ARTIFACT_STORE_TYPE: z.enum(['local_filesystem', 'gcs']).default('local_filesystem'),
   LOCAL_SHARED_SCRAPED_JOBS_DIR: z.string().default('../jobs-ingestion-service/scrapped_jobs'),
   JOB_COMPASS_GCS_BUCKET: toOptionalString,

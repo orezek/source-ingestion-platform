@@ -57,6 +57,14 @@ Control-plane execution modes:
 Execution mode is env-driven in v1. The `/control-plane` route shows the active mode in the
 header, but does not provide a runtime selector.
 
+Local ingestion parser backend:
+
+- `CONTROL_PLANE_INGESTION_PARSER_BACKEND=gemini`
+  - requires `GEMINI_API_KEY` and `LANGSMITH_API_KEY` for `local_cli` ingest runs
+- `CONTROL_PLANE_INGESTION_PARSER_BACKEND=fixture`
+  - uses a deterministic local parser for end-to-end worker validation without external LLM
+    credentials
+
 Broker adapter modes:
 
 - `CONTROL_PLANE_BROKER_BACKEND=local`

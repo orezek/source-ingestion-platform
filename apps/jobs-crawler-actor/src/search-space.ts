@@ -13,9 +13,13 @@ import {
   type ResolvedActorRuntimeInput,
   type SearchSpaceConfig,
 } from '@repo/job-search-spaces';
+import { envs } from './env-setup.js';
 
 const appRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const defaultSearchSpacesDir = path.join(appRootDir, 'search-spaces');
+const searchSpacesDir = envs.JOB_COMPASS_SEARCH_SPACES_DIR
+  ? path.resolve(envs.JOB_COMPASS_SEARCH_SPACES_DIR)
+  : defaultSearchSpacesDir;
 
 export type CliActorOverrides = Partial<ActorOperatorInput> & {
   useApifyProxy?: boolean;
@@ -72,7 +76,7 @@ export const parseCliActorOverrides = (argv: string[]): CliActorOverrides => {
 
 export const loadSearchSpaceConfig = async (searchSpaceId: string): Promise<SearchSpaceConfig> => {
   const normalizedSearchSpaceId = searchSpaceIdSchema.parse(searchSpaceId);
-  const filePath = path.join(defaultSearchSpacesDir, `${normalizedSearchSpaceId}.json`);
+  const filePath = path.join(searchSpacesDir, `${normalizedSearchSpaceId}.json`);
   try {
     const raw = await readFile(filePath, 'utf8');
     return searchSpaceConfigSchema.parse(JSON.parse(raw) as unknown);
@@ -92,8 +96,8 @@ export const loadSearchSpaceConfig = async (searchSpaceId: string): Promise<Sear
 };
 
 export const listAvailableSearchSpaceIds = async (): Promise<string[]> => {
-  const entries = await readdir(defaultSearchSpacesDir, { withFileTypes: true });
-  return entries
+  const searchSpaceEntries = await readdir(searchSpacesDir, { withFileTypes: true });
+  return searchSpaceEntries
     .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
     .map((entry) => entry.name.replace(/\.json$/u, ''))
     .sort((left, right) => left.localeCompare(right));

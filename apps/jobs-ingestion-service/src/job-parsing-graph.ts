@@ -4,16 +4,16 @@ import type { AppLogger } from './logger.js';
 import { loadDetailPage, type LoadedDetailPage } from './html-detail-loader.js';
 import type { LocalInputRecord } from './input-provider.js';
 import {
+  type DetailTextCleaner,
   type ExtractionTelemetry,
+  type JobDetailExtractor,
   type LlmUsageTelemetry,
-  GeminiDetailTextCleaner,
-  GeminiJobDetailExtractor,
 } from './extraction.js';
 import { type ExtractedJobDetail, type UnifiedJobAd, unifiedJobAdSchema } from './schema.js';
 
 type JobParsingGraphConfig = {
-  textCleaner: GeminiDetailTextCleaner;
-  extractor: GeminiJobDetailExtractor;
+  textCleaner: DetailTextCleaner;
+  extractor: JobDetailExtractor;
   minRelevantTextChars: number;
   logTextTransformContent: boolean;
   textTransformPreviewChars: number;

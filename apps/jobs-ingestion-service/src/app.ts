@@ -7,7 +7,12 @@ import { loadEnv } from '@repo/env-config';
 import { deriveMongoDbName, searchSpaceIdSchema } from '@repo/job-search-spaces';
 import { z } from 'zod';
 
-import { GeminiDetailTextCleaner, GeminiJobDetailExtractor } from './extraction.js';
+import {
+  FixtureDetailTextCleaner,
+  FixtureJobDetailExtractor,
+  GeminiDetailTextCleaner,
+  GeminiJobDetailExtractor,
+} from './extraction.js';
 import { IncompleteDetailPageError } from './html-detail-loader.js';
 import { LocalScrapedJobsInputProvider, type LocalInputRecord } from './input-provider.js';
 import { JobParsingGraph } from './job-parsing-graph.js';
@@ -59,6 +64,7 @@ const thinkingLevelSchema = z.preprocess(
 );
 
 const logLevelSchema = z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']);
+const parserBackendSchema = z.enum(['gemini', 'fixture']);
 const toOptionalString = z.preprocess((value) => {
   if (typeof value === 'string' && value.trim() === '') {
     return undefined;
@@ -77,6 +83,7 @@ export const envSchema = z.object({
   INPUT_RECORDS_DIR_NAME: z.string().default('records'),
   INGESTION_SAMPLE_SIZE: toOptionalPositiveInt.default(null),
   INGESTION_CONCURRENCY: z.coerce.number().int().positive().max(32).default(1),
+  INGESTION_PARSER_BACKEND: parserBackendSchema.default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   LANGSMITH_API_KEY: z.string().optional(),
   LLM_EXTRACTOR_PROMPT_NAME: z.string().default('jobcompass-job-ad-structured-extractor'),
@@ -522,6 +529,10 @@ type ParseRecordsOptions = {
 };
 
 const ensureLlmRuntimeConfigured = (): void => {
+  if (envs.INGESTION_PARSER_BACKEND !== 'gemini') {
+    return;
+  }
+
   if (!envs.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is required to run detail-page extraction.');
   }
@@ -538,28 +549,34 @@ const parserGraphCache = new Map<string, Promise<JobParsingGraph>>();
 const createParserGraph = async (searchSpaceId: string): Promise<JobParsingGraph> => {
   ensureLlmRuntimeConfigured();
 
-  const extractor = new GeminiJobDetailExtractor({
-    langsmithApiKey: envs.LANGSMITH_API_KEY!,
-    langsmithPromptName: llmExtractorPromptName,
-    apiKey: envs.GEMINI_API_KEY!,
-    model: envs.GEMINI_MODEL,
-    temperature: envs.GEMINI_TEMPERATURE,
-    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
-    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
-    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
-    logger,
-  });
-  const textCleaner = new GeminiDetailTextCleaner({
-    langsmithApiKey: envs.LANGSMITH_API_KEY!,
-    langsmithPromptName: llmCleanerPromptName,
-    apiKey: envs.GEMINI_API_KEY!,
-    model: envs.GEMINI_MODEL,
-    temperature: envs.GEMINI_TEMPERATURE,
-    thinkingLevel: envs.GEMINI_THINKING_LEVEL,
-    inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
-    outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
-    logger,
-  });
+  const extractor =
+    envs.INGESTION_PARSER_BACKEND === 'fixture'
+      ? new FixtureJobDetailExtractor()
+      : new GeminiJobDetailExtractor({
+          langsmithApiKey: envs.LANGSMITH_API_KEY!,
+          langsmithPromptName: llmExtractorPromptName,
+          apiKey: envs.GEMINI_API_KEY!,
+          model: envs.GEMINI_MODEL,
+          temperature: envs.GEMINI_TEMPERATURE,
+          thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+          inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
+          outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
+          logger,
+        });
+  const textCleaner =
+    envs.INGESTION_PARSER_BACKEND === 'fixture'
+      ? new FixtureDetailTextCleaner()
+      : new GeminiDetailTextCleaner({
+          langsmithApiKey: envs.LANGSMITH_API_KEY!,
+          langsmithPromptName: llmCleanerPromptName,
+          apiKey: envs.GEMINI_API_KEY!,
+          model: envs.GEMINI_MODEL,
+          temperature: envs.GEMINI_TEMPERATURE,
+          thinkingLevel: envs.GEMINI_THINKING_LEVEL,
+          inputPriceUsdPerMillionTokens: envs.GEMINI_INPUT_PRICE_USD_PER_1M_TOKENS,
+          outputPriceUsdPerMillionTokens: envs.GEMINI_OUTPUT_PRICE_USD_PER_1M_TOKENS,
+          logger,
+        });
 
   return new JobParsingGraph({
     textCleaner,
@@ -683,7 +700,8 @@ const parseRecords = async (
     {
       inputRecords: inputRecords.length,
       sampleSize: sampleSize ?? 'all',
-      model: envs.GEMINI_MODEL,
+      model: envs.INGESTION_PARSER_BACKEND === 'fixture' ? 'fixture-parser' : envs.GEMINI_MODEL,
+      parserBackend: envs.INGESTION_PARSER_BACKEND,
       llmExtractorPromptName,
       llmCleanerPromptName,
       concurrency: workerCount,

@@ -56,6 +56,7 @@ beforeEach(() => {
       '/tmp/jobcompass-control-plane-execution-test/json-output',
     CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND: 'local_filesystem',
     CONTROL_PLANE_DOWNLOADABLE_OUTPUT_BACKEND: 'local_filesystem',
+    CONTROL_PLANE_INGESTION_PARSER_BACKEND: 'gemini',
     CONTROL_PLANE_BROKER_BACKEND: 'local',
     CONTROL_PLANE_GCP_PUBSUB_TOPIC: 'jobcompass-control-plane-events',
     CONTROL_PLANE_GCP_PUBSUB_SUBSCRIPTION_PREFIX: 'jobcompass-control-plane-run',
@@ -83,12 +84,16 @@ describe('control-plane local_cli env overrides', () => {
       mongoDbName: 'job-compass-prague-tech-jobs',
       crawlerSummaryPath:
         '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
     });
 
     expect(envOverrides.CRAWLEE_LOG_LEVEL).toBe('INFO');
     expect(envOverrides.MONGODB_URI).toBe('mongodb://127.0.0.1:27027');
     expect(envOverrides.ENABLE_MONGO_RUN_SUMMARY_WRITE).toBe('true');
     expect(envOverrides.ENABLE_INGESTION_TRIGGER).toBe('false');
+    expect(envOverrides.JOB_COMPASS_SEARCH_SPACES_DIR).toBe(
+      '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
+    );
     expect(envOverrides.JOB_COMPASS_ARTIFACT_STORE_TYPE).toBe('local_filesystem');
     expect(envOverrides.JOB_COMPASS_BROKER_BACKEND).toBe('local');
   });
@@ -112,6 +117,7 @@ describe('control-plane local_cli env overrides', () => {
       mongoDbName: 'job-compass-prague-tech-jobs',
       crawlerSummaryPath:
         '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
     });
 
     expect(envOverrides.CRAWLEE_LOG_LEVEL).toBe('DEBUG');
@@ -175,6 +181,7 @@ describe('control-plane local_cli env overrides', () => {
       mongoDbName: 'job-compass-prague-tech-jobs',
       crawlerSummaryPath:
         '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
     });
 
     const ingestionEnv = buildIngestionWorkerEnvOverrides({
@@ -187,8 +194,91 @@ describe('control-plane local_cli env overrides', () => {
     expect(crawlerEnv.JOB_COMPASS_BROKER_BACKEND).toBe('gcp_pubsub');
     expect(crawlerEnv.JOB_COMPASS_GCP_PROJECT_ID).toBe('jobcompass-test');
     expect(ingestionEnv.MONGODB_URI).toBe('mongodb://127.0.0.1:27027');
+    expect(ingestionEnv.INGESTION_PARSER_BACKEND).toBe('gemini');
     expect(ingestionEnv.JOB_COMPASS_BROKER_BACKEND).toBe('gcp_pubsub');
     expect(ingestionEnv.JOB_COMPASS_GCP_PUBSUB_TOPIC).toBe('jobcompass-control-plane-events');
+  });
+
+  it('requires LANGSMITH_API_KEY for local_cli Gemini ingestion preflight', async () => {
+    Object.assign(process.env, {
+      GEMINI_API_KEY: 'test-gemini-key',
+    });
+    Reflect.deleteProperty(process.env, 'LANGSMITH_API_KEY');
+    vi.resetModules();
+
+    const { assertExecutableRunPrerequisites } = await import('@/server/control-plane/execution');
+
+    await expect(
+      assertExecutableRunPrerequisites(
+        buildManifest({
+          mode: 'crawl_and_ingest',
+          runtimeProfileSnapshot: {
+            id: 'runtime-test',
+            name: 'Runtime test',
+            crawlerMaxConcurrency: 1,
+            crawlerMaxRequestsPerMinute: 30,
+            ingestionConcurrency: 1,
+            ingestionEnabled: true,
+            debugLog: false,
+          },
+          structuredOutputDestinationSnapshots: [
+            {
+              id: 'json-download',
+              name: 'Downloadable JSON',
+              type: 'downloadable_json' as const,
+              config: {
+                storageType: 'local_filesystem' as const,
+                basePath: '/tmp/jobcompass-control-plane-execution-test/json-output',
+              },
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow(/LANGSMITH_API_KEY/i);
+  });
+
+  it('allows local_cli fixture ingestion preflight without LLM secrets', async () => {
+    Object.assign(process.env, {
+      CONTROL_PLANE_INGESTION_PARSER_BACKEND: 'fixture',
+    });
+    Reflect.deleteProperty(process.env, 'GEMINI_API_KEY');
+    Reflect.deleteProperty(process.env, 'LANGSMITH_API_KEY');
+    vi.resetModules();
+
+    const { assertExecutableRunPrerequisites, buildIngestionWorkerEnvOverrides } =
+      await import('@/server/control-plane/execution');
+
+    const manifest = buildManifest({
+      mode: 'crawl_and_ingest',
+      runtimeProfileSnapshot: {
+        id: 'runtime-test',
+        name: 'Runtime test',
+        crawlerMaxConcurrency: 1,
+        crawlerMaxRequestsPerMinute: 30,
+        ingestionConcurrency: 1,
+        ingestionEnabled: true,
+        debugLog: false,
+      },
+      structuredOutputDestinationSnapshots: [
+        {
+          id: 'json-download',
+          name: 'Downloadable JSON',
+          type: 'downloadable_json' as const,
+          config: {
+            storageType: 'local_filesystem' as const,
+            basePath: '/tmp/jobcompass-control-plane-execution-test/json-output',
+          },
+        },
+      ],
+    });
+
+    await expect(assertExecutableRunPrerequisites(manifest)).resolves.toBeUndefined();
+
+    const ingestionEnv = buildIngestionWorkerEnvOverrides({
+      manifest,
+      mongoDbName: 'job-compass-prague-tech-jobs',
+    });
+    expect(ingestionEnv.INGESTION_PARSER_BACKEND).toBe('fixture');
   });
 
   it('detects worker keys from app-local env files for local_cli preflight', async () => {

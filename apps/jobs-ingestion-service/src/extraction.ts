@@ -267,6 +267,18 @@ export type TextCleaningResult = {
   telemetry: LlmUsageTelemetry;
 };
 
+export type DetailTextCleaner = {
+  cleanText: (textContent: string) => Promise<TextCleaningResult>;
+};
+
+export type JobDetailExtractor = {
+  getModelName: () => string;
+  extractFromDetailPage: (
+    listingRecord: SourceListingRecord,
+    detailPageText: string,
+  ) => Promise<ExtractionResult>;
+};
+
 export class GeminiDetailTextCleaner {
   private readonly promptName: string;
 
@@ -466,6 +478,84 @@ export class GeminiJobDetailExtractor {
         llmInputCostUsd,
         llmOutputCostUsd,
         llmTotalCostUsd: llmInputCostUsd + llmOutputCostUsd,
+      },
+    };
+  }
+}
+
+export class FixtureDetailTextCleaner implements DetailTextCleaner {
+  async cleanText(textContent: string): Promise<TextCleaningResult> {
+    return {
+      text: textContent.trim(),
+      telemetry: {
+        llmCallDurationSeconds: 0,
+        llmInputTokens: 0,
+        llmOutputTokens: 0,
+        llmTotalTokens: 0,
+        llmInputCostUsd: 0,
+        llmOutputCostUsd: 0,
+        llmTotalCostUsd: 0,
+      },
+    };
+  }
+}
+
+export class FixtureJobDetailExtractor implements JobDetailExtractor {
+  getModelName(): string {
+    return 'fixture-parser';
+  }
+
+  async extractFromDetailPage(
+    listingRecord: SourceListingRecord,
+    detailPageText: string,
+  ): Promise<ExtractionResult> {
+    return {
+      detail: extractedJobDetailSchema.parse({
+        canonicalTitle: listingRecord.jobTitle,
+        seniorityLevel: null,
+        employmentTypes: ['other'],
+        workModes: ['unknown'],
+        locations: [
+          {
+            city: null,
+            region: null,
+            country: null,
+            addressText: listingRecord.location,
+          },
+        ],
+        salary: {
+          min: null,
+          max: null,
+          currency: null,
+          period: 'unknown',
+        },
+        languageRequirements: [],
+        techStack: [],
+        travelRequirements: null,
+        startDateText: null,
+        applicationDeadlineText: null,
+        applyUrl: listingRecord.adUrl,
+        recruiterContacts: {
+          contactName: null,
+          contactEmail: null,
+          contactPhone: null,
+        },
+        responsibilities: [],
+        requirements: [],
+        niceToHave: [],
+        benefits: [],
+        hiringProcess: [],
+        jobDescription: detailPageText.trim() || null,
+        companyDescription: null,
+      }),
+      telemetry: {
+        llmCallDurationSeconds: 0,
+        llmInputTokens: 0,
+        llmOutputTokens: 0,
+        llmTotalTokens: 0,
+        llmInputCostUsd: 0,
+        llmOutputCostUsd: 0,
+        llmTotalCostUsd: 0,
       },
     };
   }

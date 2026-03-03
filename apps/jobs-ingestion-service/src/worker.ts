@@ -323,6 +323,8 @@ async function main(): Promise<void> {
         } else if (event.eventType === 'crawler.run.finished') {
           counters.processedEventIds.push(event.eventId);
           counters.crawlerFinished = true;
+        } else {
+          counters.processedEventIds.push(event.eventId);
         }
 
         await writeWorkerRuntime(path.resolve(runtimePath), {
