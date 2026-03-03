@@ -2,6 +2,7 @@ import { loadEnv } from '@repo/env-config';
 import { z } from 'zod';
 
 const dataModeSchema = z.enum(['mongo', 'fixture']);
+const executionModeSchema = z.enum(['fixture', 'local_cli']);
 const timeRangeSchema = z.enum(['24h', '7d', '30d']);
 const optionalStringSchema = z.preprocess((value) => {
   if (typeof value === 'string' && value.trim() === '') {
@@ -21,6 +22,18 @@ const envSchema = z.object({
   MONGODB_INGESTION_TRIGGER_REQUESTS_COLLECTION: z.string().default('ingestion_trigger_requests'),
   DASHBOARD_DEFAULT_TIME_RANGE: timeRangeSchema.default('7d'),
   DASHBOARD_FIXTURE_DIR: z.string().default('./src/test/fixtures'),
+  CONTROL_PLANE_DATA_DIR: z.string().default('./storage/control-plane'),
+  CONTROL_PLANE_BROKER_DIR: z.string().default('./storage/control-plane/broker'),
+  CONTROL_PLANE_WORKER_LOG_DIR: z.string().default('./storage/control-plane/logs'),
+  CONTROL_PLANE_BOOTSTRAP_SEARCH_SPACES_DIR: z
+    .string()
+    .default('../jobs-crawler-actor/search-spaces'),
+  CONTROL_PLANE_DEFAULT_ARTIFACT_DIR: z.string().default('../jobs-ingestion-service/scrapped_jobs'),
+  CONTROL_PLANE_DEFAULT_JSON_OUTPUT_DIR: z
+    .string()
+    .default('../jobs-ingestion-service/output/control-plane'),
+  CONTROL_PLANE_EXECUTION_MODE: executionModeSchema.default('fixture'),
+  CONTROL_PLANE_PNPM_BIN: z.string().default('pnpm'),
 });
 
 type ParsedDashboardEnv = z.infer<typeof envSchema>;

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,11 @@ import { z } from 'zod';
 import { PlaywrightCrawler, Dataset, createPlaywrightRouter, log, type LogLevel } from 'crawlee';
 import { Actor, type ProxyConfigurationOptions } from 'apify';
 import { MongoClient } from 'mongodb';
+import {
+  buildCrawlerDetailCapturedEvent,
+  buildCrawlerRunFinishedEvent,
+  writeBrokerEvent,
+} from '@repo/control-plane-contracts';
 import {
   deriveMongoDbName,
   actorOperatorInputSchema,
@@ -206,6 +212,18 @@ type IngestionTriggerResult = {
   responseBody?: unknown;
 };
 
+type LocalBrokerPublishPayload = {
+  runId: string;
+  crawlRunId: string;
+  searchSpaceId: string;
+  source: string;
+  sourceId: string;
+  listingRecord: IngestionItemTriggerPayload['listingRecord'];
+  detailHtmlPath: string;
+  detailHtmlSha256: string;
+  detailHtmlByteSize: number;
+};
+
 function serializeErrorForSummary(error: unknown): {
   name: string;
   message: string;
@@ -394,6 +412,66 @@ async function triggerIngestionItemBestEffort(
     };
   } finally {
     clearTimeout(timeoutHandle);
+  }
+}
+
+async function publishIngestionItemToBrokerBestEffort(
+  brokerRootDir: string,
+  payload: LocalBrokerPublishPayload,
+): Promise<IngestionTriggerResult> {
+  try {
+    await writeBrokerEvent(
+      brokerRootDir,
+      buildCrawlerDetailCapturedEvent({
+        runId: payload.runId,
+        crawlRunId: payload.crawlRunId,
+        searchSpaceId: payload.searchSpaceId,
+        source: payload.source,
+        sourceId: payload.sourceId,
+        listingRecord: payload.listingRecord,
+        artifact: {
+          artifactType: 'html',
+          storageType: 'local_filesystem',
+          storagePath: payload.detailHtmlPath,
+          checksum: payload.detailHtmlSha256,
+          sizeBytes: payload.detailHtmlByteSize,
+        },
+        producer: 'jobs-crawler-actor',
+      }),
+    );
+
+    log.info('Published crawler detail artifact event to local broker', {
+      source: payload.source,
+      sourceId: payload.sourceId,
+      crawlRunId: payload.crawlRunId,
+      searchSpaceId: payload.searchSpaceId,
+      brokerRootDir,
+    });
+
+    return {
+      enabled: true,
+      attempted: true,
+      ok: true,
+      accepted: true,
+      deduplicated: false,
+    };
+  } catch (error) {
+    const normalizedError = serializeErrorForSummary(error);
+    log.warning('Failed to publish crawler detail artifact to local broker (best effort)', {
+      source: payload.source,
+      sourceId: payload.sourceId,
+      crawlRunId: payload.crawlRunId,
+      searchSpaceId: payload.searchSpaceId,
+      brokerRootDir,
+      error,
+    });
+
+    return {
+      enabled: true,
+      attempted: true,
+      ok: false,
+      error: normalizedError,
+    };
   }
 }
 
@@ -588,16 +666,28 @@ router.addHandler('DETAILS', async ({ request, page, log, crawler }) => {
       };
 
       ingestionTriggerAttemptedCount += 1;
-      const triggerResult = await triggerIngestionItemBestEffort(ingestionTriggerConfig, {
-        source: safeResult.data.source,
-        crawlRunId,
-        searchSpaceId: input.searchSpaceId,
-        mongoDbName,
-        listingRecord,
-        detailHtmlPath,
-        datasetFileName: 'dataset.json',
-        datasetRecordIndex: sharedDatasetRecords.length - 1,
-      });
+      const triggerResult = localBrokerDir
+        ? await publishIngestionItemToBrokerBestEffort(localBrokerDir, {
+            runId: crawlRunId,
+            crawlRunId,
+            searchSpaceId: input.searchSpaceId,
+            source: safeResult.data.source,
+            sourceId: safeResult.data.sourceId,
+            listingRecord,
+            detailHtmlPath,
+            detailHtmlSha256: safeResult.data.detailHtmlSha256,
+            detailHtmlByteSize: safeResult.data.detailHtmlByteSize,
+          })
+        : await triggerIngestionItemBestEffort(ingestionTriggerConfig, {
+            source: safeResult.data.source,
+            crawlRunId,
+            searchSpaceId: input.searchSpaceId,
+            mongoDbName,
+            listingRecord,
+            detailHtmlPath,
+            datasetFileName: 'dataset.json',
+            datasetRecordIndex: sharedDatasetRecords.length - 1,
+          });
 
       if (triggerResult.accepted) {
         ingestionTriggerAcceptedCount += 1;
@@ -807,7 +897,7 @@ const input = resolvedActorInput.actorInput as ResolvedActorRuntimeInput & {
   proxyConfiguration?: ProxyConfigurationOptions;
 };
 
-const crawlRunId = randomUUID();
+const crawlRunId = envs.CRAWL_RUN_ID ?? randomUUID();
 const startUrls = input.startUrls;
 const mongoDbName = deriveMongoDbName({
   dbPrefix: envs.JOB_COMPASS_DB_PREFIX,
@@ -830,6 +920,12 @@ const ingestionTriggerConfig: IngestionTriggerConfig = {
   url: envs.INGESTION_TRIGGER_URL,
   timeoutMs: envs.INGESTION_TRIGGER_TIMEOUT_MS,
 };
+const localBrokerDir = envs.LOCAL_BROKER_DIR
+  ? path.resolve(actorAppRootDir, envs.LOCAL_BROKER_DIR)
+  : null;
+const crawlRunSummaryFilePath = envs.CRAWL_RUN_SUMMARY_FILE_PATH
+  ? path.resolve(actorAppRootDir, envs.CRAWL_RUN_SUMMARY_FILE_PATH)
+  : null;
 if (!envs.MONGODB_URI) {
   throw new Error(
     'MONGODB_URI is required for phase-one reconciliation against normalized_job_ads.',
@@ -1076,7 +1172,7 @@ const runStopReason = crawlerRunError
       : 'completed';
 
 const ingestionTrigger = {
-  enabled: ingestionTriggerConfig.enabled,
+  enabled: ingestionTriggerConfig.enabled || Boolean(localBrokerDir),
   attempted: ingestionTriggerAttemptedCount,
   accepted: ingestionTriggerAcceptedCount,
   deduplicated: ingestionTriggerDeduplicatedCount,
@@ -1176,6 +1272,28 @@ const runSummary = {
 
 await Actor.setValue('RUN_SUMMARY', runSummary);
 log.info('📊 Crawl run summary', runSummary);
+
+if (crawlRunSummaryFilePath) {
+  await writeFile(crawlRunSummaryFilePath, `${JSON.stringify(runSummary, null, 2)}\n`, 'utf8');
+}
+
+if (localBrokerDir) {
+  await writeBrokerEvent(
+    localBrokerDir,
+    buildCrawlerRunFinishedEvent({
+      runId: crawlRunId,
+      crawlRunId,
+      searchSpaceId: input.searchSpaceId,
+      status: runStatus,
+      summaryPath: crawlRunSummaryFilePath ?? undefined,
+      datasetPath: localSharedDatasetJsonPath ?? undefined,
+      newJobsCount: runSummary.counters.reconcileNewJobsCount,
+      failedRequests: runSummary.outcome.failedRequests,
+      stopReason: runSummary.outcome.stopReason,
+      producer: 'jobs-crawler-actor',
+    }),
+  );
+}
 
 await upsertRunSummaryToMongoBestEffort(
   mongoRunSummaryConfig,

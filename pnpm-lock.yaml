@@ -205,6 +205,9 @@ importers:
 
   apps/jobs-crawler-actor:
     dependencies:
+      '@repo/control-plane-contracts':
+        specifier: workspace:*
+        version: link:../../packages/control-plane-contracts
       '@repo/env-config':
         specifier: workspace:*
         version: link:../../packages/env-config
@@ -239,6 +242,9 @@ importers:
       eslint:
         specifier: 'catalog:'
         version: 9.39.2(jiti@2.6.1)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.20.3
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
@@ -251,6 +257,9 @@ importers:
       '@langchain/langgraph':
         specifier: 'catalog:'
         version: 1.1.5(@langchain/core@1.1.27)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(zod@4.3.5)
+      '@repo/control-plane-contracts':
+        specifier: workspace:*
+        version: link:../../packages/control-plane-contracts
       '@repo/env-config':
         specifier: workspace:*
         version: link:../../packages/env-config
@@ -300,9 +309,15 @@ importers:
 
   apps/run-observability-dashboard:
     dependencies:
+      '@repo/control-plane-contracts':
+        specifier: workspace:*
+        version: link:../../packages/control-plane-contracts
       '@repo/env-config':
         specifier: workspace:*
         version: link:../../packages/env-config
+      '@repo/job-search-spaces':
+        specifier: workspace:*
+        version: link:../../packages/job-search-spaces
       mongodb:
         specifier: 'catalog:'
         version: 7.1.0(socks@2.8.7)
@@ -358,6 +373,28 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.0.18(@types/node@25.0.3)(jiti@2.6.1)(jsdom@28.1.0)(tsx@4.20.3)
+
+  packages/control-plane-contracts:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.5
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.0.3
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.2(jiti@2.6.1)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
 
   packages/env-config:
     dependencies:

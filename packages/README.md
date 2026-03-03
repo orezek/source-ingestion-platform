@@ -4,11 +4,12 @@ Shared packages in `packages/` provide reusable configuration and runtime utilit
 
 ## Current Packages
 
-| Directory                    | Package Name              | Purpose                                |
-| ---------------------------- | ------------------------- | -------------------------------------- |
-| `packages/env-config`        | `@repo/env-config`        | Typed environment parsing with `zod`.  |
-| `packages/eslint-config`     | `@repo/eslint-config`     | Shared ESLint Flat Config presets.     |
-| `packages/typescript-config` | `@repo/typescript-config` | Shared TypeScript base configurations. |
+| Directory                          | Package Name                    | Purpose                                                  |
+| ---------------------------------- | ------------------------------- | -------------------------------------------------------- |
+| `packages/env-config`              | `@repo/env-config`              | Typed environment parsing with `zod`.                    |
+| `packages/eslint-config`           | `@repo/eslint-config`           | Shared ESLint Flat Config presets.                       |
+| `packages/control-plane-contracts` | `@repo/control-plane-contracts` | Shared control-plane manifests and broker event schemas. |
+| `packages/typescript-config`       | `@repo/typescript-config`       | Shared TypeScript base configurations.                   |
 
 ## Package Management Rules
 

@@ -193,7 +193,9 @@ ul {
 }
 
 .status-badge--running,
-.status-badge--pending {
+.status-badge--pending,
+.status-badge--queued,
+.status-badge--stopped {
   background: rgba(93, 108, 122, 0.12);
 }
 
@@ -252,12 +254,18 @@ ul {
 
 .chart-grid,
 .detail-grid,
-.alert-list {
+.alert-list,
+.control-grid {
   display: grid;
   gap: 18px;
 }
 
 .chart-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.control-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 18px;
 }
@@ -305,6 +313,65 @@ ul {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.control-plane-toolbar__meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.control-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.control-form label {
+  display: grid;
+  gap: 8px;
+}
+
+.control-form textarea,
+.control-form input,
+.control-form select,
+.control-form button {
+  color: var(--ink);
+  border: 1px solid rgba(138, 127, 106, 0.56);
+  background: rgba(242, 226, 177, 0.28);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.control-form textarea,
+.control-form input,
+.control-form select,
+.control-form button,
+.checkbox-row span {
+  font-family: var(--font-mono), 'IBM Plex Mono', 'JetBrains Mono', monospace;
+}
+
+.control-form__row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.control-form__wide {
+  grid-column: span 2;
+}
+
+.control-form--inline {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .data-table {
@@ -372,8 +439,17 @@ ul {
   }
 
   .detail-grid,
-  .chart-grid {
+  .chart-grid,
+  .control-grid {
     grid-template-columns: 1fr;
+  }
+
+  .control-form__row {
+    grid-template-columns: 1fr;
+  }
+
+  .control-form__wide {
+    grid-column: span 1;
   }
 }
 
@@ -398,6 +474,11 @@ ul {
 
   .kpi-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .control-form--inline {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

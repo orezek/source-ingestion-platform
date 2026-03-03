@@ -15,9 +15,11 @@ The app reads run-summary collections and presents:
 ## Routes
 
 - `/` overview dashboard
+- `/control-plane` local v1 control plane
 - `/crawler/runs/[crawlRunId]` crawler run detail
 - `/ingestion/runs/[runId]` ingestion run detail
 - `/pipeline/[crawlRunId]` linked pipeline detail
+- `/api/control-plane/[resource]` JSON API for local control-plane resources and run starts
 
 ## Data Sources
 
@@ -39,10 +41,24 @@ Two supported modes:
 - `DASHBOARD_DATA_MODE=mongo` for live data
 - `DASHBOARD_DATA_MODE=fixture` for local UI testing and automated tests
 
+Control-plane execution modes:
+
+- `CONTROL_PLANE_EXECUTION_MODE=fixture`
+  - simulates crawler + ingestion for local UI tests
+- `CONTROL_PLANE_EXECUTION_MODE=local_cli`
+  - launches the local crawler and ingestion worker adapters
+  - still relies on the current crawler behavior, including Mongo-backed reconciliation
+
 Database selection:
 
 - `MONGODB_DB_NAME` if explicitly set
 - otherwise `JOB_COMPASS_DB_PREFIX`
+
+Control-plane state:
+
+- file-backed resources live under `CONTROL_PLANE_DATA_DIR`
+- brokered handoff events live under `CONTROL_PLANE_BROKER_DIR`
+- bootstrap search spaces are imported from `CONTROL_PLANE_BOOTSTRAP_SEARCH_SPACES_DIR`
 
 ## Development
 

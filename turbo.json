@@ -1,7 +1,24 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "tui",
-  "globalEnv": ["CI", "DASHBOARD_DATA_MODE", "DASHBOARD_FIXTURE_DIR"],
+  "globalEnv": [
+    "CI",
+    "DASHBOARD_DATA_MODE",
+    "DASHBOARD_FIXTURE_DIR",
+    "CONTROL_PLANE_DATA_DIR",
+    "CONTROL_PLANE_BROKER_DIR",
+    "CONTROL_PLANE_WORKER_LOG_DIR",
+    "CONTROL_PLANE_BOOTSTRAP_SEARCH_SPACES_DIR",
+    "CONTROL_PLANE_DEFAULT_ARTIFACT_DIR",
+    "CONTROL_PLANE_DEFAULT_JSON_OUTPUT_DIR",
+    "CONTROL_PLANE_EXECUTION_MODE",
+    "CONTROL_PLANE_PNPM_BIN",
+    "CRAWL_RUN_ID",
+    "CRAWL_RUN_SUMMARY_FILE_PATH",
+    "JOB_COMPASS_DB_PREFIX",
+    "LOCAL_BROKER_DIR",
+    "MONGODB_DB_NAME"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

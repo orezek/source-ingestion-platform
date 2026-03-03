@@ -1,4 +1,11 @@
-export type RunStatus = 'pending' | 'running' | 'succeeded' | 'completed_with_errors' | 'failed';
+export type RunStatus =
+  | 'queued'
+  | 'pending'
+  | 'running'
+  | 'succeeded'
+  | 'completed_with_errors'
+  | 'failed'
+  | 'stopped';
 
 export type TimeRange = '24h' | '7d' | '30d';
 

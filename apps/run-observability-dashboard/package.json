@@ -19,7 +19,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@repo/control-plane-contracts": "workspace:*",
     "@repo/env-config": "workspace:*",
+    "@repo/job-search-spaces": "workspace:*",
     "mongodb": "catalog:",
     "next": "catalog:",
     "react": "catalog:",

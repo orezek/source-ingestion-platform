@@ -15,11 +15,13 @@ type FailedJobDoc = NonNullable<IngestionRunSummaryDoc['failedJobs']>[number];
 
 function deriveStatus(value: string | undefined): RunStatus {
   if (
+    value === 'queued' ||
     value === 'pending' ||
     value === 'running' ||
     value === 'succeeded' ||
     value === 'completed_with_errors' ||
-    value === 'failed'
+    value === 'failed' ||
+    value === 'stopped'
   ) {
     return value;
   }

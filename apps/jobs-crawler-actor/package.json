@@ -26,9 +26,11 @@
     "@repo/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "eslint": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@repo/control-plane-contracts": "workspace:*",
     "@repo/env-config": "workspace:*",
     "@repo/job-search-spaces": "workspace:*",
     "apify": "catalog:",

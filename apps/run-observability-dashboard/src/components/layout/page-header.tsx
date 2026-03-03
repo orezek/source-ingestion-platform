@@ -45,6 +45,9 @@ export function PageHeader({
         <div className="meta-chip">MODE: {environmentLabel}</div>
         <div className="meta-chip">DB: {databaseName}</div>
         <div className="meta-chip">REFRESHED: {formatDateTime(generatedAt)}</div>
+        <Link href="/control-plane" className="meta-chip">
+          CONTROL PLANE
+        </Link>
         {latestCrawlerStatus ? <StatusBadge label="CRAWLER" status={latestCrawlerStatus} /> : null}
         {latestIngestionStatus ? (
           <StatusBadge label="INGESTION" status={latestIngestionStatus} />
