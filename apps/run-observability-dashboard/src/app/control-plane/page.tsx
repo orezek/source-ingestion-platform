@@ -72,10 +72,15 @@ export default async function ControlPlanePage() {
         <div className="control-plane-toolbar__meta">
           <div className="meta-chip">BROKER: {env.CONTROL_PLANE_BROKER_DIR}</div>
           <div className="meta-chip">STATE: {env.CONTROL_PLANE_DATA_DIR}</div>
+          <div className="meta-chip">MODE VIA ENV: CONTROL_PLANE_EXECUTION_MODE</div>
           <Link href="/" className="primary-link">
             Open observability dashboard
           </Link>
         </div>
+        <p className="empty-copy">
+          Execution mode is configured through the dashboard environment and shown in the header.
+          The v1 operator surface does not provide an in-app mode switch.
+        </p>
       </section>
 
       <section className="panel">

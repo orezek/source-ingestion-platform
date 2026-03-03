@@ -49,6 +49,9 @@ Control-plane execution modes:
   - launches the local crawler and ingestion worker adapters
   - still relies on the current crawler behavior, including Mongo-backed reconciliation
 
+Execution mode is env-driven in v1. The `/control-plane` route shows the active mode in the
+header, but does not provide a runtime selector.
+
 Database selection:
 
 - `MONGODB_DB_NAME` if explicitly set
@@ -65,6 +68,9 @@ Control-plane state:
 ```bash
 pnpm -C apps/run-observability-dashboard dev
 ```
+
+App-local `dev`, `build`, `start`, `check-types`, and `test` commands first build the shared
+workspace contract packages so they do not depend on pre-existing `dist/` artifacts.
 
 ## Validation
 
