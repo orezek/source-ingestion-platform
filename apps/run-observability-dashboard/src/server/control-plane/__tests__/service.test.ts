@@ -179,6 +179,47 @@ describe('control-plane service', () => {
     expect(runs.filter((run) => run.pipelineId === pipeline.id)).toHaveLength(1);
   });
 
+  it('rejects local_cli ingest runs before creating a run when GEMINI_API_KEY is unavailable', async () => {
+    Object.assign(process.env, {
+      CONTROL_PLANE_EXECUTION_MODE: 'local_cli',
+      MONGODB_URI: 'mongodb://127.0.0.1:27027',
+    });
+    Reflect.deleteProperty(process.env, 'GEMINI_API_KEY');
+    vi.resetModules();
+
+    const { createPipeline, getControlPlaneOverview, startRun } =
+      await import('@/server/control-plane/service');
+    const { listRunRecords } = await import('@/server/control-plane/store');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+    const artifactDestination = overview.artifactDestinations[0]!;
+    const jsonOutputDestination = overview.structuredOutputDestinations.find(
+      (destination) => destination.type === 'local_json',
+    )!;
+
+    const pipeline = await createPipeline({
+      name: 'Ingest preflight pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      artifactDestinationId: artifactDestination.id,
+      structuredOutputDestinationIds: [jsonOutputDestination.id],
+      mode: 'crawl_and_ingest',
+      status: 'active',
+    });
+
+    await expect(
+      startRun({
+        pipelineId: pipeline.id,
+        createdBy: 'vitest',
+      }),
+    ).rejects.toThrow(/GEMINI_API_KEY/i);
+
+    const runs = await listRunRecords();
+    expect(runs.filter((run) => run.pipelineId === pipeline.id)).toHaveLength(0);
+  });
+
   it('updates runtime profiles and persists the new values', async () => {
     const { getControlPlaneOverview, updateRuntimeProfile } =
       await import('@/server/control-plane/service');

@@ -1,5 +1,5 @@
 import { openSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { actorOperatorInputSchema, deriveMongoDbName } from '@repo/job-search-spaces';
@@ -42,6 +42,21 @@ type ExecuteRunInput = {
   manifest: RunManifest;
 };
 
+type CrawlerWorkerEnvInput = {
+  manifest: RunManifest;
+  runId: string;
+  mongoDbName: string;
+  artifactRoot: string;
+  crawlerSummaryPath: string;
+};
+
+type IngestionWorkerEnvInput = {
+  manifest: RunManifest;
+  mongoDbName: string;
+};
+
+const workerEnvFileNames = ['.env', `.env.${process.env.NODE_ENV ?? 'development'}`, '.env.local'];
+
 function getLocalArtifactBasePath(manifest: RunManifest): string {
   if (
     manifest.artifactDestinationSnapshot.type !== 'local_filesystem' ||
@@ -74,6 +89,125 @@ function getLocalJsonSinkRoots(manifest: RunManifest): string[] {
       ? [path.resolve(destination.config.basePath)]
       : [],
   );
+}
+
+function parseEnvValue(raw: string, key: string): string | null {
+  const prefix = `${key}=`;
+  let resolved: string | null = null;
+
+  for (const line of raw.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    if (!trimmed.startsWith(prefix)) {
+      continue;
+    }
+
+    const value = trimmed.slice(prefix.length).trim();
+    const normalized =
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+        ? value.slice(1, -1).trim()
+        : value;
+
+    resolved = normalized.length > 0 ? normalized : null;
+  }
+
+  return resolved;
+}
+
+export async function hasWorkerEnvValueInAppDir(appRootDir: string, key: string): Promise<boolean> {
+  const runtimeValue = process.env[key];
+  if (typeof runtimeValue === 'string' && runtimeValue.trim().length > 0) {
+    return true;
+  }
+
+  for (const fileName of workerEnvFileNames) {
+    const filePath = path.join(appRootDir, fileName);
+    const raw = await readFile(filePath, 'utf8').catch((error: unknown) => {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return null;
+      }
+
+      throw error;
+    });
+
+    if (!raw) {
+      continue;
+    }
+
+    const resolvedValue = parseEnvValue(raw, key);
+    if (resolvedValue) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function buildCrawlerWorkerEnvOverrides(
+  input: CrawlerWorkerEnvInput,
+): Record<string, string> {
+  return {
+    NODE_ENV: process.env.NODE_ENV ?? 'development',
+    CRAWLEE_LOG_LEVEL: input.manifest.runtimeProfileSnapshot.debugLog ? 'DEBUG' : 'INFO',
+    JOB_COMPASS_DB_PREFIX: env.JOB_COMPASS_DB_PREFIX,
+    MONGODB_URI: env.MONGODB_URI ?? '',
+    MONGODB_DB_NAME: input.mongoDbName,
+    ENABLE_MONGO_RUN_SUMMARY_WRITE: 'true',
+    LOCAL_SHARED_SCRAPED_JOBS_DIR: input.artifactRoot,
+    CRAWL_RUN_ID: input.runId,
+    CRAWL_RUN_SUMMARY_FILE_PATH: input.crawlerSummaryPath,
+    LOCAL_BROKER_DIR: controlPlaneBrokerRootDir,
+    ENABLE_INGESTION_TRIGGER: 'false',
+  };
+}
+
+export function buildIngestionWorkerEnvOverrides(
+  input: IngestionWorkerEnvInput,
+): Record<string, string> {
+  return {
+    NODE_ENV: process.env.NODE_ENV ?? 'development',
+    JOB_COMPASS_DB_PREFIX: env.JOB_COMPASS_DB_PREFIX,
+    SEARCH_SPACE_ID: input.manifest.searchSpaceSnapshot.id,
+    MONGODB_URI: env.MONGODB_URI ?? '',
+    ENABLE_MONGO_WRITE: hasMongoSink(input.manifest) ? 'true' : 'false',
+    MONGODB_DB_NAME: input.mongoDbName,
+  };
+}
+
+export async function assertExecutableRunPrerequisites(manifest: RunManifest): Promise<void> {
+  if (env.CONTROL_PLANE_EXECUTION_MODE !== 'local_cli') {
+    return;
+  }
+
+  if (!env.MONGODB_URI) {
+    throw new Error(
+      'CONTROL_PLANE_EXECUTION_MODE=local_cli requires MONGODB_URI because the current crawler still reconciles against normalized_job_ads.',
+    );
+  }
+
+  getLocalArtifactBasePath(manifest);
+
+  const shouldRunIngestion =
+    manifest.mode === 'crawl_and_ingest' && manifest.runtimeProfileSnapshot.ingestionEnabled;
+  if (!shouldRunIngestion) {
+    return;
+  }
+
+  const hasGeminiKey = await hasWorkerEnvValueInAppDir(ingestionAppRootDir, 'GEMINI_API_KEY');
+  if (!hasGeminiKey) {
+    throw new Error(
+      'CONTROL_PLANE_EXECUTION_MODE=local_cli with ingestion enabled requires GEMINI_API_KEY in the runtime environment or apps/jobs-ingestion-service/.env(.local).',
+    );
+  }
 }
 
 async function updateRuntimeStatus(runId: string, runtime: WorkerRuntime): Promise<void> {
@@ -273,12 +407,6 @@ function spawnWorker(input: {
 }
 
 async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promise<void> {
-  if (!env.MONGODB_URI) {
-    throw new Error(
-      'CONTROL_PLANE_EXECUTION_MODE=local_cli requires MONGODB_URI because the current crawler still reconciles against normalized_job_ads.',
-    );
-  }
-
   const artifactRoot = getLocalArtifactBasePath(manifest);
   const mongoDbName = getMongoDbName(manifest);
   const crawlerLogPath = buildRunWorkerLogPath(run.runId, 'crawler');
@@ -330,14 +458,10 @@ async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promi
         controlPlaneBrokerRootDir,
       ],
       logPath: ingestionLogPath,
-      envOverrides: {
-        NODE_ENV: process.env.NODE_ENV ?? 'development',
-        JOB_COMPASS_DB_PREFIX: env.JOB_COMPASS_DB_PREFIX,
-        SEARCH_SPACE_ID: manifest.searchSpaceSnapshot.id,
-        MONGODB_URI: env.MONGODB_URI,
-        ENABLE_MONGO_WRITE: hasMongoSink(manifest) ? 'true' : 'false',
-        MONGODB_DB_NAME: mongoDbName,
-      },
+      envOverrides: buildIngestionWorkerEnvOverrides({
+        manifest,
+        mongoDbName,
+      }),
     });
 
     await updateRuntimeStatus(run.runId, {
@@ -367,18 +491,13 @@ async function startLocalCliExecution({ run, manifest }: ExecuteRunInput): Promi
       controlPlaneBrokerRootDir,
     ],
     logPath: crawlerLogPath,
-    envOverrides: {
-      NODE_ENV: process.env.NODE_ENV ?? 'development',
-      JOB_COMPASS_DB_PREFIX: env.JOB_COMPASS_DB_PREFIX,
-      MONGODB_URI: env.MONGODB_URI,
-      MONGODB_DB_NAME: mongoDbName,
-      ENABLE_MONGO_RUN_SUMMARY_WRITE: 'true',
-      LOCAL_SHARED_SCRAPED_JOBS_DIR: artifactRoot,
-      CRAWL_RUN_ID: run.runId,
-      CRAWL_RUN_SUMMARY_FILE_PATH: crawlerSummaryPath,
-      LOCAL_BROKER_DIR: controlPlaneBrokerRootDir,
-      ENABLE_INGESTION_TRIGGER: 'false',
-    },
+    envOverrides: buildCrawlerWorkerEnvOverrides({
+      manifest,
+      runId: run.runId,
+      mongoDbName,
+      artifactRoot,
+      crawlerSummaryPath,
+    }),
   });
 
   await updateRuntimeStatus(run.runId, {

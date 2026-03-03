@@ -49,7 +49,11 @@ import {
   controlPlaneBrokerRootDir,
   controlPlaneLockRootDir,
 } from '@/server/control-plane/paths';
-import { executeRun, writeGeneratedActorInput } from '@/server/control-plane/execution';
+import {
+  assertExecutableRunPrerequisites,
+  executeRun,
+  writeGeneratedActorInput,
+} from '@/server/control-plane/execution';
 import {
   type WorkerRuntime,
   deleteCollectionRecord,
@@ -1036,6 +1040,7 @@ export async function startRun(rawInput: StartRunRequest): Promise<ControlPlaneR
     });
 
     const generatedInputPath = buildRunGeneratedInputPath(runId);
+    await assertExecutableRunPrerequisites(manifest);
     const runRecord = await writeRunRecord({
       runId,
       pipelineId: pipeline.id,

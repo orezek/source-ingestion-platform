@@ -309,14 +309,11 @@ async function main(): Promise<void> {
 }
 
 void main().catch(async (error) => {
-  const parsed = parseArgs({
-    args: process.argv.slice(2),
-    options: {
-      'runtime-path': { type: 'string' },
-    },
-    allowPositionals: false,
-  });
-  const runtimePath = parsed.values['runtime-path'];
+  const runtimePathIndex = process.argv.findIndex((value) => value === '--runtime-path');
+  const runtimePath =
+    runtimePathIndex >= 0 && runtimePathIndex + 1 < process.argv.length
+      ? process.argv[runtimePathIndex + 1]
+      : undefined;
 
   if (runtimePath) {
     const existingRuntime = await readWorkerRuntime(path.resolve(runtimePath)).catch(() => null);
