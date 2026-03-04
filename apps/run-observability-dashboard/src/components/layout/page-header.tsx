@@ -81,60 +81,79 @@ export function PageHeader({
       : []),
   ];
   const hasSummary = Boolean(summaryItems && summaryItems.length > 0);
+  const metaItems = [
+    environmentLabel ? { label: 'Mode', value: environmentLabel } : null,
+    databaseName ? { label: 'Database', value: databaseName } : null,
+    generatedAt ? { label: 'Refreshed', value: formatDateTime(generatedAt) } : null,
+    showControlPlaneLink
+      ? {
+          label: 'Route',
+          value: (
+            <Link href="/control-plane" className="page-header__meta-link">
+              Control plane
+            </Link>
+          ),
+        }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; value: ReactNode }>;
 
   return (
     <header className="page-header">
-      <div className="page-header__brand">
-        <Link href="/" className="brand-mark" aria-label="Run observability dashboard home">
-          <Image
-            src="/dashboard-mark.svg"
-            alt="Run observability dashboard logo"
-            width={52}
-            height={52}
-            priority
-          />
-        </Link>
-        <div>
-          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-          <h1>{title}</h1>
-          {description ? <p className="lede">{description}</p> : null}
-          {resolvedActions.length > 0 ? (
-            <div className="page-header__actions">
-              {resolvedActions.map((action) => (
-                <Link
-                  key={`${action.href}-${action.label}`}
-                  href={action.href}
-                  className={`action-button ${
-                    action.variant === 'ghost' ? 'action-button--ghost' : ''
-                  }`}
-                >
-                  {action.label}
-                </Link>
+      <div className="page-header__top">
+        <div className="page-header__brand">
+          <Link href="/" className="brand-mark" aria-label="Run observability dashboard home">
+            <Image
+              src="/dashboard-mark.svg"
+              alt="Run observability dashboard logo"
+              width={56}
+              height={56}
+              priority
+            />
+          </Link>
+          <div>
+            {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+            <h1>{title}</h1>
+            {description ? <p className="lede">{description}</p> : null}
+            {resolvedActions.length > 0 ? (
+              <div className="page-header__actions">
+                {resolvedActions.map((action) => (
+                  <Link
+                    key={`${action.href}-${action.label}`}
+                    href={action.href}
+                    className={`action-button ${
+                      action.variant === 'ghost' ? 'action-button--ghost' : ''
+                    }`}
+                  >
+                    {action.label}
+                  </Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {hasMeta ? (
+          <div className="page-header__rail">
+            <div className="page-header__meta">
+              {metaItems.map((item) => (
+                <article className="page-header__meta-item" key={item.label}>
+                  <span className="page-header__meta-label">{item.label}</span>
+                  <div className="page-header__meta-value">{item.value}</div>
+                </article>
               ))}
             </div>
-          ) : null}
-        </div>
+            {latestCrawlerStatus || latestIngestionStatus ? (
+              <div className="page-header__status-row">
+                {latestCrawlerStatus ? (
+                  <StatusBadge label="CRAWLER" status={latestCrawlerStatus} />
+                ) : null}
+                {latestIngestionStatus ? (
+                  <StatusBadge label="INGESTION" status={latestIngestionStatus} />
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
-      {hasMeta ? (
-        <div className="page-header__meta">
-          {environmentLabel ? <div className="meta-chip">MODE: {environmentLabel}</div> : null}
-          {databaseName ? <div className="meta-chip">DB: {databaseName}</div> : null}
-          {generatedAt ? (
-            <div className="meta-chip">REFRESHED: {formatDateTime(generatedAt)}</div>
-          ) : null}
-          {showControlPlaneLink ? (
-            <Link href="/control-plane" className="meta-chip">
-              CONTROL PLANE
-            </Link>
-          ) : null}
-          {latestCrawlerStatus ? (
-            <StatusBadge label="CRAWLER" status={latestCrawlerStatus} />
-          ) : null}
-          {latestIngestionStatus ? (
-            <StatusBadge label="INGESTION" status={latestIngestionStatus} />
-          ) : null}
-        </div>
-      ) : null}
       {hasSummary ? (
         <div className="page-header__summary">
           {summaryItems?.map((item, index) => (

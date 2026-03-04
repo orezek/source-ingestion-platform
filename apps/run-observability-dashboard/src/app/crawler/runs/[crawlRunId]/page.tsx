@@ -56,7 +56,7 @@ export default async function CrawlerRunDetailPage({
         </section>
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Input" title="Run configuration" />
             <ul className="detail-list">
               <li>MAX ITEMS: {run.input.maxItems ?? 'N/A'}</li>
@@ -65,7 +65,7 @@ export default async function CrawlerRunDetailPage({
               <li>STOP REASON: {run.stopReason ?? 'N/A'}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Counters" title="Traversal and rendering" />
             <ul className="detail-list">
               <li>LIST PAGES VISITED: {formatNumber(run.listPagesVisited)}</li>
@@ -76,7 +76,7 @@ export default async function CrawlerRunDetailPage({
               <li>MAX RENDER WAIT: {formatNumber(run.maxDetailRenderWaitMs)} ms</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Trigger" title="Ingestion handoff" />
             <ul className="detail-list">
               <li>ENABLED: {String(run.ingestionTrigger.enabled)}</li>

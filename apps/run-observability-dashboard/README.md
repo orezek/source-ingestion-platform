@@ -132,7 +132,8 @@ pnpm -C apps/run-observability-dashboard test:e2e
 
 ## Design Notes
 
-- Primary type stack uses Neue Haas / Helvetica Now style fallbacks for quiet, dense editorial typography.
-- Mono labels and metrics use IBM Plex Mono.
-- Visual language is restrained, matte, and data-forward.
+- Visual language follows a "Swiss Authority meets Lab Report" system: dark canvas, flat surfaces, hard borders, and no ornamental depth.
+- Primary copy uses Neue Haas / Helvetica Now style fallbacks for headlines and body text.
+- Metadata, metrics, UUIDs, tables, timestamps, and JSON traces use IBM Plex Mono with tabular numerals.
+- Control-plane run payloads and normalized JSON outputs are opened through accordion-style inspectors instead of soft, always-open dumps.
 - Charts are implemented with `recharts`.

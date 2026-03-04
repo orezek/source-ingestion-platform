@@ -3,12 +3,14 @@
 import { useState, type ReactNode } from 'react';
 
 export function DisclosurePanel({
+  eyebrow,
   title,
   description,
   children,
   defaultOpen = false,
   testId,
 }: {
+  eyebrow?: string;
   title: string;
   description: string;
   children: ReactNode;
@@ -25,8 +27,16 @@ export function DisclosurePanel({
         aria-expanded={isOpen}
         onClick={() => setIsOpen((current) => !current)}
       >
-        <span className="operator-disclosure__title">{title}</span>
-        <span className="operator-disclosure__description">{description}</span>
+        <div className="operator-disclosure__copy">
+          {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
+          <span aria-level={3} className="operator-disclosure__title" role="heading">
+            {title}
+          </span>
+          <p className="operator-disclosure__description">{description}</p>
+        </div>
+        <span aria-hidden="true" className="operator-disclosure__indicator">
+          {isOpen ? '−' : '+'}
+        </span>
       </button>
       {isOpen ? <div className="operator-disclosure__body">{children}</div> : null}
     </div>

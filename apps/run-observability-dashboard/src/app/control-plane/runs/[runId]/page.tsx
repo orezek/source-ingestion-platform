@@ -124,7 +124,7 @@ export default async function ControlPlaneRunDetailPage({
         </section>
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Lifecycle" title="Run timing" />
             <ul className="detail-list">
               <li>RUN ID: {detail.runView.run.runId}</li>
@@ -135,7 +135,7 @@ export default async function ControlPlaneRunDetailPage({
               <li>CREATED BY: {detail.runView.manifest?.createdBy ?? 'N/A'}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Pipeline" title="Immutable snapshot" />
             <ul className="detail-list">
               <li>PIPELINE: {detail.pipeline?.name ?? detail.runView.run.pipelineId}</li>
@@ -150,7 +150,7 @@ export default async function ControlPlaneRunDetailPage({
               <li>SOURCE TYPE: {detail.runView.manifest?.sourceType ?? 'N/A'}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Workers" title="Runtime state" />
             <div className="runtime-stack">
               {detail.runView.crawlerRuntime ? (

@@ -73,7 +73,7 @@ export default async function IngestionRunDetailPage({
         </section>
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Prompting" title="Model and parser" />
             <ul className="detail-list">
               <li>PARSER VERSION: {run.parserVersion ?? 'N/A'}</li>
@@ -82,7 +82,7 @@ export default async function IngestionRunDetailPage({
               <li>EXTRACTOR PROMPT: {run.extractorPromptName ?? 'N/A'}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Cleaner LLM" title="Stage metrics" />
             <ul className="detail-list">
               <li>TOTAL TOKENS: {formatNumber(run.llmCleanerStats.totalTokens ?? 0)}</li>
@@ -91,7 +91,7 @@ export default async function IngestionRunDetailPage({
               <li>EST. COST: {formatCurrency(run.llmCleanerStats.totalEstimatedCostUsd ?? 0)}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Extractor LLM" title="Stage metrics" />
             <ul className="detail-list">
               <li>TOTAL TOKENS: {formatNumber(run.llmExtractorStats.totalTokens ?? 0)}</li>

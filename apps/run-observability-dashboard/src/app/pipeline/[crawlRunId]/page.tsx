@@ -74,7 +74,7 @@ export default async function PipelineRunDetailPage({
         </section>
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Crawler" title="Run snapshot" />
             <ul className="detail-list">
               <li>RUN ID: {pipeline.crawlerRun.id}</li>
@@ -82,7 +82,7 @@ export default async function PipelineRunDetailPage({
               <li>FINISHED: {formatDateTime(pipeline.crawlerRun.finishedAt)}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Ingestion" title="Linked run snapshot" />
             <ul className="detail-list">
               <li>RUN ID: {pipeline.ingestionRun?.id ?? 'N/A'}</li>
@@ -90,7 +90,7 @@ export default async function PipelineRunDetailPage({
               <li>COMPLETED: {formatDateTime(pipeline.ingestionRun?.completedAt ?? null)}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading eyebrow="Mismatch" title="Derived diagnostics" />
             {pipeline.hasMismatch ? (
               <ul className="detail-list">

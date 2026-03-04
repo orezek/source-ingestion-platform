@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { SectionHeading } from '@/components/control-plane/section-heading';
+import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 
 type JsonViewerPanelProps = {
   eyebrow: string;
@@ -136,14 +136,19 @@ export function JsonViewerPanel({
 }: JsonViewerPanelProps) {
   return (
     <section className="panel">
-      <SectionHeading eyebrow={eyebrow} title={title} description={description} />
-      {value === null || value === undefined ? (
-        <p className="empty-copy">{emptyCopy}</p>
-      ) : (
-        <div className="json-viewer">
-          {renderJsonNode({ label: rootLabel, value, depth: 0, defaultOpenDepth })}
-        </div>
-      )}
+      <DisclosurePanel
+        eyebrow={eyebrow}
+        title={title}
+        description={description ?? 'Expand only the branches you need to inspect.'}
+      >
+        {value === null || value === undefined ? (
+          <p className="empty-copy">{emptyCopy}</p>
+        ) : (
+          <div className="json-viewer">
+            {renderJsonNode({ label: rootLabel, value, depth: 0, defaultOpenDepth })}
+          </div>
+        )}
+      </DisclosurePanel>
     </section>
   );
 }

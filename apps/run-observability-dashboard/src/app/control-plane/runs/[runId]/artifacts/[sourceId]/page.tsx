@@ -58,7 +58,7 @@ export default async function ControlPlaneArtifactPage({
         />
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Artifact"
               title="Capture metadata"
@@ -73,7 +73,7 @@ export default async function ControlPlaneArtifactPage({
               <li>CHECKSUM: {artifact.capture.checksum}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Listing"
               title="Source reference"
@@ -87,7 +87,7 @@ export default async function ControlPlaneArtifactPage({
               <li className="data-table__cell--wrap">DEDUPE KEY: {artifact.capture.dedupeKey}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Actions"
               title="Operator shortcuts"

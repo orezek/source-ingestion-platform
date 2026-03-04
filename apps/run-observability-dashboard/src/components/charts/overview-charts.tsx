@@ -17,14 +17,44 @@ import type { OverviewCharts } from '@/server/types';
 import { ChartFrame } from '@/components/charts/chart-frame';
 
 const colors = {
-  ink: '#1D1A17',
-  warm: '#F2E2B1',
-  muted: '#D5C7A3',
-  panel: '#BDB395',
-  success: '#5F7A65',
-  warning: '#8C6A2B',
-  error: '#8A4B46',
-  info: '#5D6C7A',
+  text: '#E9E5DC',
+  textSecondary: '#B7B2A8',
+  structure: 'rgba(42, 52, 64, 0.48)',
+  success: '#5F8A6E',
+  warning: '#A78853',
+  error: '#B66C7B',
+  info: '#89A8D3',
+  accentPower: '#132F57',
+  accentPrecision: '#2A1E4A',
+  muted: '#58697D',
+};
+
+const axisTick = {
+  fill: colors.textSecondary,
+  fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace',
+  fontSize: 11,
+};
+
+const tooltipStyle = {
+  backgroundColor: '#0A1A2B',
+  border: '1px solid rgba(42, 52, 64, 0.72)',
+  borderRadius: 2,
+  color: '#E9E5DC',
+  fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace',
+  fontSize: '12px',
+};
+
+const tooltipLabelStyle = {
+  color: '#B7B2A8',
+  fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace',
+  fontSize: '11px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase' as const,
+};
+
+const tooltipItemStyle = {
+  color: '#E9E5DC',
+  fontFamily: 'IBM Plex Mono, JetBrains Mono, monospace',
 };
 
 export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
@@ -33,10 +63,14 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
       <ChartFrame title="Crawler status trend" description="Recent crawler outcomes by run.">
         <ResponsiveContainer width="100%" height={260}>
           <LineChart data={charts.crawlerStatusTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.panel} />
-            <XAxis dataKey="label" stroke={colors.ink} />
-            <YAxis allowDecimals={false} stroke={colors.ink} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+            <YAxis allowDecimals={false} tick={axisTick} tickLine={false} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Line type="monotone" dataKey="succeeded" stroke={colors.success} strokeWidth={2} />
             <Line
               type="monotone"
@@ -55,11 +89,21 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
       >
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={charts.ingestionSuccessTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.panel} />
-            <XAxis dataKey="label" stroke={colors.ink} />
-            <YAxis stroke={colors.ink} domain={[0, 100]} />
-            <Tooltip />
-            <Area type="monotone" dataKey="successRate" stroke={colors.info} fill={colors.warm} />
+            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+            <YAxis domain={[0, 100]} tick={axisTick} tickLine={false} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
+            <Area
+              type="monotone"
+              dataKey="successRate"
+              stroke={colors.info}
+              fill={colors.accentPower}
+              fillOpacity={0.42}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </ChartFrame>
@@ -70,10 +114,14 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
       >
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={charts.ingestionOutcomeTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.panel} />
-            <XAxis dataKey="label" stroke={colors.ink} />
-            <YAxis stroke={colors.ink} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+            <YAxis tick={axisTick} tickLine={false} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Bar dataKey="processed" stackId="jobs" fill={colors.success} />
             <Bar dataKey="skipped" stackId="jobs" fill={colors.warning} />
             <Bar dataKey="failed" stackId="jobs" fill={colors.error} />
@@ -87,13 +135,17 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
       >
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={charts.crawlerOutcomeTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.panel} />
-            <XAxis dataKey="label" stroke={colors.ink} />
-            <YAxis stroke={colors.ink} />
-            <Tooltip />
-            <Bar dataKey="newJobs" fill={colors.ink} />
+            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+            <YAxis tick={axisTick} tickLine={false} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
+            <Bar dataKey="newJobs" fill={colors.text} />
             <Bar dataKey="existingJobs" fill={colors.muted} />
-            <Bar dataKey="inactiveMarked" fill={colors.panel} />
+            <Bar dataKey="inactiveMarked" fill={colors.accentPrecision} />
           </BarChart>
         </ResponsiveContainer>
       </ChartFrame>
@@ -104,17 +156,22 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
       >
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={charts.costAndTokensTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.panel} />
-            <XAxis dataKey="label" stroke={colors.ink} />
-            <YAxis yAxisId="left" stroke={colors.ink} />
-            <YAxis yAxisId="right" orientation="right" stroke={colors.info} />
-            <Tooltip />
+            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+            <YAxis yAxisId="left" tick={axisTick} tickLine={false} />
+            <YAxis yAxisId="right" orientation="right" tick={axisTick} tickLine={false} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              itemStyle={tooltipItemStyle}
+              labelStyle={tooltipLabelStyle}
+            />
             <Area
               yAxisId="left"
               type="monotone"
               dataKey="totalTokens"
-              stroke={colors.ink}
-              fill={colors.muted}
+              stroke={colors.text}
+              fill={colors.accentPrecision}
+              fillOpacity={0.42}
             />
             <Line
               yAxisId="right"

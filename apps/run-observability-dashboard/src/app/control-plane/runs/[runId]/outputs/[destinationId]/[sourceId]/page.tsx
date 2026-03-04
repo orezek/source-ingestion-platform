@@ -70,7 +70,7 @@ export default async function ControlPlaneStructuredOutputPage({
         />
 
         <section className="panel detail-grid">
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Output"
               title="Delivery metadata"
@@ -85,7 +85,7 @@ export default async function ControlPlaneStructuredOutputPage({
               <li>DOCUMENT ID: {output.capture.documentId ?? 'N/A'}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Trace"
               title="Ingestion reference"
@@ -98,7 +98,7 @@ export default async function ControlPlaneStructuredOutputPage({
               <li className="data-table__cell--wrap">DEDUPE KEY: {output.capture.dedupeKey}</li>
             </ul>
           </div>
-          <div>
+          <div className="detail-card">
             <SectionHeading
               eyebrow="Actions"
               title="Operator shortcuts"
