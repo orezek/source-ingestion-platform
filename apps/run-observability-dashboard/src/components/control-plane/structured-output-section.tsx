@@ -1,5 +1,6 @@
 import {
   CONTROL_PLANE_NAME_MAX_LENGTH,
+  type Pipeline,
   type StructuredOutputDestination,
 } from '@repo/control-plane-contracts';
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
@@ -13,6 +14,7 @@ import {
 
 type StructuredOutputSectionProps = {
   structuredOutputDestinations: StructuredOutputDestination[];
+  pipelines: Pipeline[];
 };
 
 function getStructuredOutputTypeLabel(type: StructuredOutputDestination['type']): string {
@@ -29,6 +31,7 @@ function describeStructuredOutputConfig(destination: StructuredOutputDestination
 
 export function StructuredOutputSection({
   structuredOutputDestinations,
+  pipelines,
 }: StructuredOutputSectionProps) {
   return (
     <section className="panel">
@@ -63,46 +66,59 @@ export function StructuredOutputSection({
       {structuredOutputDestinations.length > 0 ? (
         <DisclosurePanel title="Manage structured outputs" description="Edit managed add-on sinks.">
           <div className="resource-edit-grid">
-            {structuredOutputDestinations.map((destination) => (
-              <details key={destination.id} className="resource-card">
-                <summary>{destination.name}</summary>
-                <form action={updateStructuredOutputDestinationAction} className="control-form">
-                  <input type="hidden" name="id" value={destination.id} />
-                  <input type="hidden" name="type" value={destination.type} />
-                  <label>
-                    <span>NAME</span>
-                    <input
-                      name="name"
-                      defaultValue={destination.name}
-                      maxLength={CONTROL_PLANE_NAME_MAX_LENGTH}
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>TYPE</span>
-                    <input value={getStructuredOutputTypeLabel(destination.type)} disabled />
-                  </label>
-                  {destination.type === 'mongodb' ? (
+            {structuredOutputDestinations.map((destination) => {
+              const referencingPipelineCount = pipelines.filter((pipeline) =>
+                pipeline.structuredOutputDestinationIds.includes(destination.id),
+              ).length;
+
+              return (
+                <details key={destination.id} className="resource-card">
+                  <summary>{destination.name}</summary>
+                  <form action={updateStructuredOutputDestinationAction} className="control-form">
+                    <input type="hidden" name="id" value={destination.id} />
+                    <input type="hidden" name="type" value={destination.type} />
                     <label>
-                      <span>MONGODB CONNECTION URI</span>
+                      <span>NAME</span>
                       <input
-                        name="connectionUri"
-                        defaultValue={destination.config.connectionUri ?? 'env:MONGODB_URI'}
+                        name="name"
+                        defaultValue={destination.name}
+                        maxLength={CONTROL_PLANE_NAME_MAX_LENGTH}
+                        required
                       />
                     </label>
-                  ) : null}
-                  <p className="empty-copy">
-                    Managed structured outputs are add-on sinks. Downloadable JSON is built in and
-                    selected directly on pipelines.
-                  </p>
-                  <button type="submit">Save structured output</button>
-                </form>
-                <ResourceLifecycleActions
-                  id={destination.id}
-                  deleteAction={deleteStructuredOutputDestinationAction}
-                />
-              </details>
-            ))}
+                    <label>
+                      <span>TYPE</span>
+                      <input value={getStructuredOutputTypeLabel(destination.type)} disabled />
+                    </label>
+                    {destination.type === 'mongodb' ? (
+                      <label>
+                        <span>MONGODB CONNECTION URI</span>
+                        <input
+                          name="connectionUri"
+                          defaultValue={destination.config.connectionUri ?? 'env:MONGODB_URI'}
+                        />
+                      </label>
+                    ) : null}
+                    <p className="empty-copy">
+                      Managed structured outputs are add-on sinks. Downloadable JSON is built in and
+                      selected directly on pipelines.
+                    </p>
+                    <button type="submit">Save structured output</button>
+                  </form>
+                  <ResourceLifecycleActions
+                    id={destination.id}
+                    deleteAction={deleteStructuredOutputDestinationAction}
+                    deleteDisabledReason={
+                      referencingPipelineCount > 0
+                        ? `Used by ${referencingPipelineCount} pipeline${
+                            referencingPipelineCount === 1 ? '' : 's'
+                          }. Remove it from pipelines before deleting.`
+                        : undefined
+                    }
+                  />
+                </details>
+              );
+            })}
           </div>
         </DisclosurePanel>
       ) : null}

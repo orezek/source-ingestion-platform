@@ -94,6 +94,7 @@ export default async function ControlPlanePage() {
           <RuntimeProfileSection runtimeProfiles={overview.runtimeProfiles} />
           <StructuredOutputSection
             structuredOutputDestinations={overview.structuredOutputDestinations}
+            pipelines={overview.pipelines}
           />
         </section>
       </section>
