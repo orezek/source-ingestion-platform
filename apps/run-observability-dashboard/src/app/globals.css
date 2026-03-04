@@ -29,6 +29,7 @@
   --text-metric-strong: clamp(1.9rem, 2.8vw, 2.7rem);
   --text-metric: clamp(1.45rem, 2vw, 2.1rem);
   --text-metric-quiet: clamp(1.12rem, 1.4vw, 1.26rem);
+  --motion-fast: 120ms;
   --space-panel: 18px;
   --space-stack: 16px;
 }
@@ -109,18 +110,38 @@ button {
   cursor: pointer;
 }
 
+button:focus,
+a:focus,
+input:focus,
+select:focus,
+textarea:focus,
+summary:focus {
+  outline: none;
+}
+
 button:focus-visible,
+a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+summary:focus-visible,
 .primary-link:focus-visible,
 .action-button:focus-visible,
 .operator-disclosure__summary:focus-visible,
 .resource-card summary:focus-visible,
 .json-viewer__summary:focus-visible {
-  outline: none;
+  outline: 2px solid var(--theme-accent-precision);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.operator-disclosure__summary:focus-visible,
+.resource-card summary:focus-visible,
+.json-viewer__summary:focus-visible {
   border-color: var(--theme-accent-precision);
-  background: color-mix(in srgb, var(--theme-surface) 72%, var(--theme-accent-precision) 28%);
 }
 
 .app-shell {
@@ -366,6 +387,85 @@ textarea:focus-visible,
   max-width: 68ch;
 }
 
+.skeleton {
+  display: block;
+  border-radius: 2px;
+  background: var(--theme-structure);
+  animation: skeleton-pulse 140ms linear infinite alternate;
+}
+
+.skeleton--eyebrow {
+  width: 9rem;
+  height: 0.68rem;
+}
+
+.skeleton--title {
+  width: min(26rem, 78%);
+  height: 2rem;
+}
+
+.skeleton--label {
+  width: 8rem;
+  height: 0.66rem;
+}
+
+.skeleton--label-short {
+  width: 5rem;
+}
+
+.skeleton--line {
+  width: 100%;
+  height: 0.82rem;
+}
+
+.skeleton--line-wide {
+  width: min(46rem, 100%);
+}
+
+.skeleton--line-short {
+  width: 58%;
+}
+
+.skeleton--metric {
+  width: 72%;
+  height: 1.6rem;
+}
+
+.skeleton--input {
+  width: min(400px, 100%);
+  height: 2.5rem;
+}
+
+.skeleton--button {
+  width: 9rem;
+  height: 2.25rem;
+}
+
+.skeleton--chart {
+  width: 100%;
+  height: 260px;
+}
+
+.skeleton--meta-block {
+  width: 100%;
+  min-height: 84px;
+}
+
+.skeleton--table-cell {
+  width: 100%;
+  height: 1rem;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    opacity: 0.42;
+  }
+
+  to {
+    opacity: 0.58;
+  }
+}
+
 .empty-state {
   width: 100%;
   display: grid;
@@ -416,12 +516,24 @@ textarea:focus-visible,
   letter-spacing: 0.12em;
   text-transform: uppercase;
   white-space: nowrap;
+  transition:
+    background-color var(--motion-fast) linear,
+    border-color var(--motion-fast) linear,
+    color var(--motion-fast) linear,
+    transform var(--motion-fast) linear;
 }
 
 .action-button:hover,
 .primary-link:hover,
 .filters button:hover {
   background: color-mix(in srgb, var(--theme-accent-power) 86%, white 14%);
+}
+
+.action-button:not(:disabled):active,
+.primary-link:active,
+.filters button:not(:disabled):active {
+  background: color-mix(in srgb, var(--theme-accent-power) 92%, black 8%);
+  transform: translateY(1px);
 }
 
 .action-button--compact {
@@ -713,8 +825,16 @@ textarea:focus-visible,
   color: var(--theme-text-primary);
 }
 
+.data-table tbody tr {
+  transition: background-color var(--motion-fast) linear;
+}
+
 .data-table tbody tr:hover {
-  background: rgba(19, 47, 87, 0.16);
+  background-color: color-mix(in srgb, var(--theme-surface) 85%, white 15%);
+}
+
+.data-table tbody tr:focus-within {
+  background-color: color-mix(in srgb, var(--theme-surface) 85%, white 15%);
 }
 
 .data-table a {
@@ -1065,6 +1185,28 @@ textarea:focus-visible,
   background: var(--theme-canvas);
 }
 
+.pipeline-card,
+.resource-compact-card,
+.resource-card,
+.control-plane-launch-card,
+.control-plane-hero,
+.run-feature-card,
+.control-plane-system-card {
+  transition:
+    background-color var(--motion-fast) linear,
+    border-color var(--motion-fast) linear;
+}
+
+.pipeline-card:hover,
+.resource-compact-card:hover,
+.resource-card:hover,
+.control-plane-launch-card:hover,
+.control-plane-hero:hover,
+.run-feature-card:hover,
+.control-plane-system-card:hover {
+  background: color-mix(in srgb, var(--theme-canvas) 86%, white 14%);
+}
+
 .control-plane-toolbar__launch h3,
 .control-plane-hero h3,
 .run-feature-card h3,
@@ -1236,11 +1378,21 @@ textarea:focus-visible,
   line-height: 1.1;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  transition:
+    background-color var(--motion-fast) linear,
+    border-color var(--motion-fast) linear,
+    transform var(--motion-fast) linear;
 }
 
 .control-form button:hover,
 .resource-card__actions button:hover {
   background: color-mix(in srgb, var(--theme-accent-power) 86%, white 14%);
+}
+
+.control-form button:not(:disabled):active,
+.resource-card__actions button:not(:disabled):active {
+  background: color-mix(in srgb, var(--theme-accent-power) 92%, black 8%);
+  transform: translateY(1px);
 }
 
 .control-form textarea {
@@ -1392,6 +1544,7 @@ textarea:focus-visible,
   font-size: 0.98rem;
   letter-spacing: -0.01em;
   list-style: none;
+  transition: background-color var(--motion-fast) linear;
 }
 
 .resource-card summary::-webkit-details-marker {
@@ -1414,6 +1567,11 @@ textarea:focus-visible,
   content: '−';
 }
 
+.resource-card summary:hover,
+.operator-disclosure__summary:hover {
+  background: color-mix(in srgb, var(--theme-canvas) 88%, white 12%);
+}
+
 .operator-disclosure {
   margin-top: 14px;
   background: var(--theme-canvas);
@@ -1429,6 +1587,7 @@ textarea:focus-visible,
   background: transparent;
   color: inherit;
   text-align: left;
+  transition: background-color var(--motion-fast) linear;
 }
 
 .operator-disclosure__copy {
@@ -1673,5 +1832,12 @@ textarea:focus-visible,
   .page-header,
   .panel {
     padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.5;
   }
 }
