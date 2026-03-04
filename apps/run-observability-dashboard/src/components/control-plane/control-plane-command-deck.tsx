@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ControlPlaneOverview } from '@/server/control-plane/service';
 import { StatusBadge } from '@/components/state/status-badge';
+import { EmptyTray } from '@/components/state/empty-tray';
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { StartRunForm } from '@/components/control-plane/start-run-form';
 import { startRunAction } from '@/app/control-plane/actions';
@@ -86,7 +87,12 @@ export function ControlPlaneCommandDeck({
                   </ul>
                 </div>
               ) : (
-                <p className="empty-copy">No active runs. Launch a pipeline when you need one.</p>
+                <EmptyTray
+                  className="empty-tray--compact"
+                  label="Execution"
+                  title="No active runs"
+                  message="Launch a pipeline when you need one."
+                />
               )}
             </article>
 

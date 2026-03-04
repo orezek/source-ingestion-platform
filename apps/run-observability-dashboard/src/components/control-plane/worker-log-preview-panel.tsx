@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { formatCompactBytes } from '@/server/lib/formatting';
 import type { ControlPlaneFilePreview } from '@/server/control-plane/file-previews';
 import { SectionHeading } from '@/components/control-plane/section-heading';
+import { EmptyTray } from '@/components/state/empty-tray';
 
 type WorkerLogPreviewPanelProps = {
   eyebrow: string;
@@ -271,7 +272,12 @@ export function WorkerLogPreviewPanel({
           )}
         </>
       ) : (
-        <p className="empty-copy">{emptyCopy}</p>
+        <EmptyTray
+          className="empty-tray--compact"
+          label={eyebrow}
+          title="No log output"
+          message={emptyCopy}
+        />
       )}
     </section>
   );

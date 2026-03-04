@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/metrics/kpi-card';
 import { ErrorState } from '@/components/state/error-state';
+import { EmptyTray } from '@/components/state/empty-tray';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import {
   formatCompactBytes,
@@ -95,7 +96,11 @@ export default async function CrawlerRunDetailPage({
             description="Only populated when the crawler could not complete a request."
           />
           {run.failedRequestUrls.length === 0 ? (
-            <p className="empty-copy">No failed request URLs recorded for this run.</p>
+            <EmptyTray
+              label="Diagnostics"
+              title="No failed request URLs"
+              message="No failed request URLs were recorded for this run."
+            />
           ) : (
             <ul className="url-list">
               {run.failedRequestUrls.map((url) => (

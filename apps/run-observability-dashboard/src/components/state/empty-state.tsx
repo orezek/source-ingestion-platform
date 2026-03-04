@@ -1,9 +1,5 @@
+import { EmptyTray } from '@/components/state/empty-tray';
+
 export function EmptyState({ title, message }: { title: string; message: string }) {
-  return (
-    <section className="panel empty-state">
-      <p className="eyebrow">No data</p>
-      <h2>{title}</h2>
-      <p>{message}</p>
-    </section>
-  );
+  return <EmptyTray label="No data" title={title} message={message} />;
 }

@@ -8,6 +8,7 @@ import {
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { ResourceLifecycleActions } from '@/components/control-plane/resource-lifecycle-actions';
+import { EmptyTray } from '@/components/state/empty-tray';
 import {
   createPipelineAction,
   deletePipelineAction,
@@ -47,7 +48,14 @@ function renderStructuredOutputChoices(input: {
   selectedIds: string[];
 }) {
   if (input.destinations.length === 0) {
-    return <p className="empty-copy">No structured outputs are available yet.</p>;
+    return (
+      <EmptyTray
+        className="empty-tray--compact"
+        label="Outputs"
+        title="No structured outputs available"
+        message="Create at least one managed output destination first."
+      />
+    );
   }
 
   return (
@@ -82,7 +90,11 @@ export function PipelineSection({
     <section className="panel">
       <SectionHeading title="Pipelines" detail={`${pipelines.length} total`} />
       {pipelines.length === 0 ? (
-        <p className="empty-copy">No pipelines yet.</p>
+        <EmptyTray
+          label="Pipelines"
+          title="No pipelines yet"
+          message="Create a pipeline to start runs from the operator surface."
+        />
       ) : (
         <div className="pipeline-grid">
           {pipelines.map((pipeline) => (

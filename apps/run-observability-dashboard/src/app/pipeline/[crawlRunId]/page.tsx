@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/metrics/kpi-card';
 import { ErrorState } from '@/components/state/error-state';
+import { EmptyTray } from '@/components/state/empty-tray';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatDateTime, formatNumber, formatPercent } from '@/server/lib/formatting';
 import { getPipelineRunDetail } from '@/server/services/dashboard-data';
@@ -99,7 +100,12 @@ export default async function PipelineRunDetailPage({
                 ))}
               </ul>
             ) : (
-              <p className="empty-copy">No mismatch detected for this linked pipeline run.</p>
+              <EmptyTray
+                className="empty-tray--compact"
+                label="Mismatch"
+                title="No mismatch detected"
+                message="No crawler-to-ingestion mismatch was detected for this linked run."
+              />
             )}
           </div>
         </section>

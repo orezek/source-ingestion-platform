@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ControlPlaneOverview } from '@/server/control-plane/service';
 import { StatusBadge } from '@/components/state/status-badge';
+import { EmptyTray } from '@/components/state/empty-tray';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatDateTime } from '@/server/lib/formatting';
 
@@ -21,7 +22,11 @@ export function ControlPlaneRunsSection({ runs, pipelines }: ControlPlaneRunsSec
         detail={`${runs.length} total`}
       />
       {runs.length === 0 ? (
-        <p className="empty-copy">No control-plane runs have been started yet.</p>
+        <EmptyTray
+          label="History"
+          title="No control-plane runs"
+          message="No control-plane runs have been started yet."
+        />
       ) : (
         <div className="table-wrap" data-testid="control-plane-runs">
           <table className="data-table control-plane-runs-table">

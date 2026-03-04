@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
+import { EmptyTray } from '@/components/state/empty-tray';
 
 type JsonViewerPanelProps = {
   eyebrow: string;
@@ -142,7 +143,12 @@ export function JsonViewerPanel({
         description={description ?? 'Expand only the branches you need to inspect.'}
       >
         {value === null || value === undefined ? (
-          <p className="empty-copy">{emptyCopy}</p>
+          <EmptyTray
+            className="empty-tray--compact"
+            label={eyebrow}
+            title="No data available"
+            message={emptyCopy}
+          />
         ) : (
           <div className="json-viewer">
             {renderJsonNode({ label: rootLabel, value, depth: 0, defaultOpenDepth })}

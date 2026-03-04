@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/metrics/kpi-card';
 import { StatusBadge } from '@/components/state/status-badge';
 import { ErrorState } from '@/components/state/error-state';
+import { EmptyTray } from '@/components/state/empty-tray';
 import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { LiveRefresh } from '@/components/control-plane/live-refresh';
@@ -151,7 +152,12 @@ export default async function ControlPlaneRunDetailPage({
                   </ul>
                 </div>
               ) : (
-                <p className="empty-copy">Crawler runtime has not been written yet.</p>
+                <EmptyTray
+                  className="empty-tray--compact"
+                  label="Crawler"
+                  title="No runtime state"
+                  message="Crawler runtime has not been written yet."
+                />
               )}
               {detail.runView.ingestionRuntime ? (
                 <div className="runtime-card">
@@ -167,9 +173,12 @@ export default async function ControlPlaneRunDetailPage({
                   </ul>
                 </div>
               ) : (
-                <p className="empty-copy">
-                  Ingestion is disabled or has not written runtime state yet.
-                </p>
+                <EmptyTray
+                  className="empty-tray--compact"
+                  label="Ingestion"
+                  title="No runtime state"
+                  message="Ingestion is disabled or has not written runtime state yet."
+                />
               )}
             </div>
           </div>
@@ -212,7 +221,11 @@ export default async function ControlPlaneRunDetailPage({
               description="Browse and download captured HTML directly from the control plane."
             />
             {detail.artifactCaptures.length === 0 ? (
-              <p className="empty-copy">No captured HTML artifacts are recorded for this run.</p>
+              <EmptyTray
+                label="Artifacts"
+                title="No captured outputs"
+                message="No captured HTML artifacts are recorded for this run."
+              />
             ) : (
               <div className="table-wrap table-wrap--bounded">
                 <table className="data-table">
@@ -267,9 +280,11 @@ export default async function ControlPlaneRunDetailPage({
             description="Browse and download normalized JSON outputs directly from the control plane."
           />
           {detail.structuredOutputCaptures.length === 0 ? (
-            <p className="empty-copy">
-              No downloadable structured outputs are recorded for this run.
-            </p>
+            <EmptyTray
+              label="Outputs"
+              title="No downloadable outputs"
+              message="No downloadable structured outputs are recorded for this run."
+            />
           ) : (
             <div className="table-wrap table-wrap--bounded">
               <table className="data-table">
@@ -341,7 +356,11 @@ export default async function ControlPlaneRunDetailPage({
             description="Expand the broker timeline only when you need the execution trace."
           >
             {detail.brokerEvents.length === 0 ? (
-              <p className="empty-copy">No broker events have been persisted for this run yet.</p>
+              <EmptyTray
+                label="Events"
+                title="No broker events"
+                message="No broker events have been persisted for this run yet."
+              />
             ) : (
               <BrokerEventHistoryPanel events={detail.brokerEvents} />
             )}

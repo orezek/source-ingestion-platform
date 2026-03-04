@@ -1,6 +1,7 @@
 import { formatCompactBytes } from '@/server/lib/formatting';
 import type { ControlPlaneFilePreview } from '@/server/control-plane/file-previews';
 import { SectionHeading } from '@/components/control-plane/section-heading';
+import { EmptyTray } from '@/components/state/empty-tray';
 
 export function FilePreviewPanel({
   eyebrow,
@@ -26,7 +27,12 @@ export function FilePreviewPanel({
           <pre className="code-panel">{preview.contents}</pre>
         </>
       ) : (
-        <p className="empty-copy">{emptyCopy}</p>
+        <EmptyTray
+          className="empty-tray--compact"
+          label={eyebrow}
+          title="No log output"
+          message={emptyCopy}
+        />
       )}
     </section>
   );
