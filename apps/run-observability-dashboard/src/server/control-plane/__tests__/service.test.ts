@@ -313,6 +313,126 @@ describe('control-plane service', () => {
     expect(updated.debugLog).toBe(true);
   });
 
+  it('allows deleting a runtime profile after historical runs have finished', async () => {
+    const {
+      createPipeline,
+      createRuntimeProfile,
+      deletePipeline,
+      deleteRuntimeProfile,
+      getControlPlaneOverview,
+      getControlPlaneRunDetail,
+      startRun,
+    } = await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = await createRuntimeProfile({
+      name: 'Historical delete runtime profile',
+      crawlerMaxConcurrency: 2,
+      crawlerMaxRequestsPerMinute: 30,
+      ingestionConcurrency: 1,
+      ingestionEnabled: true,
+      debugLog: false,
+      status: 'active',
+    });
+
+    const pipeline = await createPipeline({
+      name: 'Historical runtime profile delete pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [],
+      mode: 'crawl_only',
+      status: 'active',
+    });
+
+    const runView = await startRun({
+      pipelineId: pipeline.id,
+      createdBy: 'vitest',
+    });
+
+    await deletePipeline(pipeline.id);
+    await deleteRuntimeProfile(runtimeProfile.id);
+
+    const updatedOverview = await getControlPlaneOverview();
+    expect(updatedOverview.runtimeProfiles.some((entry) => entry.id === runtimeProfile.id)).toBe(
+      false,
+    );
+
+    const detail = await getControlPlaneRunDetail(runView.run.runId);
+    expect(detail).not.toBeNull();
+    expect(detail?.runView.manifest?.runtimeProfileSnapshot.id).toBe(runtimeProfile.id);
+  });
+
+  it('rejects deleting a runtime profile that is still referenced by a pipeline', async () => {
+    const { createPipeline, deleteRuntimeProfile, getControlPlaneOverview } =
+      await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+
+    await createPipeline({
+      name: 'Runtime profile delete guard pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [],
+      mode: 'crawl_only',
+      status: 'active',
+    });
+
+    await expect(deleteRuntimeProfile(runtimeProfile.id)).rejects.toThrow(
+      /referenced by one or more pipelines/i,
+    );
+  });
+
+  it('allows deleting a search space after historical runs have finished', async () => {
+    const {
+      createPipeline,
+      createSearchSpace,
+      deletePipeline,
+      deleteSearchSpace,
+      getControlPlaneOverview,
+      getControlPlaneRunDetail,
+      startRun,
+    } = await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+    const searchSpace = await createSearchSpace({
+      name: 'Historical delete search space',
+      description: 'test only',
+      sourceType: 'jobs_cz',
+      startUrls: ['https://example.test/jobs'],
+      maxItemsDefault: 10,
+      allowInactiveMarkingOnPartialRuns: false,
+      status: 'active',
+    });
+
+    const pipeline = await createPipeline({
+      name: 'Historical search space delete pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [],
+      mode: 'crawl_only',
+      status: 'active',
+    });
+
+    const runView = await startRun({
+      pipelineId: pipeline.id,
+      createdBy: 'vitest',
+    });
+
+    await deletePipeline(pipeline.id);
+    await deleteSearchSpace(searchSpace.id);
+
+    const updatedOverview = await getControlPlaneOverview();
+    expect(updatedOverview.searchSpaces.some((entry) => entry.id === searchSpace.id)).toBe(false);
+
+    const detail = await getControlPlaneRunDetail(runView.run.runId);
+    expect(detail).not.toBeNull();
+    expect(detail?.runView.manifest?.searchSpaceSnapshot.id).toBe(searchSpace.id);
+  });
+
   it('rejects deleting a search space that is still referenced by a pipeline', async () => {
     const { createPipeline, deleteSearchSpace, getControlPlaneOverview } =
       await import('@/server/control-plane/service');
@@ -331,6 +451,90 @@ describe('control-plane service', () => {
     });
 
     await expect(deleteSearchSpace(searchSpace.id)).rejects.toThrow(
+      /referenced by one or more pipelines/i,
+    );
+  });
+
+  it('allows deleting a structured output destination after historical runs have finished', async () => {
+    const {
+      createPipeline,
+      createStructuredOutputDestination,
+      deletePipeline,
+      deleteStructuredOutputDestination,
+      getControlPlaneOverview,
+      getControlPlaneRunDetail,
+      startRun,
+    } = await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+    const destination = await createStructuredOutputDestination({
+      name: 'Historical delete downloadable output',
+      type: 'downloadable_json',
+      config: {},
+      status: 'active',
+    });
+
+    const pipeline = await createPipeline({
+      name: 'Historical output delete pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [destination.id],
+      mode: 'crawl_and_ingest',
+      status: 'active',
+    });
+
+    const runView = await startRun({
+      pipelineId: pipeline.id,
+      createdBy: 'vitest',
+    });
+
+    await deletePipeline(pipeline.id);
+    await deleteStructuredOutputDestination(destination.id);
+
+    const updatedOverview = await getControlPlaneOverview();
+    expect(
+      updatedOverview.structuredOutputDestinations.some((entry) => entry.id === destination.id),
+    ).toBe(false);
+
+    const detail = await getControlPlaneRunDetail(runView.run.runId);
+    expect(detail).not.toBeNull();
+    expect(
+      detail?.runView.manifest?.structuredOutputDestinationSnapshots.some(
+        (entry) => entry.id === destination.id,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects deleting a structured output destination that is still referenced by a pipeline', async () => {
+    const {
+      createPipeline,
+      createStructuredOutputDestination,
+      deleteStructuredOutputDestination,
+      getControlPlaneOverview,
+    } = await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+    const destination = await createStructuredOutputDestination({
+      name: 'Structured output delete guard',
+      type: 'downloadable_json',
+      config: {},
+      status: 'active',
+    });
+
+    await createPipeline({
+      name: 'Structured output guard pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [destination.id],
+      mode: 'crawl_and_ingest',
+      status: 'active',
+    });
+
+    await expect(deleteStructuredOutputDestination(destination.id)).rejects.toThrow(
       /referenced by one or more pipelines/i,
     );
   });

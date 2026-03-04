@@ -70,7 +70,6 @@ import {
   getStructuredOutputDestination,
   getWorkerRuntime,
   listPipelines,
-  listRunManifests,
   listRunRecords,
   listRuntimeProfiles,
   listSearchSpaces,
@@ -391,31 +390,21 @@ async function withPipelineStartLock<T>(
 }
 
 async function assertSearchSpaceDeleteAllowed(id: string): Promise<void> {
-  const [pipelines, manifests] = await Promise.all([listPipelines(), listRunManifests()]);
+  const pipelines = await listPipelines();
   if (pipelines.some((pipeline) => pipeline.searchSpaceId === id)) {
     throw new Error(`Search space "${id}" is still referenced by one or more pipelines.`);
-  }
-
-  if (manifests.some((manifest) => manifest.searchSpaceSnapshot.id === id)) {
-    throw new Error(`Search space "${id}" is referenced by historical runs and must be archived.`);
   }
 }
 
 async function assertRuntimeProfileDeleteAllowed(id: string): Promise<void> {
-  const [pipelines, manifests] = await Promise.all([listPipelines(), listRunManifests()]);
+  const pipelines = await listPipelines();
   if (pipelines.some((pipeline) => pipeline.runtimeProfileId === id)) {
     throw new Error(`Runtime profile "${id}" is still referenced by one or more pipelines.`);
-  }
-
-  if (manifests.some((manifest) => manifest.runtimeProfileSnapshot.id === id)) {
-    throw new Error(
-      `Runtime profile "${id}" is referenced by historical runs and must be archived.`,
-    );
   }
 }
 
 async function assertStructuredOutputDestinationDeleteAllowed(id: string): Promise<void> {
-  const [pipelines, manifests] = await Promise.all([listPipelines(), listRunManifests()]);
+  const pipelines = await listPipelines();
   if (
     pipelines.some((pipeline) =>
       pipeline.structuredOutputDestinationIds.some((item) => item === id),
@@ -423,16 +412,6 @@ async function assertStructuredOutputDestinationDeleteAllowed(id: string): Promi
   ) {
     throw new Error(
       `Structured output destination "${id}" is still referenced by one or more pipelines.`,
-    );
-  }
-
-  if (
-    manifests.some((manifest) =>
-      manifest.structuredOutputDestinationSnapshots.some((destination) => destination.id === id),
-    )
-  ) {
-    throw new Error(
-      `Structured output destination "${id}" is referenced by historical runs and must be archived.`,
     );
   }
 }
