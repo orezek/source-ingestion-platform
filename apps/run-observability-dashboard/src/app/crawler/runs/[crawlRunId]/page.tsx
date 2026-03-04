@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/metrics/kpi-card';
 import { ErrorState } from '@/components/state/error-state';
+import { SectionHeading } from '@/components/control-plane/section-heading';
 import {
   formatCompactBytes,
   formatDateTime,
@@ -36,13 +37,18 @@ export default async function CrawlerRunDetailPage({
           databaseName={run.databaseName ?? 'unknown-db'}
           generatedAt={run.finishedAt ?? run.startedAt}
           latestCrawlerStatus={run.status}
+          backHref="/"
+          backLabel="Back to overview"
+          showControlPlaneLink={false}
+          summaryItems={[
+            { label: 'Status', value: run.status.replaceAll('_', ' ') },
+            { label: 'Started', value: formatDateTime(run.startedAt) },
+            { label: 'Duration', value: formatDurationSeconds(run.durationSeconds) },
+            { label: 'New jobs', value: formatNumber(run.newJobsCount) },
+          ]}
         />
 
         <section className="kpi-grid">
-          <KpiCard label="STATUS" value={run.status} />
-          <KpiCard label="STARTED" value={formatDateTime(run.startedAt)} />
-          <KpiCard label="DURATION" value={formatDurationSeconds(run.durationSeconds)} />
-          <KpiCard label="NEW JOBS" value={formatNumber(run.newJobsCount)} />
           <KpiCard label="EXISTING JOBS" value={formatNumber(run.existingJobsCount)} />
           <KpiCard label="INACTIVE MARKED" value={formatNumber(run.inactiveMarkedCount)} />
           <KpiCard label="FAILED REQUESTS" value={formatNumber(run.failedRequests)} />
@@ -51,8 +57,7 @@ export default async function CrawlerRunDetailPage({
 
         <section className="panel detail-grid">
           <div>
-            <p className="eyebrow">Input</p>
-            <h2>Run configuration</h2>
+            <SectionHeading eyebrow="Input" title="Run configuration" />
             <ul className="detail-list">
               <li>MAX ITEMS: {run.input.maxItems ?? 'N/A'}</li>
               <li>MAX CONCURRENCY: {run.input.maxConcurrency ?? 'N/A'}</li>
@@ -61,8 +66,7 @@ export default async function CrawlerRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Counters</p>
-            <h2>Traversal and rendering</h2>
+            <SectionHeading eyebrow="Counters" title="Traversal and rendering" />
             <ul className="detail-list">
               <li>LIST PAGES VISITED: {formatNumber(run.listPagesVisited)}</li>
               <li>DETAIL PAGES VISITED: {formatNumber(run.detailPagesVisited)}</li>
@@ -73,8 +77,7 @@ export default async function CrawlerRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Trigger</p>
-            <h2>Ingestion handoff</h2>
+            <SectionHeading eyebrow="Trigger" title="Ingestion handoff" />
             <ul className="detail-list">
               <li>ENABLED: {String(run.ingestionTrigger.enabled)}</li>
               <li>ATTEMPTED: {String(run.ingestionTrigger.attempted)}</li>
@@ -86,10 +89,11 @@ export default async function CrawlerRunDetailPage({
         </section>
 
         <section className="panel">
-          <div className="section-heading">
-            <p className="eyebrow">Diagnostics</p>
-            <h2>Failed request URLs</h2>
-          </div>
+          <SectionHeading
+            eyebrow="Diagnostics"
+            title="Failed request URLs"
+            description="Only populated when the crawler could not complete a request."
+          />
           {run.failedRequestUrls.length === 0 ? (
             <p className="empty-copy">No failed request URLs recorded for this run.</p>
           ) : (

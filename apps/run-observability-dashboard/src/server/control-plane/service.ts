@@ -438,9 +438,11 @@ async function assertStructuredOutputDestinationDeleteAllowed(id: string): Promi
 }
 
 async function assertPipelineDeleteAllowed(id: string): Promise<void> {
-  const runs = await listRunRecords();
-  if (runs.some((run) => run.pipelineId === id)) {
-    throw new Error(`Pipeline "${id}" is referenced by historical runs and cannot be deleted.`);
+  const activeRun = await getActiveRunForPipeline(id);
+  if (activeRun) {
+    throw new Error(
+      `Pipeline "${id}" has an active run (${activeRun.run.runId}) and cannot be deleted.`,
+    );
   }
 }
 

@@ -4,14 +4,14 @@ export function SectionHeading({
   description,
   detail,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   detail?: string;
 }) {
   return (
     <div className="section-heading">
-      <p className="eyebrow">{eyebrow}</p>
+      {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
       <div className="section-heading__row">
         <h2>{title}</h2>
         {detail ? <span className="section-heading__detail">{detail}</span> : null}

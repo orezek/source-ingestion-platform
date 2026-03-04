@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { SectionHeading } from '@/components/control-plane/section-heading';
 
 export function ChartFrame({
   title,
@@ -13,11 +14,7 @@ export function ChartFrame({
 }) {
   return (
     <section className="panel chart-panel">
-      <div className="section-heading">
-        <p className="eyebrow">Trend</p>
-        <h2>{title}</h2>
-        <p className="chart-copy">{description}</p>
-      </div>
+      <SectionHeading eyebrow="Trend" title={title} description={description} />
       <div className="chart-container">{children}</div>
     </section>
   );

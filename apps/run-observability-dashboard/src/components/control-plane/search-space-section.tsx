@@ -16,40 +16,35 @@ type SearchSpaceSectionProps = {
 export function SearchSpaceSection({ searchSpaces }: SearchSpaceSectionProps) {
   return (
     <section className="panel">
-      <SectionHeading
-        eyebrow="Search spaces"
-        title="Source definitions"
-        description="Bootstrapped from the current crawler configs and editable through the control plane."
-        detail={`${searchSpaces.length} total`}
-      />
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>START URLS</th>
-              <th>MAX ITEMS</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {searchSpaces.map((searchSpace) => (
-              <tr key={searchSpace.id}>
-                <td>{searchSpace.id}</td>
-                <td>{searchSpace.startUrls.length}</td>
-                <td>{searchSpace.maxItemsDefault}</td>
-                <td>{searchSpace.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <SectionHeading title="Search spaces" detail={`${searchSpaces.length} total`} />
+      <div className="resource-compact-grid">
+        {searchSpaces.map((searchSpace) => (
+          <article key={searchSpace.id} className="resource-compact-card">
+            <div className="resource-compact-card__header">
+              <div>
+                <strong>{searchSpace.name}</strong>
+                <p className="resource-card__meta">{searchSpace.id}</p>
+              </div>
+              <span className="resource-status-chip">{searchSpace.status}</span>
+            </div>
+            <dl className="resource-spec-list">
+              <div className="resource-spec-list__row">
+                <dt>Start URLs</dt>
+                <dd>
+                  {searchSpace.startUrls.length} URL{searchSpace.startUrls.length === 1 ? '' : 's'}
+                </dd>
+              </div>
+              <div className="resource-spec-list__row">
+                <dt>Max items</dt>
+                <dd>{searchSpace.maxItemsDefault}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
       </div>
 
       {searchSpaces.length > 0 ? (
-        <DisclosurePanel
-          title="Manage source definitions"
-          description="Expand to edit or retire an existing search space."
-        >
+        <DisclosurePanel title="Manage search spaces" description="Edit or retire a search space.">
           <div className="resource-edit-grid">
             {searchSpaces.map((searchSpace) => (
               <details key={searchSpace.id} className="resource-card">
@@ -106,10 +101,7 @@ export function SearchSpaceSection({ searchSpaces }: SearchSpaceSectionProps) {
         </DisclosurePanel>
       ) : null}
 
-      <DisclosurePanel
-        title="Create source definition"
-        description="Add a new list-page crawl target without changing runtime throughput."
-      >
+      <DisclosurePanel title="Create search space" description="Create a list-page crawl target.">
         <form action={createSearchSpaceAction} className="control-form">
           <label>
             <span>NAME</span>

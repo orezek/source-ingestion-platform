@@ -7,6 +7,8 @@ import { KpiCard } from '@/components/metrics/kpi-card';
 import { StatusBadge } from '@/components/state/status-badge';
 import { ErrorState } from '@/components/state/error-state';
 import { FilePreviewPanel } from '@/components/control-plane/file-preview-panel';
+import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
+import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatCompactBytes, formatDateTime, formatNumber } from '@/server/lib/formatting';
 import { env } from '@/server/env';
@@ -30,6 +32,18 @@ function describeBrokerEvent(event: BrokerEvent): string {
   }
 }
 
+function parseJsonPreview(contents: string | null | undefined): unknown | null {
+  if (!contents) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(contents) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ControlPlaneRunDetailPage({
   params,
 }: {
@@ -42,11 +56,6 @@ export default async function ControlPlaneRunDetailPage({
     if (!detail) {
       notFound();
     }
-
-    const manifestJson = detail.runView.manifest
-      ? JSON.stringify(detail.runView.manifest, null, 2)
-      : null;
-    const runSummaryJson = JSON.stringify(detail.runView.run.summary, null, 2);
     const generatedAt =
       detail.runView.run.finishedAt ??
       detail.runView.run.startedAt ??
@@ -55,19 +64,35 @@ export default async function ControlPlaneRunDetailPage({
     return (
       <AppShell>
         <PageHeader
-          eyebrow="Control-plane run detail"
-          title={`Run ${detail.runView.run.runId.slice(0, 18)}`}
-          description="Operator view of the immutable run manifest, generated Apify input, worker state, brokered handoff, and captured artifacts for a single control-plane execution."
+          eyebrow="Run detail"
+          title={detail.pipeline?.name ?? `Run ${detail.runView.run.runId.slice(0, 18)}`}
+          description="Inspect the run, then open artifacts and outputs only when needed."
           environmentLabel={`CONTROL ${env.CONTROL_PLANE_EXECUTION_MODE.toUpperCase()}`}
           databaseName={detail.mongoDatabaseName ?? 'local-only'}
           generatedAt={generatedAt}
           latestCrawlerStatus={detail.runView.crawlerRuntime?.status ?? null}
           latestIngestionStatus={detail.runView.ingestionRuntime?.status ?? null}
+          backHref="/control-plane"
+          backLabel="Back to control plane"
+          showControlPlaneLink={false}
+          summaryItems={[
+            { label: 'Run id', value: detail.runView.run.runId.slice(0, 18) },
+            {
+              label: 'Status',
+              value: detail.runView.computedStatus.replaceAll('_', ' '),
+            },
+            {
+              label: 'Mode',
+              value: detail.runView.manifest?.mode ?? 'N/A',
+            },
+            {
+              label: 'Pipeline',
+              value: detail.pipeline?.name ?? detail.runView.run.pipelineId,
+            },
+          ]}
         />
 
         <section className="kpi-grid" data-testid="control-plane-run-detail">
-          <KpiCard label="RUN STATUS" value={detail.runView.computedStatus} />
-          <KpiCard label="MODE" value={detail.runView.manifest?.mode ?? 'N/A'} />
           <KpiCard
             label="BROKER EVENTS"
             value={formatNumber(detail.brokerEvents.length)}
@@ -94,8 +119,7 @@ export default async function ControlPlaneRunDetailPage({
 
         <section className="panel detail-grid">
           <div>
-            <p className="eyebrow">Lifecycle</p>
-            <h2>Run timing</h2>
+            <SectionHeading eyebrow="Lifecycle" title="Run timing" />
             <ul className="detail-list">
               <li>RUN ID: {detail.runView.run.runId}</li>
               <li>REQUESTED: {formatDateTime(detail.runView.run.requestedAt)}</li>
@@ -106,8 +130,7 @@ export default async function ControlPlaneRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Pipeline</p>
-            <h2>Immutable snapshot</h2>
+            <SectionHeading eyebrow="Pipeline" title="Immutable snapshot" />
             <ul className="detail-list">
               <li>PIPELINE: {detail.pipeline?.name ?? detail.runView.run.pipelineId}</li>
               <li>PIPELINE VERSION: {detail.runView.run.pipelineVersion}</li>
@@ -122,8 +145,7 @@ export default async function ControlPlaneRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Workers</p>
-            <h2>Runtime state</h2>
+            <SectionHeading eyebrow="Workers" title="Runtime state" />
             <div className="runtime-stack">
               {detail.runView.crawlerRuntime ? (
                 <div className="runtime-card">
@@ -164,27 +186,35 @@ export default async function ControlPlaneRunDetailPage({
         </section>
 
         <section className="chart-grid">
-          <section className="panel">
-            <SectionHeading eyebrow="Manifest" title="Run manifest" description="" />
-            {manifestJson ? (
-              <pre className="code-panel">{manifestJson}</pre>
-            ) : (
-              <p className="empty-copy">This run does not have a persisted manifest yet.</p>
-            )}
-          </section>
-          <FilePreviewPanel
+          <JsonViewerPanel
+            eyebrow="Manifest"
+            title="Run manifest"
+            value={detail.runView.manifest}
+            emptyCopy="This run does not have a persisted manifest yet."
+            description="The immutable runtime snapshot for this execution."
+            rootLabel="runManifest"
+          />
+          <JsonViewerPanel
             eyebrow="Apify input"
             title="Generated INPUT.json"
-            preview={detail.generatedInput}
+            value={
+              detail.generatedInput.exists ? parseJsonPreview(detail.generatedInput.contents) : null
+            }
             emptyCopy="The generated INPUT.json file has not been written yet."
+            description="Generated from the manifest for crawler-compatible execution."
+            rootLabel="INPUT"
           />
         </section>
 
         <section className="chart-grid">
-          <section className="panel">
-            <SectionHeading eyebrow="Control plane" title="Stored run summary" description="" />
-            <pre className="code-panel">{runSummaryJson}</pre>
-          </section>
+          <JsonViewerPanel
+            eyebrow="Control plane"
+            title="Stored run summary"
+            value={detail.runView.run.summary}
+            emptyCopy="No stored run summary is available."
+            description="Persistent control-plane record for this run."
+            rootLabel="summary"
+          />
           <section className="panel">
             <SectionHeading
               eyebrow="Artifacts"
@@ -216,14 +246,14 @@ export default async function ControlPlaneRunDetailPage({
                           <div className="table-action-group">
                             <Link
                               href={`/control-plane/runs/${detail.runView.run.runId}/artifacts/${artifact.sourceId}`}
-                              className="primary-link"
+                              className="action-button action-button--compact"
                               data-testid={`artifact-browse-${artifact.sourceId}`}
                             >
                               Browse
                             </Link>
                             <Link
                               href={`/api/control-plane/runs/${detail.runView.run.runId}/artifacts/${artifact.sourceId}?download=1`}
-                              className="primary-link"
+                              className="action-button action-button--compact"
                               data-testid={`artifact-download-${artifact.sourceId}`}
                               download={artifact.htmlDetailPageKey}
                             >
@@ -273,14 +303,14 @@ export default async function ControlPlaneRunDetailPage({
                         <div className="table-action-group">
                           <Link
                             href={`/control-plane/runs/${detail.runView.run.runId}/outputs/${output.destinationId}/${output.sourceId}`}
-                            className="primary-link"
+                            className="action-button action-button--compact"
                             data-testid={`output-browse-${output.destinationId}-${output.sourceId}`}
                           >
                             Browse
                           </Link>
                           <Link
                             href={`/api/control-plane/runs/${detail.runView.run.runId}/outputs/${output.destinationId}/${output.sourceId}?download=1`}
-                            className="primary-link"
+                            className="action-button action-button--compact"
                             data-testid={`output-download-${output.destinationId}-${output.sourceId}`}
                             download={output.fileName}
                           >
@@ -296,51 +326,59 @@ export default async function ControlPlaneRunDetailPage({
           )}
         </section>
 
-        <section className="chart-grid">
-          <FilePreviewPanel
-            eyebrow="Crawler worker"
-            title="Crawler log preview"
-            preview={detail.crawlerLog}
-            emptyCopy="No crawler log has been written for this run yet."
-          />
-          <FilePreviewPanel
-            eyebrow="Ingestion worker"
-            title="Ingestion log preview"
-            preview={detail.ingestionLog}
-            emptyCopy="No ingestion log has been written for this run yet."
-          />
-        </section>
-
         <section className="panel">
-          <SectionHeading eyebrow="Broker" title="Event history" description="" />
-          {detail.brokerEvents.length === 0 ? (
-            <p className="empty-copy">No broker events have been persisted for this run yet.</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>WHEN</th>
-                    <th>TYPE</th>
-                    <th>PRODUCER</th>
-                    <th>CORRELATION</th>
-                    <th>DETAIL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.brokerEvents.map((event) => (
-                    <tr key={event.eventId}>
-                      <td>{formatDateTime(event.occurredAt)}</td>
-                      <td>{event.eventType}</td>
-                      <td>{event.producer}</td>
-                      <td className="data-table__cell--wrap">{event.correlationId}</td>
-                      <td className="data-table__cell--wrap">{describeBrokerEvent(event)}</td>
+          <DisclosurePanel
+            title="Worker logs"
+            description="Expand only when the run needs low-level inspection."
+          >
+            <section className="chart-grid chart-grid--compact">
+              <FilePreviewPanel
+                eyebrow="Crawler worker"
+                title="Crawler log preview"
+                preview={detail.crawlerLog}
+                emptyCopy="No crawler log has been written for this run yet."
+              />
+              <FilePreviewPanel
+                eyebrow="Ingestion worker"
+                title="Ingestion log preview"
+                preview={detail.ingestionLog}
+                emptyCopy="No ingestion log has been written for this run yet."
+              />
+            </section>
+          </DisclosurePanel>
+          <DisclosurePanel
+            title="Event history"
+            description="Expand the broker timeline only when you need the execution trace."
+          >
+            {detail.brokerEvents.length === 0 ? (
+              <p className="empty-copy">No broker events have been persisted for this run yet.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>WHEN</th>
+                      <th>TYPE</th>
+                      <th>PRODUCER</th>
+                      <th>CORRELATION</th>
+                      <th>DETAIL</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {detail.brokerEvents.map((event) => (
+                      <tr key={event.eventId}>
+                        <td>{formatDateTime(event.occurredAt)}</td>
+                        <td>{event.eventType}</td>
+                        <td>{event.producer}</td>
+                        <td className="data-table__cell--wrap">{event.correlationId}</td>
+                        <td className="data-table__cell--wrap">{describeBrokerEvent(event)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </DisclosurePanel>
         </section>
       </AppShell>
     );

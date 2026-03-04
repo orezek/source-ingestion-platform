@@ -35,7 +35,7 @@ export function IngestionRunsTable({ runs }: { runs: IngestionRunSummaryView[] }
                 <Link href={`/ingestion/runs/${run.id}`}>{run.id.slice(0, 8)}</Link>
               </td>
               <td>
-                <StatusBadge label="RUN" status={run.status} />
+                <StatusBadge status={run.status} />
               </td>
               <td>{formatDateTime(run.startedAt)}</td>
               <td>{formatDurationSeconds(run.durationSeconds)}</td>

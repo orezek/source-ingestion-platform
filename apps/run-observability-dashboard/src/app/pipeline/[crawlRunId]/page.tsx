@@ -3,6 +3,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { KpiCard } from '@/components/metrics/kpi-card';
 import { ErrorState } from '@/components/state/error-state';
+import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatDateTime, formatNumber, formatPercent } from '@/server/lib/formatting';
 import { getPipelineRunDetail } from '@/server/services/dashboard-data';
 
@@ -36,12 +37,27 @@ export default async function PipelineRunDetailPage({
           }
           latestCrawlerStatus={pipeline.crawlerRun.status}
           latestIngestionStatus={pipeline.ingestionRun?.status ?? null}
+          backHref="/"
+          backLabel="Back to overview"
+          showControlPlaneLink={false}
+          summaryItems={[
+            { label: 'Crawler', value: pipeline.crawlerRun.status.replaceAll('_', ' ') },
+            {
+              label: 'Ingestion',
+              value: pipeline.ingestionRun?.status?.replaceAll('_', ' ') ?? 'missing',
+            },
+            { label: 'New jobs', value: formatNumber(pipeline.crawlerRun.newJobsCount) },
+            {
+              label: 'E2E processed',
+              value:
+                pipeline.endToEndProcessedRate !== null
+                  ? formatPercent(pipeline.endToEndProcessedRate)
+                  : 'N/A',
+            },
+          ]}
         />
 
         <section className="kpi-grid">
-          <KpiCard label="CRAWLER STATUS" value={pipeline.crawlerRun.status} />
-          <KpiCard label="INGESTION STATUS" value={pipeline.ingestionRun?.status ?? 'missing'} />
-          <KpiCard label="NEW JOBS" value={formatNumber(pipeline.crawlerRun.newJobsCount)} />
           <KpiCard
             label="INGESTION TOTAL"
             value={formatNumber(pipeline.ingestionRun?.jobsTotal ?? 0)}
@@ -55,20 +71,11 @@ export default async function PipelineRunDetailPage({
             value={formatNumber(pipeline.ingestionRun?.jobsSkippedIncomplete ?? 0)}
           />
           <KpiCard label="FAILED" value={formatNumber(pipeline.ingestionRun?.jobsFailed ?? 0)} />
-          <KpiCard
-            label="E2E PROCESSED RATE"
-            value={
-              pipeline.endToEndProcessedRate !== null
-                ? formatPercent(pipeline.endToEndProcessedRate)
-                : 'N/A'
-            }
-          />
         </section>
 
         <section className="panel detail-grid">
           <div>
-            <p className="eyebrow">Crawler</p>
-            <h2>Run snapshot</h2>
+            <SectionHeading eyebrow="Crawler" title="Run snapshot" />
             <ul className="detail-list">
               <li>RUN ID: {pipeline.crawlerRun.id}</li>
               <li>STARTED: {formatDateTime(pipeline.crawlerRun.startedAt)}</li>
@@ -76,8 +83,7 @@ export default async function PipelineRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Ingestion</p>
-            <h2>Linked run snapshot</h2>
+            <SectionHeading eyebrow="Ingestion" title="Linked run snapshot" />
             <ul className="detail-list">
               <li>RUN ID: {pipeline.ingestionRun?.id ?? 'N/A'}</li>
               <li>STARTED: {formatDateTime(pipeline.ingestionRun?.startedAt ?? null)}</li>
@@ -85,8 +91,7 @@ export default async function PipelineRunDetailPage({
             </ul>
           </div>
           <div>
-            <p className="eyebrow">Mismatch</p>
-            <h2>Derived diagnostics</h2>
+            <SectionHeading eyebrow="Mismatch" title="Derived diagnostics" />
             {pipeline.hasMismatch ? (
               <ul className="detail-list">
                 {pipeline.mismatchReasons.map((reason) => (

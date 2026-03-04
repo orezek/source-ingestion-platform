@@ -22,11 +22,15 @@ test('control plane can create a pipeline and run it in fixture mode', async ({ 
   const pipelineName = `Fixture pipeline ${Date.now()}`;
 
   await page.goto('/control-plane');
-  await expect(page.getByRole('heading', { name: 'Local operator surface' })).toBeVisible();
-  await expect(page.locator('.kpi-card__label', { hasText: 'ACTIVE RUNS' }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Operator surface' })).toBeVisible();
+  await expect(page.getByText('Current execution', { exact: true })).toBeVisible();
   await expect(page.getByTestId('create-pipeline-disclosure')).toBeVisible();
-  await expect(page.getByText('Manage source definitions')).toBeVisible();
+  await expect(page.getByText('Manage search spaces')).toBeVisible();
 
+  await page.getByTestId('create-pipeline-disclosure').evaluate((element) => {
+    element.setAttribute('open', 'true');
+  });
+  await expect(page.getByTestId('pipeline-name-input')).toBeVisible();
   await page.getByTestId('pipeline-name-input').fill(pipelineName);
   await page.getByTestId('create-pipeline-submit').click();
 
@@ -38,14 +42,10 @@ test('control plane can create a pipeline and run it in fixture mode', async ({ 
   await expect(page.getByTestId('control-plane-runs')).toContainText(pipelineName);
   await expect(page.getByTestId('control-plane-runs')).toContainText('succeeded');
 
-  await page
-    .getByTestId('control-plane-runs')
-    .getByRole('link', { name: /crawl-run-/i })
-    .first()
-    .click();
-  await expect(page.getByRole('heading', { name: /Run crawl-run-/i })).toBeVisible();
+  await page.getByRole('link', { name: 'Detail' }).first().click();
+  await expect(page.getByRole('heading', { name: pipelineName })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Generated INPUT.json' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Event history' })).toBeVisible();
+  await expect(page.getByText('Event history', { exact: true })).toBeVisible();
 
   await page.getByTestId('artifact-browse-fixture-001').click();
   await expect(page.getByRole('heading', { name: 'Fixture platform engineer' })).toBeVisible();
@@ -57,11 +57,7 @@ test('control plane can create a pipeline and run it in fixture mode', async ({ 
   expect(await htmlDownload.suggestedFilename()).toBe('job-html-fixture-001.html');
 
   await page.goto('/control-plane');
-  await page
-    .getByTestId('control-plane-runs')
-    .getByRole('link', { name: /crawl-run-/i })
-    .first()
-    .click();
+  await page.getByRole('link', { name: 'Detail' }).first().click();
   await page.getByTestId('output-browse-downloadable-json-fixture-001').click();
   await expect(page.getByRole('heading', { name: 'JSON preview' })).toBeVisible();
   await expect(page.getByText('DESTINATION: Downloadable JSON')).toBeVisible();

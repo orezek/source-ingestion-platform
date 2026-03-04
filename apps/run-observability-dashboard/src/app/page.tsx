@@ -7,6 +7,7 @@ import { ErrorState } from '@/components/state/error-state';
 import { CrawlerRunsTable } from '@/components/tables/crawler-runs-table';
 import { IngestionRunsTable } from '@/components/tables/ingestion-runs-table';
 import { OverviewChartsPanel } from '@/components/charts/overview-charts';
+import { SectionHeading } from '@/components/control-plane/section-heading';
 import {
   formatCurrency,
   formatDateTime,
@@ -40,6 +41,28 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           generatedAt={dashboard.generatedAt}
           latestCrawlerStatus={dashboard.statuses.latestCrawlerStatus}
           latestIngestionStatus={dashboard.statuses.latestIngestionStatus}
+          showOverviewAction={false}
+          showControlPlaneLink={false}
+          actions={[{ href: '/control-plane', label: 'Control plane', variant: 'ghost' }]}
+          summaryItems={[
+            {
+              label: 'Time range',
+              value: dashboard.timeRange.toUpperCase(),
+              detail: 'Current aggregation window',
+            },
+            {
+              label: 'Crawler runs',
+              value: formatNumber(dashboard.kpis.crawlerRunsCount),
+            },
+            {
+              label: 'Ingestion runs',
+              value: formatNumber(dashboard.kpis.ingestionRunsCount),
+            },
+            {
+              label: 'Last successful pipeline',
+              value: formatDateTime(dashboard.kpis.lastSuccessfulPipelineAt),
+            },
+          ]}
         />
 
         <section className="panel filter-panel">
@@ -61,11 +84,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             label="CRAWLER RUNS"
             value={formatNumber(dashboard.kpis.crawlerRunsCount)}
             hint={`${dashboard.timeRange} window`}
+            emphasis="strong"
           />
           <KpiCard
             label="INGESTION RUNS"
             value={formatNumber(dashboard.kpis.ingestionRunsCount)}
             hint={`${dashboard.timeRange} window`}
+            emphasis="strong"
           />
           <KpiCard
             label="LATEST NEW JOBS"
@@ -99,10 +124,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         <AlertPanel anomalies={dashboard.anomalies} />
 
         <section className="panel">
-          <div className="section-heading">
-            <p className="eyebrow">Crawler</p>
-            <h2>Recent crawler runs</h2>
-          </div>
+          <SectionHeading
+            eyebrow="Crawler"
+            title="Recent crawler runs"
+            description="Traversal, render, and handoff results."
+          />
           {dashboard.crawlerRuns.length === 0 ? (
             <EmptyState
               title="No crawler runs"
@@ -114,10 +140,11 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         </section>
 
         <section className="panel">
-          <div className="section-heading">
-            <p className="eyebrow">Ingestion</p>
-            <h2>Recent ingestion runs</h2>
-          </div>
+          <SectionHeading
+            eyebrow="Ingestion"
+            title="Recent ingestion runs"
+            description="Structured extraction and quality outcomes."
+          />
           {dashboard.ingestionRuns.length === 0 ? (
             <EmptyState
               title="No ingestion runs"

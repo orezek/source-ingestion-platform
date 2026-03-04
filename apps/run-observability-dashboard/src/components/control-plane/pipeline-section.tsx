@@ -31,6 +31,13 @@ function getStructuredOutputLabel(destination: StructuredOutputDestination): str
   }`;
 }
 
+function getResourceNameById(input: {
+  id: string;
+  records: Array<{ id: string; name: string }>;
+}): string {
+  return input.records.find((record) => record.id === input.id)?.name ?? input.id;
+}
+
 function renderStructuredOutputChoices(input: {
   destinations: StructuredOutputDestination[];
   selectedIds: string[];
@@ -64,46 +71,59 @@ export function PipelineSection({
 }: PipelineSectionProps) {
   return (
     <section className="panel">
-      <SectionHeading
-        eyebrow="Pipelines"
-        title="Run definitions"
-        description="Pipelines bind a search space, runtime profile, and optional structured outputs into a versioned manifest source."
-        detail={`${pipelines.length} total`}
-      />
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>SEARCH SPACE</th>
-              <th>MODE</th>
-              <th>OUTPUTS</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pipelines.map((pipeline) => (
-              <tr key={pipeline.id}>
-                <td>{pipeline.id}</td>
-                <td>{pipeline.searchSpaceId}</td>
-                <td>{getPipelineModeLabel(pipeline.mode)}</td>
-                <td>
-                  {pipeline.structuredOutputDestinationIds.length > 0
-                    ? pipeline.structuredOutputDestinationIds.join(', ')
-                    : 'none'}
-                </td>
-                <td>{pipeline.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SectionHeading title="Pipelines" detail={`${pipelines.length} total`} />
+      {pipelines.length === 0 ? (
+        <p className="empty-copy">No pipelines yet.</p>
+      ) : (
+        <div className="pipeline-grid">
+          {pipelines.map((pipeline) => (
+            <article key={pipeline.id} className="pipeline-card">
+              <div className="pipeline-card__header">
+                <div>
+                  <h3>{pipeline.name}</h3>
+                  <p className="resource-card__meta">{pipeline.id}</p>
+                </div>
+                <span className="resource-status-chip">{pipeline.status}</span>
+              </div>
+              <dl className="resource-spec-list">
+                <div className="resource-spec-list__row">
+                  <dt>Source</dt>
+                  <dd>
+                    {getResourceNameById({
+                      id: pipeline.searchSpaceId,
+                      records: searchSpaces,
+                    })}
+                  </dd>
+                </div>
+                <div className="resource-spec-list__row">
+                  <dt>Runtime</dt>
+                  <dd>
+                    {getResourceNameById({
+                      id: pipeline.runtimeProfileId,
+                      records: runtimeProfiles,
+                    })}
+                  </dd>
+                </div>
+                <div className="resource-spec-list__row">
+                  <dt>Mode</dt>
+                  <dd>{getPipelineModeLabel(pipeline.mode)}</dd>
+                </div>
+                <div className="resource-spec-list__row">
+                  <dt>Outputs</dt>
+                  <dd>
+                    {pipeline.structuredOutputDestinationIds.length > 0
+                      ? pipeline.structuredOutputDestinationIds.length
+                      : 'none'}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      )}
 
       {pipelines.length > 0 ? (
-        <DisclosurePanel
-          title="Manage pipelines"
-          description="Expand to retarget a pipeline or change its delivery mode."
-        >
+        <DisclosurePanel title="Manage pipelines" description="Edit routing, mode, or outputs.">
           <div className="resource-edit-grid">
             {pipelines.map((pipeline) => (
               <details key={pipeline.id} className="resource-card">
@@ -171,8 +191,8 @@ export function PipelineSection({
 
       <DisclosurePanel
         title="Create pipeline"
-        description="Assemble a source definition, runtime profile, and optional structured outputs into one runnable manifest source."
-        defaultOpen
+        description="Create a runnable pipeline."
+        defaultOpen={pipelines.length === 0}
         testId="create-pipeline-disclosure"
       >
         <form action={createPipelineAction} className="control-form">

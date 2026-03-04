@@ -1,13 +1,15 @@
 import Link from 'next/link';
+import { SectionHeading } from '@/components/control-plane/section-heading';
 import type { AnomalyView } from '@/server/types';
 
 export function AlertPanel({ anomalies }: { anomalies: AnomalyView[] }) {
   return (
     <section className="panel">
-      <div className="section-heading">
-        <p className="eyebrow">Observability</p>
-        <h2>Alerts and anomalies</h2>
-      </div>
+      <SectionHeading
+        eyebrow="Observability"
+        title="Alerts and anomalies"
+        description="Only derived issues that need operator attention."
+      />
       {anomalies.length === 0 ? (
         <p className="empty-copy">No anomalies detected in the selected time range.</p>
       ) : (

@@ -139,6 +139,44 @@ describe('control-plane service', () => {
     expect(detail?.runView.manifest?.artifactStorageSnapshot.type).toBe('local_filesystem');
   });
 
+  it('allows deleting a pipeline after its historical runs have finished', async () => {
+    const {
+      createPipeline,
+      deletePipeline,
+      getControlPlaneOverview,
+      getControlPlaneRunDetail,
+      startRun,
+    } = await import('@/server/control-plane/service');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+
+    const pipeline = await createPipeline({
+      name: 'Historical delete pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [],
+      mode: 'crawl_only',
+      status: 'active',
+    });
+
+    const runView = await startRun({
+      pipelineId: pipeline.id,
+      createdBy: 'vitest',
+    });
+
+    await deletePipeline(pipeline.id);
+
+    const updatedOverview = await getControlPlaneOverview();
+    expect(updatedOverview.pipelines.some((entry) => entry.id === pipeline.id)).toBe(false);
+
+    const detail = await getControlPlaneRunDetail(runView.run.runId);
+    expect(detail).not.toBeNull();
+    expect(detail?.pipeline).toBeNull();
+    expect(detail?.runView.manifest?.pipelineId).toBe(pipeline.id);
+  });
+
   it('returns the existing active run for a pipeline instead of creating a duplicate', async () => {
     const { createPipeline, getControlPlaneOverview, startRun } =
       await import('@/server/control-plane/service');
@@ -178,6 +216,38 @@ describe('control-plane service', () => {
 
     const runs = await listRunRecords();
     expect(runs.filter((run) => run.pipelineId === pipeline.id)).toHaveLength(1);
+  });
+
+  it('rejects deleting a pipeline that still has an active run', async () => {
+    const { createPipeline, deletePipeline, getControlPlaneOverview } =
+      await import('@/server/control-plane/service');
+    const { writeRunRecord } = await import('@/server/control-plane/store');
+
+    const overview = await getControlPlaneOverview();
+    const searchSpace = overview.searchSpaces[0]!;
+    const runtimeProfile = overview.runtimeProfiles[0]!;
+
+    const pipeline = await createPipeline({
+      name: 'Active delete guard pipeline',
+      searchSpaceId: searchSpace.id,
+      runtimeProfileId: runtimeProfile.id,
+      structuredOutputDestinationIds: [],
+      mode: 'crawl_only',
+      status: 'active',
+    });
+
+    await writeRunRecord({
+      runId: 'crawl-run-delete-active',
+      pipelineId: pipeline.id,
+      pipelineVersion: pipeline.version,
+      status: 'running',
+      requestedAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      stopReason: null,
+      summary: {},
+    });
+
+    await expect(deletePipeline(pipeline.id)).rejects.toThrow(/active run/i);
   });
 
   it('rejects local_cli ingest runs before creating a run when GEMINI_API_KEY is unavailable', async () => {

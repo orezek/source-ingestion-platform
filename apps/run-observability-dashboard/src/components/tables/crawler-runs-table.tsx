@@ -32,7 +32,7 @@ export function CrawlerRunsTable({ runs }: { runs: CrawlerRunSummaryView[] }) {
                 <Link href={`/crawler/runs/${run.id}`}>{run.id.slice(0, 8)}</Link>
               </td>
               <td>
-                <StatusBadge label="RUN" status={run.status} />
+                <StatusBadge status={run.status} />
               </td>
               <td>{formatDateTime(run.startedAt)}</td>
               <td>{formatDurationSeconds(run.durationSeconds)}</td>

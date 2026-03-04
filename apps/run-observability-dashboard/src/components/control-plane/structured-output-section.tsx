@@ -31,38 +31,37 @@ export function StructuredOutputSection({
   return (
     <section className="panel">
       <SectionHeading
-        eyebrow="Outputs"
         title="Structured outputs"
-        description="Choose operator-facing delivery targets. Storage backends stay managed by the platform."
         detail={`${structuredOutputDestinations.length} total`}
       />
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>TYPE</th>
-              <th>CONFIG</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {structuredOutputDestinations.map((destination) => (
-              <tr key={destination.id}>
-                <td>{destination.id}</td>
-                <td>{getStructuredOutputTypeLabel(destination.type)}</td>
-                <td>{describeStructuredOutputConfig(destination)}</td>
-                <td>{destination.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="resource-compact-grid">
+        {structuredOutputDestinations.map((destination) => (
+          <article key={destination.id} className="resource-compact-card">
+            <div className="resource-compact-card__header">
+              <div>
+                <strong>{destination.name}</strong>
+                <p className="resource-card__meta">{destination.id}</p>
+              </div>
+              <span className="resource-status-chip">{destination.status}</span>
+            </div>
+            <dl className="resource-spec-list">
+              <div className="resource-spec-list__row">
+                <dt>Type</dt>
+                <dd>{getStructuredOutputTypeLabel(destination.type)}</dd>
+              </div>
+              <div className="resource-spec-list__row">
+                <dt>Target</dt>
+                <dd>{describeStructuredOutputConfig(destination)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
       </div>
 
       {structuredOutputDestinations.length > 0 ? (
         <DisclosurePanel
           title="Manage structured outputs"
-          description="Expand to edit reusable output choices for normalized results."
+          description="Edit reusable output choices."
         >
           <div className="resource-edit-grid">
             {structuredOutputDestinations.map((destination) => (
@@ -108,44 +107,44 @@ export function StructuredOutputSection({
 
       <DisclosurePanel
         title="Create structured output"
-        description="Register reusable output choices without exposing bucket, prefix, or local path settings in the operator UI."
+        description="Create a reusable output choice."
       >
         <div className="resource-edit-grid">
-          <form
-            action={createStructuredOutputDestinationAction}
-            className="control-form resource-card"
-          >
-            <input type="hidden" name="type" value="downloadable_json" />
-            <label>
-              <span>NAME</span>
-              <input name="name" placeholder="Downloadable JSON" required />
-            </label>
-            <p className="empty-copy">
-              Downloadable JSON is stored in a managed backend and surfaced through dashboard browse
-              and download flows.
-            </p>
-            <button type="submit">Create downloadable JSON output</button>
-          </form>
+          <details className="resource-card">
+            <summary>Create downloadable JSON output</summary>
+            <form action={createStructuredOutputDestinationAction} className="control-form">
+              <input type="hidden" name="type" value="downloadable_json" />
+              <label>
+                <span>NAME</span>
+                <input name="name" placeholder="Downloadable JSON" required />
+              </label>
+              <p className="empty-copy">
+                Downloadable JSON is stored in a managed backend and surfaced through dashboard
+                browse and download flows.
+              </p>
+              <button type="submit">Create downloadable JSON output</button>
+            </form>
+          </details>
 
-          <form
-            action={createStructuredOutputDestinationAction}
-            className="control-form resource-card"
-          >
-            <input type="hidden" name="type" value="mongodb" />
-            <label>
-              <span>NAME</span>
-              <input name="name" placeholder="MongoDB sink" required />
-            </label>
-            <label>
-              <span>MONGODB CONNECTION URI</span>
-              <input name="connectionUri" defaultValue="env:MONGODB_URI" />
-            </label>
-            <p className="empty-copy">
-              MongoDB keeps the current automatic per-search-space database naming and collection
-              layout in V1.
-            </p>
-            <button type="submit">Create MongoDB output</button>
-          </form>
+          <details className="resource-card">
+            <summary>Create MongoDB output</summary>
+            <form action={createStructuredOutputDestinationAction} className="control-form">
+              <input type="hidden" name="type" value="mongodb" />
+              <label>
+                <span>NAME</span>
+                <input name="name" placeholder="MongoDB sink" required />
+              </label>
+              <label>
+                <span>MONGODB CONNECTION URI</span>
+                <input name="connectionUri" defaultValue="env:MONGODB_URI" />
+              </label>
+              <p className="empty-copy">
+                MongoDB keeps the current automatic per-search-space database naming and collection
+                layout in V1.
+              </p>
+              <button type="submit">Create MongoDB output</button>
+            </form>
+          </details>
         </div>
       </DisclosurePanel>
     </section>

@@ -15,50 +15,60 @@ export function ControlPlaneRunsSection({ runs, pipelines }: ControlPlaneRunsSec
   return (
     <section className="panel">
       <SectionHeading
-        eyebrow="Runs"
+        eyebrow="History"
         title="Recent control-plane runs"
-        description="Each run snapshots the pipeline into an immutable manifest and keeps worker runtime state separate from the base run record."
+        description="Immutable execution records across pipelines."
+        detail={`${runs.length} total`}
       />
       {runs.length === 0 ? (
         <p className="empty-copy">No control-plane runs have been started yet.</p>
       ) : (
         <div className="table-wrap" data-testid="control-plane-runs">
-          <table className="data-table">
+          <table className="data-table control-plane-runs-table">
             <thead>
               <tr>
                 <th>RUN</th>
                 <th>PIPELINE</th>
                 <th>STATUS</th>
-                <th>CRAWLER</th>
-                <th>INGESTION</th>
+                <th>WORKERS</th>
                 <th>REQUESTED</th>
+                <th>ACTION</th>
               </tr>
             </thead>
             <tbody>
               {runs.map((entry) => (
                 <tr key={entry.run.runId}>
-                  <td>
-                    <Link href={`/control-plane/runs/${entry.run.runId}`}>{entry.run.runId}</Link>
-                  </td>
-                  <td>{pipelineNames.get(entry.run.pipelineId) ?? entry.run.pipelineId}</td>
-                  <td>
-                    <StatusBadge label="RUN" status={entry.computedStatus} />
+                  <td>{entry.run.runId.slice(0, 18)}</td>
+                  <td className="data-table__cell--wrap">
+                    {pipelineNames.get(entry.run.pipelineId) ?? entry.run.pipelineId}
                   </td>
                   <td>
-                    {entry.crawlerRuntime ? (
-                      <StatusBadge label="CRAWLER" status={entry.crawlerRuntime.status} />
-                    ) : (
-                      'N/A'
-                    )}
+                    <StatusBadge status={entry.computedStatus} />
                   </td>
-                  <td>
-                    {entry.ingestionRuntime ? (
-                      <StatusBadge label="INGESTION" status={entry.ingestionRuntime.status} />
-                    ) : (
-                      'DISABLED'
-                    )}
+                  <td className="data-table__cell--wrap">
+                    <div className="table-status-stack">
+                      {entry.crawlerRuntime ? (
+                        <StatusBadge label="CRAWLER" status={entry.crawlerRuntime.status} />
+                      ) : (
+                        <span className="empty-copy">No crawler runtime</span>
+                      )}
+                      {entry.ingestionRuntime ? (
+                        <StatusBadge label="INGESTION" status={entry.ingestionRuntime.status} />
+                      ) : (
+                        <span className="empty-copy">Crawl only</span>
+                      )}
+                    </div>
                   </td>
                   <td>{formatDateTime(entry.run.requestedAt)}</td>
+                  <td>
+                    <Link
+                      href={`/control-plane/runs/${entry.run.runId}`}
+                      className="action-button action-button--compact"
+                      data-testid={`run-detail-${entry.run.runId}`}
+                    >
+                      Detail
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

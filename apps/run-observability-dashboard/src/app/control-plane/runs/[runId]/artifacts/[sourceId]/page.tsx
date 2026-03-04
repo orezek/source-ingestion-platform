@@ -34,12 +34,21 @@ export default async function ControlPlaneArtifactPage({
         <PageHeader
           eyebrow="Artifact browser"
           title={artifact.capture.jobTitle}
-          description="Browse the persisted HTML dump for a single captured job artifact without leaving the control plane."
+          description="Browse one captured HTML artifact."
           environmentLabel={`CONTROL ${env.CONTROL_PLANE_EXECUTION_MODE.toUpperCase()}`}
           databaseName={detail.mongoDatabaseName ?? 'local-only'}
           generatedAt={artifact.capture.occurredAt}
           latestCrawlerStatus={detail.runView.crawlerRuntime?.status ?? null}
           latestIngestionStatus={detail.runView.ingestionRuntime?.status ?? null}
+          backHref={`/control-plane/runs/${runId}`}
+          backLabel="Back to run detail"
+          showControlPlaneLink={false}
+          summaryItems={[
+            { label: 'Source id', value: artifact.capture.sourceId },
+            { label: 'Captured', value: formatDateTime(artifact.capture.occurredAt) },
+            { label: 'Size', value: formatCompactBytes(artifact.capture.artifactSizeBytes) },
+            { label: 'Storage', value: artifact.capture.artifactStorageType },
+          ]}
         />
 
         <section className="panel detail-grid">
@@ -79,12 +88,15 @@ export default async function ControlPlaneArtifactPage({
               description="Preview in the dashboard or download the raw HTML file directly."
             />
             <div className="artifact-actions">
-              <Link href={`/control-plane/runs/${runId}`} className="primary-link">
+              <Link
+                href={`/control-plane/runs/${runId}`}
+                className="action-button action-button--compact"
+              >
                 Back to run detail
               </Link>
               <Link
                 href={`/api/control-plane/runs/${runId}/artifacts/${sourceId}?download=1`}
-                className="primary-link"
+                className="action-button action-button--compact"
                 download={artifact.capture.htmlDetailPageKey}
               >
                 Download HTML

@@ -41,7 +41,7 @@ export function StartRunForm(input: StartRunFormProps): JSX.Element {
   const activeRun = pipelineId ? input.activePipelineRuns[pipelineId] : undefined;
 
   return (
-    <form action={input.action} className="control-form control-form--inline">
+    <form action={input.action} className="control-form control-form--stacked">
       <label>
         <span>PIPELINE</span>
         <select
@@ -59,12 +59,12 @@ export function StartRunForm(input: StartRunFormProps): JSX.Element {
         </select>
       </label>
       <div className="control-form__actions">
-        <StartRunSubmitButton disabled={input.pipelines.length === 0 || Boolean(activeRun)} />
         {activeRun ? (
           <p className="form-inline-note" data-testid="start-run-conflict">
             Active run {activeRun.runId} is already {activeRun.status} for this pipeline.
           </p>
         ) : null}
+        <StartRunSubmitButton disabled={input.pipelines.length === 0 || Boolean(activeRun)} />
       </div>
     </form>
   );

@@ -16,41 +16,37 @@ type RuntimeProfileSectionProps = {
 export function RuntimeProfileSection({ runtimeProfiles }: RuntimeProfileSectionProps) {
   return (
     <section className="panel">
-      <SectionHeading
-        eyebrow="Runtime profiles"
-        title="Execution settings"
-        description="Separate crawler throughput from artifact and sink configuration."
-        detail={`${runtimeProfiles.length} total`}
-      />
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>CRAWLER</th>
-              <th>INGESTION</th>
-              <th>STATUS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runtimeProfiles.map((profile) => (
-              <tr key={profile.id}>
-                <td>{profile.id}</td>
-                <td>
-                  {profile.crawlerMaxConcurrency} / {profile.crawlerMaxRequestsPerMinute}
-                </td>
-                <td>{profile.ingestionEnabled ? 'enabled' : 'disabled'}</td>
-                <td>{profile.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <SectionHeading title="Runtime profiles" detail={`${runtimeProfiles.length} total`} />
+      <div className="resource-compact-grid">
+        {runtimeProfiles.map((profile) => (
+          <article key={profile.id} className="resource-compact-card">
+            <div className="resource-compact-card__header">
+              <div>
+                <strong>{profile.name}</strong>
+                <p className="resource-card__meta">{profile.id}</p>
+              </div>
+              <span className="resource-status-chip">{profile.status}</span>
+            </div>
+            <dl className="resource-spec-list">
+              <div className="resource-spec-list__row">
+                <dt>Crawler</dt>
+                <dd>
+                  {profile.crawlerMaxConcurrency} • {profile.crawlerMaxRequestsPerMinute} req/min
+                </dd>
+              </div>
+              <div className="resource-spec-list__row">
+                <dt>Ingestion</dt>
+                <dd>{profile.ingestionEnabled ? profile.ingestionConcurrency : 'disabled'}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
       </div>
 
       {runtimeProfiles.length > 0 ? (
         <DisclosurePanel
-          title="Manage execution settings"
-          description="Expand to tune crawler rate and ingestion concurrency."
+          title="Manage runtime profiles"
+          description="Edit crawler and ingestion settings."
         >
           <div className="resource-edit-grid">
             {runtimeProfiles.map((profile) => (
@@ -119,10 +115,7 @@ export function RuntimeProfileSection({ runtimeProfiles }: RuntimeProfileSection
         </DisclosurePanel>
       ) : null}
 
-      <DisclosurePanel
-        title="Create execution settings"
-        description="Define how aggressively the crawler and ingestion workers run."
-      >
+      <DisclosurePanel title="Create runtime profile" description="Create a runtime profile.">
         <form action={createRuntimeProfileAction} className="control-form">
           <label>
             <span>NAME</span>

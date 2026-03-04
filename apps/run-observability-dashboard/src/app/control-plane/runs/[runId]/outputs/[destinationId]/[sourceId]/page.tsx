@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { ErrorState } from '@/components/state/error-state';
-import { FilePreviewPanel } from '@/components/control-plane/file-preview-panel';
+import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatDateTime } from '@/server/lib/formatting';
 import { env } from '@/server/env';
@@ -11,6 +11,18 @@ import { getControlPlaneRunStructuredOutputPreview } from '@/server/control-plan
 import { getControlPlaneRunDetail } from '@/server/control-plane/service';
 
 export const dynamic = 'force-dynamic';
+
+function parseJsonPreview(contents: string | null | undefined): unknown | null {
+  if (!contents) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(contents) as unknown;
+  } catch {
+    return null;
+  }
+}
 
 export default async function ControlPlaneStructuredOutputPage({
   params,
@@ -34,12 +46,21 @@ export default async function ControlPlaneStructuredOutputPage({
         <PageHeader
           eyebrow="Structured output browser"
           title={output.capture.fileName}
-          description="Browse a normalized JSON result for a single run item without leaving the control plane."
+          description="Browse a normalized JSON result for one run item."
           environmentLabel={`CONTROL ${env.CONTROL_PLANE_EXECUTION_MODE.toUpperCase()}`}
           databaseName={detail.mongoDatabaseName ?? 'local-only'}
           generatedAt={output.capture.occurredAt}
           latestCrawlerStatus={detail.runView.crawlerRuntime?.status ?? null}
           latestIngestionStatus={detail.runView.ingestionRuntime?.status ?? null}
+          backHref={`/control-plane/runs/${runId}`}
+          backLabel="Back to run detail"
+          showControlPlaneLink={false}
+          summaryItems={[
+            { label: 'Destination', value: output.capture.destinationName },
+            { label: 'Source id', value: output.capture.sourceId },
+            { label: 'Generated', value: formatDateTime(output.capture.occurredAt) },
+            { label: 'Storage', value: output.capture.outputStorageType },
+          ]}
         />
 
         <section className="panel detail-grid">
@@ -78,12 +99,15 @@ export default async function ControlPlaneStructuredOutputPage({
               description="Preview in the dashboard or download the raw JSON document directly."
             />
             <div className="artifact-actions">
-              <Link href={`/control-plane/runs/${runId}`} className="primary-link">
+              <Link
+                href={`/control-plane/runs/${runId}`}
+                className="action-button action-button--compact"
+              >
                 Back to run detail
               </Link>
               <Link
                 href={`/api/control-plane/runs/${runId}/outputs/${destinationId}/${sourceId}?download=1`}
-                className="primary-link"
+                className="action-button action-button--compact"
                 download={output.capture.fileName}
               >
                 Download JSON
@@ -92,11 +116,13 @@ export default async function ControlPlaneStructuredOutputPage({
           </div>
         </section>
 
-        <FilePreviewPanel
+        <JsonViewerPanel
           eyebrow="Normalized output"
           title="JSON preview"
-          preview={output.preview}
+          value={output.preview.exists ? parseJsonPreview(output.preview.contents) : null}
           emptyCopy="The structured output could not be read for this run."
+          description="Expand only the branches you need to inspect."
+          rootLabel="document"
         />
       </AppShell>
     );
