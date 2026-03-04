@@ -83,6 +83,12 @@ Operator-facing artifact access:
   available to the dashboard process
 - downloadable JSON outputs follow the same dashboard-first browse/download flow
 
+Structured outputs:
+
+- `downloadable_json` is built in and selected on pipelines directly
+- the control-plane "Structured outputs" section manages only add-on sinks such as MongoDB
+- active run detail, artifact, and output pages auto-refresh while the run is still queued or running
+
 Managed storage backends:
 
 - `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND`

@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { ErrorState } from '@/components/state/error-state';
 import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
+import { LiveRefresh } from '@/components/control-plane/live-refresh';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatDateTime } from '@/server/lib/formatting';
 import { env } from '@/server/env';
@@ -11,6 +12,10 @@ import { getControlPlaneRunStructuredOutputPreview } from '@/server/control-plan
 import { getControlPlaneRunDetail } from '@/server/control-plane/service';
 
 export const dynamic = 'force-dynamic';
+
+function shouldAutoRefresh(status: string): boolean {
+  return status === 'queued' || status === 'running';
+}
 
 function parseJsonPreview(contents: string | null | undefined): unknown | null {
   if (!contents) {
@@ -43,6 +48,7 @@ export default async function ControlPlaneStructuredOutputPage({
 
     return (
       <AppShell>
+        <LiveRefresh enabled={shouldAutoRefresh(detail.runView.computedStatus)} />
         <PageHeader
           eyebrow="Structured output browser"
           title={output.capture.fileName}

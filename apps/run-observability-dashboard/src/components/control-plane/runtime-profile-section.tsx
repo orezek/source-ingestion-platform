@@ -3,7 +3,6 @@ import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { ResourceLifecycleActions } from '@/components/control-plane/resource-lifecycle-actions';
 import {
-  archiveRuntimeProfileAction,
   createRuntimeProfileAction,
   deleteRuntimeProfileAction,
   updateRuntimeProfileAction,
@@ -106,7 +105,6 @@ export function RuntimeProfileSection({ runtimeProfiles }: RuntimeProfileSection
                 </form>
                 <ResourceLifecycleActions
                   id={profile.id}
-                  archiveAction={archiveRuntimeProfileAction}
                   deleteAction={deleteRuntimeProfileAction}
                 />
               </details>

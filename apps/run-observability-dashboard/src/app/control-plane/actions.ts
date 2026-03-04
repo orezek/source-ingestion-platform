@@ -2,10 +2,6 @@
 
 import { revalidatePath } from 'next/cache';
 import {
-  archivePipeline,
-  archiveRuntimeProfile,
-  archiveSearchSpace,
-  archiveStructuredOutputDestination,
   createPipeline,
   createRuntimeProfile,
   createSearchSpace,
@@ -95,24 +91,13 @@ function buildRuntimeProfileInput(formData: FormData) {
 }
 
 function buildStructuredOutputDestinationInput(formData: FormData) {
-  const type = getRequiredString(formData, 'type');
-  if (type === 'mongodb') {
-    return {
-      id: getOptionalString(formData, 'id'),
-      name: getRequiredString(formData, 'name'),
-      type: 'mongodb' as const,
-      config: {
-        connectionUri: getOptionalString(formData, 'connectionUri') ?? 'env:MONGODB_URI',
-      },
-      status: 'active' as const,
-    };
-  }
-
   return {
     id: getOptionalString(formData, 'id'),
     name: getRequiredString(formData, 'name'),
-    type: 'downloadable_json' as const,
-    config: {} as Record<string, never>,
+    type: 'mongodb' as const,
+    config: {
+      connectionUri: getOptionalString(formData, 'connectionUri') ?? 'env:MONGODB_URI',
+    },
     status: 'active' as const,
   };
 }
@@ -143,11 +128,6 @@ export async function updateSearchSpaceAction(formData: FormData): Promise<void>
   revalidatePath('/control-plane');
 }
 
-export async function archiveSearchSpaceAction(formData: FormData): Promise<void> {
-  await archiveSearchSpace(getRequiredString(formData, 'id'));
-  revalidatePath('/control-plane');
-}
-
 export async function deleteSearchSpaceAction(formData: FormData): Promise<void> {
   await deleteSearchSpace(getRequiredString(formData, 'id'));
   revalidatePath('/control-plane');
@@ -161,11 +141,6 @@ export async function createRuntimeProfileAction(formData: FormData): Promise<vo
 
 export async function updateRuntimeProfileAction(formData: FormData): Promise<void> {
   await updateRuntimeProfile(getRequiredString(formData, 'id'), buildRuntimeProfileInput(formData));
-  revalidatePath('/control-plane');
-}
-
-export async function archiveRuntimeProfileAction(formData: FormData): Promise<void> {
-  await archiveRuntimeProfile(getRequiredString(formData, 'id'));
   revalidatePath('/control-plane');
 }
 
@@ -188,11 +163,6 @@ export async function updateStructuredOutputDestinationAction(formData: FormData
   revalidatePath('/control-plane');
 }
 
-export async function archiveStructuredOutputDestinationAction(formData: FormData): Promise<void> {
-  await archiveStructuredOutputDestination(getRequiredString(formData, 'id'));
-  revalidatePath('/control-plane');
-}
-
 export async function deleteStructuredOutputDestinationAction(formData: FormData): Promise<void> {
   await deleteStructuredOutputDestination(getRequiredString(formData, 'id'));
   revalidatePath('/control-plane');
@@ -206,11 +176,6 @@ export async function createPipelineAction(formData: FormData): Promise<void> {
 
 export async function updatePipelineAction(formData: FormData): Promise<void> {
   await updatePipeline(getRequiredString(formData, 'id'), buildPipelineInput(formData));
-  revalidatePath('/control-plane');
-}
-
-export async function archivePipelineAction(formData: FormData): Promise<void> {
-  await archivePipeline(getRequiredString(formData, 'id'));
   revalidatePath('/control-plane');
 }
 

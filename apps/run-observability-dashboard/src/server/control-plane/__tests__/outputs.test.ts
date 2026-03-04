@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID } from '@/server/control-plane/builtin-outputs';
 
 let tempRootDir: string;
 
@@ -36,15 +37,12 @@ describe('control-plane structured output access', () => {
     const overview = await getControlPlaneOverview();
     const searchSpace = overview.searchSpaces[0]!;
     const runtimeProfile = overview.runtimeProfiles[0]!;
-    const jsonOutputDestination = overview.structuredOutputDestinations.find(
-      (destination) => destination.type === 'downloadable_json',
-    )!;
 
     const pipeline = await createPipeline({
       name: 'Structured output preview pipeline',
       searchSpaceId: searchSpace.id,
       runtimeProfileId: runtimeProfile.id,
-      structuredOutputDestinationIds: [jsonOutputDestination.id],
+      structuredOutputDestinationIds: [IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID],
       mode: 'crawl_and_ingest',
       status: 'active',
     });
@@ -58,12 +56,12 @@ describe('control-plane structured output access', () => {
     const capture = detail?.structuredOutputCaptures[0];
 
     expect(capture).toBeDefined();
-    expect(capture?.destinationId).toBe(jsonOutputDestination.id);
+    expect(capture?.destinationId).toBe(IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID);
     expect(capture?.fileName).toBe('normalized-job-fixture-001.json');
 
     const preview = await getControlPlaneRunStructuredOutputPreview({
       runId: runView.run.runId,
-      destinationId: jsonOutputDestination.id,
+      destinationId: IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID,
       sourceId: 'fixture-001',
     });
     expect(preview.preview.exists).toBe(true);
@@ -71,7 +69,7 @@ describe('control-plane structured output access', () => {
 
     const download = await getControlPlaneRunStructuredOutputDownload({
       runId: runView.run.runId,
-      destinationId: jsonOutputDestination.id,
+      destinationId: IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID,
       sourceId: 'fixture-001',
     });
     expect(download.fileName).toBe('normalized-job-fixture-001.json');

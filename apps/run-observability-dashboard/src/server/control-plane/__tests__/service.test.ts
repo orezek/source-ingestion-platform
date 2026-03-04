@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID } from '@/server/control-plane/builtin-outputs';
 
 let tempRootDir: string;
 
@@ -35,9 +36,9 @@ describe('control-plane service', () => {
     );
     expect(
       overview.structuredOutputDestinations.some(
-        (destination) => destination.id === 'downloadable-json',
+        (destination) => destination.id === IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID,
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       overview.structuredOutputDestinations.some(
         (destination) => destination.id === 'mongo-normalized-jobs',
@@ -52,15 +53,12 @@ describe('control-plane service', () => {
     const overview = await getControlPlaneOverview();
     const searchSpace = overview.searchSpaces[0]!;
     const runtimeProfile = overview.runtimeProfiles[0]!;
-    const jsonOutputDestination = overview.structuredOutputDestinations.find(
-      (destination) => destination.type === 'downloadable_json',
-    )!;
 
     const pipeline = await createPipeline({
       name: 'Fixture integration pipeline',
       searchSpaceId: searchSpace.id,
       runtimeProfileId: runtimeProfile.id,
-      structuredOutputDestinationIds: [jsonOutputDestination.id],
+      structuredOutputDestinationIds: [IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID],
       mode: 'crawl_and_ingest',
       status: 'active',
     });
@@ -107,15 +105,12 @@ describe('control-plane service', () => {
     const overview = await getControlPlaneOverview();
     const searchSpace = overview.searchSpaces[0]!;
     const runtimeProfile = overview.runtimeProfiles[0]!;
-    const jsonOutputDestination = overview.structuredOutputDestinations.find(
-      (destination) => destination.type === 'downloadable_json',
-    )!;
 
     const pipeline = await createPipeline({
       name: 'Fixture detail pipeline',
       searchSpaceId: searchSpace.id,
       runtimeProfileId: runtimeProfile.id,
-      structuredOutputDestinationIds: [jsonOutputDestination.id],
+      structuredOutputDestinationIds: [IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID],
       mode: 'crawl_and_ingest',
       status: 'active',
     });
@@ -265,15 +260,12 @@ describe('control-plane service', () => {
     const overview = await getControlPlaneOverview();
     const searchSpace = overview.searchSpaces[0]!;
     const runtimeProfile = overview.runtimeProfiles[0]!;
-    const jsonOutputDestination = overview.structuredOutputDestinations.find(
-      (destination) => destination.type === 'downloadable_json',
-    )!;
 
     const pipeline = await createPipeline({
       name: 'Ingest preflight pipeline',
       searchSpaceId: searchSpace.id,
       runtimeProfileId: runtimeProfile.id,
-      structuredOutputDestinationIds: [jsonOutputDestination.id],
+      structuredOutputDestinationIds: [IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID],
       mode: 'crawl_and_ingest',
       status: 'active',
     });
@@ -470,9 +462,11 @@ describe('control-plane service', () => {
     const searchSpace = overview.searchSpaces[0]!;
     const runtimeProfile = overview.runtimeProfiles[0]!;
     const destination = await createStructuredOutputDestination({
-      name: 'Historical delete downloadable output',
-      type: 'downloadable_json',
-      config: {},
+      name: 'Historical delete mongo output',
+      type: 'mongodb',
+      config: {
+        connectionUri: 'env:MONGODB_URI',
+      },
       status: 'active',
     });
 
@@ -520,8 +514,10 @@ describe('control-plane service', () => {
     const runtimeProfile = overview.runtimeProfiles[0]!;
     const destination = await createStructuredOutputDestination({
       name: 'Structured output delete guard',
-      type: 'downloadable_json',
-      config: {},
+      type: 'mongodb',
+      config: {
+        connectionUri: 'env:MONGODB_URI',
+      },
       status: 'active',
     });
 

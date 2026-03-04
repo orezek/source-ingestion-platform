@@ -60,6 +60,10 @@ import {
   buildManagedDownloadableJsonDeliveryConfig,
 } from '@/server/control-plane/managed-storage';
 import {
+  buildImplicitDownloadableJsonDestination,
+  isImplicitDownloadableJsonDestinationId,
+} from '@/server/control-plane/builtin-outputs';
+import {
   type WorkerRuntime,
   deleteCollectionRecord,
   getPipeline,
@@ -159,6 +163,33 @@ function assertPipelineOutputModeConsistency(input: {
   }
 }
 
+async function resolveStructuredOutputDestinations(
+  destinationIds: string[],
+): Promise<StructuredOutputDestination[]> {
+  const destinations = await Promise.all(
+    destinationIds.map(async (destinationId) => {
+      if (isImplicitDownloadableJsonDestinationId(destinationId)) {
+        return buildImplicitDownloadableJsonDestination();
+      }
+
+      return getStructuredOutputDestination(destinationId);
+    }),
+  );
+
+  const missingDestination = destinations.find((item) => item === null);
+  if (missingDestination) {
+    throw new Error('One or more structured output destinations do not exist.');
+  }
+
+  for (const destination of destinations) {
+    if (destination) {
+      assertRecordIsActive(destination, 'Structured output destination');
+    }
+  }
+
+  return destinations.filter((item): item is StructuredOutputDestination => item !== null);
+}
+
 function deriveComputedStatus(input: {
   run: ControlPlaneRun;
   manifest: RunManifest | null;
@@ -213,11 +244,7 @@ async function getPipelineDependencies(pipeline: Pipeline): Promise<{
   const [searchSpace, runtimeProfile, structuredOutputDestinations] = await Promise.all([
     getSearchSpace(pipeline.searchSpaceId),
     getRuntimeProfile(pipeline.runtimeProfileId),
-    Promise.all(
-      pipeline.structuredOutputDestinationIds.map((destinationId) =>
-        getStructuredOutputDestination(destinationId),
-      ),
-    ),
+    resolveStructuredOutputDestinations(pipeline.structuredOutputDestinationIds),
   ]);
 
   if (!searchSpace) {
@@ -230,23 +257,10 @@ async function getPipelineDependencies(pipeline: Pipeline): Promise<{
   }
   assertRecordIsActive(runtimeProfile, 'Runtime profile');
 
-  const missingStructuredOutput = structuredOutputDestinations.find((item) => item === null);
-  if (missingStructuredOutput) {
-    throw new Error(`Pipeline "${pipeline.id}" references an unknown structured output.`);
-  }
-
-  for (const destination of structuredOutputDestinations) {
-    if (destination) {
-      assertRecordIsActive(destination, 'Structured output destination');
-    }
-  }
-
   return {
     searchSpace,
     runtimeProfile,
-    structuredOutputDestinations: structuredOutputDestinations.filter(
-      (item): item is StructuredOutputDestination => item !== null,
-    ),
+    structuredOutputDestinations,
   };
 }
 
@@ -404,6 +418,10 @@ async function assertRuntimeProfileDeleteAllowed(id: string): Promise<void> {
 }
 
 async function assertStructuredOutputDestinationDeleteAllowed(id: string): Promise<void> {
+  if (isImplicitDownloadableJsonDestinationId(id)) {
+    throw new Error('The built-in downloadable JSON output cannot be deleted.');
+  }
+
   const pipelines = await listPipelines();
   if (
     pipelines.some((pipeline) =>
@@ -441,9 +459,9 @@ export async function getControlPlaneOverview(): Promise<ControlPlaneOverview> {
   return {
     searchSpaces: searchSpaces.sort((left, right) => left.name.localeCompare(right.name)),
     runtimeProfiles: runtimeProfiles.sort((left, right) => left.name.localeCompare(right.name)),
-    structuredOutputDestinations: structuredOutputDestinations.sort((left, right) =>
-      left.name.localeCompare(right.name),
-    ),
+    structuredOutputDestinations: structuredOutputDestinations
+      .filter((destination) => !isImplicitDownloadableJsonDestinationId(destination.id))
+      .sort((left, right) => left.name.localeCompare(right.name)),
     pipelines: pipelines.sort((left, right) => left.name.localeCompare(right.name)),
     runs: runViews.sort(compareRunsByRequestedAtDesc),
   };
@@ -527,25 +545,11 @@ export async function updateSearchSpace(
       startUrls: input.startUrls,
       maxItemsDefault: input.maxItemsDefault,
       allowInactiveMarkingOnPartialRuns: input.allowInactiveMarkingOnPartialRuns,
+      status: 'active',
       version: existing.version + 1,
       updatedAt: nowIso(),
     }),
   );
-}
-
-export async function archiveSearchSpace(id: string): Promise<SearchSpace> {
-  await ensureControlPlaneBootstrap();
-  const existing = await getSearchSpace(id);
-  if (!existing) {
-    throw new Error(`Unknown search space "${id}".`);
-  }
-
-  return writeSearchSpace({
-    ...existing,
-    status: 'archived',
-    version: existing.version + 1,
-    updatedAt: nowIso(),
-  });
 }
 
 export async function deleteSearchSpace(id: string): Promise<void> {
@@ -598,20 +602,7 @@ export async function updateRuntimeProfile(
     ingestionConcurrency: input.ingestionConcurrency,
     ingestionEnabled: input.ingestionEnabled,
     debugLog: input.debugLog,
-    updatedAt: nowIso(),
-  });
-}
-
-export async function archiveRuntimeProfile(id: string): Promise<RuntimeProfile> {
-  await ensureControlPlaneBootstrap();
-  const existing = await getRuntimeProfile(id);
-  if (!existing) {
-    throw new Error(`Unknown runtime profile "${id}".`);
-  }
-
-  return writeRuntimeProfile({
-    ...existing,
-    status: 'archived',
+    status: 'active',
     updatedAt: nowIso(),
   });
 }
@@ -632,25 +623,15 @@ export async function createStructuredOutputDestination(
 ): Promise<StructuredOutputDestination> {
   await ensureControlPlaneBootstrap();
   const input = createStructuredOutputDestinationInputSchema.parse(rawInput);
+  if (input.type !== 'mongodb') {
+    throw new Error('Downloadable JSON is built in and cannot be managed separately.');
+  }
   const timestamp = nowIso();
   const id = buildRecordId(input.id ?? input.name);
-
-  if (input.type === 'mongodb') {
-    return writeStructuredOutputDestination({
-      id,
-      name: input.name,
-      type: 'mongodb',
-      config: input.config,
-      status: input.status,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    });
-  }
-
   return writeStructuredOutputDestination({
     id,
     name: input.name,
-    type: 'downloadable_json',
+    type: 'mongodb',
     config: input.config,
     status: input.status,
     createdAt: timestamp,
@@ -663,55 +644,37 @@ export async function updateStructuredOutputDestination(
   rawInput: CreateStructuredOutputDestinationInput,
 ): Promise<StructuredOutputDestination> {
   await ensureControlPlaneBootstrap();
+  if (isImplicitDownloadableJsonDestinationId(id)) {
+    throw new Error('Downloadable JSON is built in and cannot be updated.');
+  }
+
   const existing = await getStructuredOutputDestination(id);
   if (!existing) {
     throw new Error(`Unknown structured output destination "${id}".`);
   }
 
   const input = createStructuredOutputDestinationInputSchema.parse(rawInput);
-  const timestamp = nowIso();
-
-  if (input.type === 'mongodb') {
-    return writeStructuredOutputDestination({
-      id: existing.id,
-      name: input.name,
-      type: 'mongodb',
-      config: input.config,
-      status: existing.status,
-      createdAt: existing.createdAt,
-      updatedAt: timestamp,
-    });
+  if (input.type !== 'mongodb') {
+    throw new Error('Downloadable JSON is built in and cannot be managed separately.');
   }
-
+  const timestamp = nowIso();
   return writeStructuredOutputDestination({
     id: existing.id,
     name: input.name,
-    type: 'downloadable_json',
+    type: 'mongodb',
     config: input.config,
-    status: existing.status,
+    status: 'active',
     createdAt: existing.createdAt,
     updatedAt: timestamp,
   });
 }
 
-export async function archiveStructuredOutputDestination(
-  id: string,
-): Promise<StructuredOutputDestination> {
-  await ensureControlPlaneBootstrap();
-  const existing = await getStructuredOutputDestination(id);
-  if (!existing) {
-    throw new Error(`Unknown structured output destination "${id}".`);
-  }
-
-  return writeStructuredOutputDestination({
-    ...existing,
-    status: 'archived',
-    updatedAt: nowIso(),
-  });
-}
-
 export async function deleteStructuredOutputDestination(id: string): Promise<void> {
   await ensureControlPlaneBootstrap();
+  if (isImplicitDownloadableJsonDestinationId(id)) {
+    throw new Error('The built-in downloadable JSON output cannot be deleted.');
+  }
+
   const existing = await getStructuredOutputDestination(id);
   if (!existing) {
     throw new Error(`Unknown structured output destination "${id}".`);
@@ -740,21 +703,7 @@ export async function createPipeline(rawInput: CreatePipelineInput): Promise<Pip
   }
   assertRecordIsActive(runtimeProfile, 'Runtime profile');
 
-  const structuredOutputDestinations = await Promise.all(
-    input.structuredOutputDestinationIds.map((destinationId) =>
-      getStructuredOutputDestination(destinationId),
-    ),
-  );
-  const missingDestination = structuredOutputDestinations.find((item) => item === null);
-  if (missingDestination) {
-    throw new Error('One or more structured output destinations do not exist.');
-  }
-
-  for (const destination of structuredOutputDestinations) {
-    if (destination) {
-      assertRecordIsActive(destination, 'Structured output destination');
-    }
-  }
+  await resolveStructuredOutputDestinations(input.structuredOutputDestinationIds);
 
   const timestamp = nowIso();
   return writePipeline(
@@ -797,21 +746,7 @@ export async function updatePipeline(id: string, rawInput: CreatePipelineInput):
   }
   assertRecordIsActive(runtimeProfile, 'Runtime profile');
 
-  const structuredOutputDestinations = await Promise.all(
-    input.structuredOutputDestinationIds.map((destinationId) =>
-      getStructuredOutputDestination(destinationId),
-    ),
-  );
-  const missingDestination = structuredOutputDestinations.find((item) => item === null);
-  if (missingDestination) {
-    throw new Error('One or more structured output destinations do not exist.');
-  }
-
-  for (const destination of structuredOutputDestinations) {
-    if (destination) {
-      assertRecordIsActive(destination, 'Structured output destination');
-    }
-  }
+  await resolveStructuredOutputDestinations(input.structuredOutputDestinationIds);
 
   return writePipeline(
     pipelineSchema.parse({
@@ -821,25 +756,11 @@ export async function updatePipeline(id: string, rawInput: CreatePipelineInput):
       runtimeProfileId: input.runtimeProfileId,
       structuredOutputDestinationIds: input.structuredOutputDestinationIds,
       mode: input.mode,
+      status: 'active',
       version: existing.version + 1,
       updatedAt: nowIso(),
     }),
   );
-}
-
-export async function archivePipeline(id: string): Promise<Pipeline> {
-  await ensureControlPlaneBootstrap();
-  const existing = await getPipeline(id);
-  if (!existing) {
-    throw new Error(`Unknown pipeline "${id}".`);
-  }
-
-  return writePipeline({
-    ...existing,
-    status: 'archived',
-    version: existing.version + 1,
-    updatedAt: nowIso(),
-  });
 }
 
 export async function deletePipeline(id: string): Promise<void> {

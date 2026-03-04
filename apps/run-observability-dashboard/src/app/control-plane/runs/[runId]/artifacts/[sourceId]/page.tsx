@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { PageHeader } from '@/components/layout/page-header';
 import { ErrorState } from '@/components/state/error-state';
 import { FilePreviewPanel } from '@/components/control-plane/file-preview-panel';
+import { LiveRefresh } from '@/components/control-plane/live-refresh';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatCompactBytes, formatDateTime } from '@/server/lib/formatting';
 import { env } from '@/server/env';
@@ -11,6 +12,10 @@ import { getControlPlaneRunArtifactPreview } from '@/server/control-plane/artifa
 import { getControlPlaneRunDetail } from '@/server/control-plane/service';
 
 export const dynamic = 'force-dynamic';
+
+function shouldAutoRefresh(status: string): boolean {
+  return status === 'queued' || status === 'running';
+}
 
 export default async function ControlPlaneArtifactPage({
   params,
@@ -31,6 +36,7 @@ export default async function ControlPlaneArtifactPage({
 
     return (
       <AppShell>
+        <LiveRefresh enabled={shouldAutoRefresh(detail.runView.computedStatus)} />
         <PageHeader
           eyebrow="Artifact browser"
           title={artifact.capture.jobTitle}

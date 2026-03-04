@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 
 import { load, type CheerioAPI } from 'cheerio';
+import { downloadStoredArtifact } from '@repo/control-plane-adapters';
 
 const gzipMagicNumberA = 0x1f;
 const gzipMagicNumberB = 0x8b;
@@ -73,6 +73,16 @@ const noiseSignalPatterns = [
 
 const isGzipBuffer = (buffer: Buffer): boolean =>
   buffer.length >= 2 && buffer[0] === gzipMagicNumberA && buffer[1] === gzipMagicNumberB;
+
+const resolveStoredArtifactRef = (
+  detailHtmlPath: string,
+): {
+  storageType: 'gcs' | 'local_filesystem';
+  storagePath: string;
+} => ({
+  storageType: detailHtmlPath.startsWith('gs://') ? 'gcs' : 'local_filesystem',
+  storagePath: detailHtmlPath,
+});
 
 const normalizeTextPreservingLineBreaks = (input: string): string =>
   input
@@ -226,9 +236,7 @@ export class IncompleteDetailPageError extends Error {
 }
 
 const decodeDetailHtmlFile = async (detailHtmlPath: string): Promise<DecodedDetailHtmlFile> => {
-  await access(detailHtmlPath);
-
-  const fileBuffer = await readFile(detailHtmlPath);
+  const fileBuffer = await downloadStoredArtifact(resolveStoredArtifactRef(detailHtmlPath));
   const wasGzipCompressed = isGzipBuffer(fileBuffer);
   const rawHtml = bufferToUtf8(fileBuffer);
   const htmlSha256 = createHash('sha256').update(rawHtml, 'utf8').digest('hex');

@@ -16,6 +16,16 @@ import {
   runIngestionWorkflow,
 } from './app.js';
 import { sourceListingRecordSchema } from './schema.js';
+import {
+  buildItemTriggerDoc,
+  buildRunTriggerDoc,
+  claimTrigger,
+  ensureTriggerIndexes,
+  getTriggerCollection,
+  type IngestionTriggerDoc,
+  updateTriggerFailure,
+  updateTriggerSuccess,
+} from './trigger-store.js';
 
 const runTriggerRequestSchema = z.object({
   source: z.string().min(1),
@@ -38,57 +48,7 @@ const itemTriggerRequestSchema = z.object({
 type RunTriggerRequest = z.infer<typeof runTriggerRequestSchema>;
 type ItemTriggerRequest = z.infer<typeof itemTriggerRequestSchema>;
 
-type IngestionTriggerStatus =
-  | 'pending'
-  | 'running'
-  | 'succeeded'
-  | 'completed_with_errors'
-  | 'failed';
-
-type IngestionTriggerDoc = {
-  id: string;
-  triggerType: 'run' | 'item';
-  source: string;
-  crawlRunId: string;
-  searchSpaceId: string;
-  mongoDbName: string;
-  sourceId?: string;
-  detailHtmlPath?: string;
-  datasetFileName?: string;
-  datasetRecordIndex?: number;
-  status: IngestionTriggerStatus;
-  requestedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  updatedAt: string;
-  attemptCount: number;
-  ingestionRunId?: string;
-  inputRunDir?: string;
-  outputJsonPath?: string;
-  errorMessage?: string;
-  errorStack?: string;
-  result?: {
-    jobsProcessed: number;
-    jobsSkippedIncomplete: number;
-    jobsFailed: number;
-    totalTokensUsed: number;
-    totalEstimatedCostUsd: number;
-    mongoWritesStructured: number;
-    mongoWritesRunSummary: number;
-  };
-};
-
 const runningTriggers = new Map<string, Promise<void>>();
-
-const runTriggerDocId = (source: string, crawlRunId: string, searchSpaceId: string): string =>
-  `run:${source}:${searchSpaceId}:${crawlRunId}`;
-
-const itemTriggerDocId = (
-  source: string,
-  crawlRunId: string,
-  searchSpaceId: string,
-  sourceId: string,
-): string => `item:${source}:${searchSpaceId}:${crawlRunId}:${sourceId}`;
 
 const resolveTriggerInputRunDir = (crawlRunId: string): string =>
   path.join(inputRootDir, envs.CRAWL_RUNS_SUBDIR, crawlRunId);
@@ -108,186 +68,6 @@ const getRequiredMongoUri = (): string => {
   }
 
   return envs.MONGODB_URI;
-};
-
-const ensureTriggerIndexes = async (
-  mongoClient: MongoClient,
-  dbName: string,
-  collectionName: string,
-): Promise<void> => {
-  const collection = mongoClient.db(dbName).collection<IngestionTriggerDoc>(collectionName);
-  try {
-    await collection.dropIndex('source_crawlRunId_unique');
-  } catch {
-    // legacy index may not exist
-  }
-  await collection.createIndex({ id: 1 }, { unique: true, name: 'id_unique' });
-  await collection.createIndex({ status: 1, updatedAt: -1 }, { name: 'status_updatedAt' });
-};
-
-const getTriggerCollection = (mongoClient: MongoClient, dbName: string) =>
-  mongoClient
-    .db(dbName)
-    .collection<IngestionTriggerDoc>(envs.MONGODB_INGESTION_TRIGGERS_COLLECTION);
-
-const buildRunTriggerDoc = (trigger: RunTriggerRequest): IngestionTriggerDoc => {
-  const nowIso = new Date().toISOString();
-  return {
-    id: runTriggerDocId(trigger.source, trigger.crawlRunId, trigger.searchSpaceId),
-    triggerType: 'run',
-    source: trigger.source,
-    crawlRunId: trigger.crawlRunId,
-    searchSpaceId: trigger.searchSpaceId,
-    mongoDbName: trigger.mongoDbName,
-    status: 'pending',
-    requestedAt: nowIso,
-    updatedAt: nowIso,
-    attemptCount: 0,
-  };
-};
-
-const buildItemTriggerDoc = (trigger: ItemTriggerRequest): IngestionTriggerDoc => {
-  const nowIso = new Date().toISOString();
-  return {
-    id: itemTriggerDocId(
-      trigger.source,
-      trigger.crawlRunId,
-      trigger.searchSpaceId,
-      trigger.listingRecord.sourceId,
-    ),
-    triggerType: 'item',
-    source: trigger.source,
-    crawlRunId: trigger.crawlRunId,
-    searchSpaceId: trigger.searchSpaceId,
-    mongoDbName: trigger.mongoDbName,
-    sourceId: trigger.listingRecord.sourceId,
-    detailHtmlPath: trigger.detailHtmlPath,
-    datasetFileName: trigger.datasetFileName,
-    datasetRecordIndex: trigger.datasetRecordIndex,
-    status: 'pending',
-    requestedAt: nowIso,
-    updatedAt: nowIso,
-    attemptCount: 0,
-  };
-};
-
-const seedTriggerDoc = async (
-  collection: ReturnType<typeof getTriggerCollection>,
-  triggerDoc: IngestionTriggerDoc,
-): Promise<void> => {
-  await collection.updateOne(
-    { id: triggerDoc.id },
-    {
-      $setOnInsert: triggerDoc,
-    },
-    { upsert: true },
-  );
-};
-
-const claimTrigger = async (
-  collection: ReturnType<typeof getTriggerCollection>,
-  triggerDoc: IngestionTriggerDoc,
-): Promise<
-  { claimed: true; doc: IngestionTriggerDoc } | { claimed: false; doc: IngestionTriggerDoc | null }
-> => {
-  await seedTriggerDoc(collection, triggerDoc);
-
-  const nowIso = new Date().toISOString();
-  const claimed = await collection.findOneAndUpdate(
-    { id: triggerDoc.id, status: { $in: ['pending', 'failed'] } },
-    {
-      $set: {
-        status: 'running' satisfies IngestionTriggerStatus,
-        startedAt: nowIso,
-        updatedAt: nowIso,
-      },
-      $inc: { attemptCount: 1 },
-      $unset: {
-        completedAt: 1,
-        result: 1,
-        errorMessage: 1,
-        errorStack: 1,
-      },
-    },
-    { returnDocument: 'after' },
-  );
-
-  if (claimed) {
-    return { claimed: true, doc: claimed };
-  }
-
-  const existing = await collection.findOne({ id: triggerDoc.id });
-  return { claimed: false, doc: existing };
-};
-
-const updateTriggerSuccess = async (
-  collection: ReturnType<typeof getTriggerCollection>,
-  triggerDoc: IngestionTriggerDoc,
-  result: {
-    status: IngestionTriggerStatus;
-    ingestionRunId: string;
-    inputRunDir?: string;
-    outputJsonPath?: string;
-    jobsProcessed: number;
-    jobsSkippedIncomplete: number;
-    jobsFailed: number;
-    totalTokensUsed: number;
-    totalEstimatedCostUsd: number;
-    mongoWritesStructured: number;
-    mongoWritesRunSummary: number;
-  },
-): Promise<void> => {
-  const nowIso = new Date().toISOString();
-  await collection.updateOne(
-    { id: triggerDoc.id },
-    {
-      $set: {
-        status: result.status,
-        completedAt: nowIso,
-        updatedAt: nowIso,
-        ingestionRunId: result.ingestionRunId,
-        inputRunDir: result.inputRunDir,
-        outputJsonPath: result.outputJsonPath,
-        result: {
-          jobsProcessed: result.jobsProcessed,
-          jobsSkippedIncomplete: result.jobsSkippedIncomplete,
-          jobsFailed: result.jobsFailed,
-          totalTokensUsed: result.totalTokensUsed,
-          totalEstimatedCostUsd: result.totalEstimatedCostUsd,
-          mongoWritesStructured: result.mongoWritesStructured,
-          mongoWritesRunSummary: result.mongoWritesRunSummary,
-        },
-      },
-      $unset: {
-        errorMessage: 1,
-        errorStack: 1,
-      },
-    },
-  );
-};
-
-const updateTriggerFailure = async (
-  collection: ReturnType<typeof getTriggerCollection>,
-  triggerDoc: IngestionTriggerDoc,
-  error: unknown,
-): Promise<void> => {
-  const nowIso = new Date().toISOString();
-  const normalizedError = error instanceof Error ? error : new Error(String(error));
-  await collection.updateOne(
-    { id: triggerDoc.id },
-    {
-      $set: {
-        status: 'failed' satisfies IngestionTriggerStatus,
-        completedAt: nowIso,
-        updatedAt: nowIso,
-        errorMessage: normalizedError.message,
-        errorStack: normalizedError.stack,
-      },
-      $unset: {
-        result: 1,
-      },
-    },
-  );
 };
 
 const runRunTriggerInBackground = async (
@@ -359,8 +139,6 @@ const runItemTriggerInBackground = async (
     sourceId: trigger.listingRecord.sourceId,
   });
 
-  await access(trigger.detailHtmlPath);
-
   const result = await runIngestionRecordWorkflow({
     crawlRunId: trigger.crawlRunId,
     searchSpaceId: trigger.searchSpaceId,
@@ -420,11 +198,7 @@ async function main(): Promise<void> {
       }
 
       const trigger = parsed.data;
-      await ensureTriggerIndexes(
-        mongoClient,
-        trigger.mongoDbName,
-        envs.MONGODB_INGESTION_TRIGGERS_COLLECTION,
-      );
+      await ensureTriggerIndexes(mongoClient, trigger.mongoDbName);
       const collection = getTriggerCollection(mongoClient, trigger.mongoDbName);
       const triggerDoc = buildRunTriggerDoc(trigger);
       const runningPromise = runningTriggers.get(triggerDoc.id);
@@ -473,11 +247,7 @@ async function main(): Promise<void> {
       }
 
       const trigger = parsed.data;
-      await ensureTriggerIndexes(
-        mongoClient,
-        trigger.mongoDbName,
-        envs.MONGODB_INGESTION_TRIGGERS_COLLECTION,
-      );
+      await ensureTriggerIndexes(mongoClient, trigger.mongoDbName);
       const collection = getTriggerCollection(mongoClient, trigger.mongoDbName);
       const triggerDoc = buildItemTriggerDoc(trigger);
       const runningPromise = runningTriggers.get(triggerDoc.id);

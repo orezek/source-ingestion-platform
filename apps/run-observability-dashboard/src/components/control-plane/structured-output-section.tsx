@@ -3,7 +3,6 @@ import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { ResourceLifecycleActions } from '@/components/control-plane/resource-lifecycle-actions';
 import {
-  archiveStructuredOutputDestinationAction,
   createStructuredOutputDestinationAction,
   deleteStructuredOutputDestinationAction,
   updateStructuredOutputDestinationAction,
@@ -59,10 +58,7 @@ export function StructuredOutputSection({
       </div>
 
       {structuredOutputDestinations.length > 0 ? (
-        <DisclosurePanel
-          title="Manage structured outputs"
-          description="Edit reusable output choices."
-        >
+        <DisclosurePanel title="Manage structured outputs" description="Edit managed add-on sinks.">
           <div className="resource-edit-grid">
             {structuredOutputDestinations.map((destination) => (
               <details key={destination.id} className="resource-card">
@@ -88,15 +84,13 @@ export function StructuredOutputSection({
                     </label>
                   ) : null}
                   <p className="empty-copy">
-                    Downloadable JSON uses the managed platform store and is accessed through the
-                    dashboard. MongoDB keeps the current automatic per-search-space database naming
-                    and collection layout.
+                    Managed structured outputs are add-on sinks. Downloadable JSON is built in and
+                    selected directly on pipelines.
                   </p>
                   <button type="submit">Save structured output</button>
                 </form>
                 <ResourceLifecycleActions
                   id={destination.id}
-                  archiveAction={archiveStructuredOutputDestinationAction}
                   deleteAction={deleteStructuredOutputDestinationAction}
                 />
               </details>
@@ -105,27 +99,8 @@ export function StructuredOutputSection({
         </DisclosurePanel>
       ) : null}
 
-      <DisclosurePanel
-        title="Create structured output"
-        description="Create a reusable output choice."
-      >
+      <DisclosurePanel title="Create structured output" description="Create a managed add-on sink.">
         <div className="resource-edit-grid">
-          <details className="resource-card">
-            <summary>Create downloadable JSON output</summary>
-            <form action={createStructuredOutputDestinationAction} className="control-form">
-              <input type="hidden" name="type" value="downloadable_json" />
-              <label>
-                <span>NAME</span>
-                <input name="name" placeholder="Downloadable JSON" required />
-              </label>
-              <p className="empty-copy">
-                Downloadable JSON is stored in a managed backend and surfaced through dashboard
-                browse and download flows.
-              </p>
-              <button type="submit">Create downloadable JSON output</button>
-            </form>
-          </details>
-
           <details className="resource-card">
             <summary>Create MongoDB output</summary>
             <form action={createStructuredOutputDestinationAction} className="control-form">

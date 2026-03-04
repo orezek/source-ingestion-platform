@@ -19,9 +19,9 @@ import {
   writeSearchSpace,
   writeStructuredOutputDestination,
 } from '@/server/control-plane/store';
+import { IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID } from '@/server/control-plane/builtin-outputs';
 
 const DEFAULT_RUNTIME_PROFILE_ID = 'default-local-runtime';
-const DEFAULT_DOWNLOADABLE_JSON_DESTINATION_ID = 'downloadable-json';
 const DEFAULT_MONGO_OUTPUT_DESTINATION_ID = 'mongo-normalized-jobs';
 
 function toSearchSpaceRecord(input: {
@@ -57,19 +57,6 @@ function buildDefaultRuntimeProfile(): RuntimeProfile {
     ingestionConcurrency: 1,
     ingestionEnabled: true,
     debugLog: false,
-    status: 'active',
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  });
-}
-
-function buildDefaultDownloadableJsonOutputDestination(): StructuredOutputDestination {
-  const timestamp = nowIso();
-  return structuredOutputDestinationSchema.parse({
-    id: DEFAULT_DOWNLOADABLE_JSON_DESTINATION_ID,
-    name: 'Downloadable JSON',
-    type: 'downloadable_json',
-    config: {},
     status: 'active',
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -140,13 +127,6 @@ async function ensureDefaultRuntimeProfile(): Promise<void> {
 }
 
 async function ensureDefaultStructuredOutputs(): Promise<void> {
-  const downloadableJson = await getStructuredOutputDestination(
-    DEFAULT_DOWNLOADABLE_JSON_DESTINATION_ID,
-  );
-  if (!downloadableJson) {
-    await writeStructuredOutputDestination(buildDefaultDownloadableJsonOutputDestination());
-  }
-
   const mongo = await getStructuredOutputDestination(DEFAULT_MONGO_OUTPUT_DESTINATION_ID);
   if (!mongo) {
     await writeStructuredOutputDestination(buildDefaultMongoOutputDestination());
@@ -162,6 +142,6 @@ export async function ensureControlPlaneBootstrap(): Promise<void> {
 
 export const defaultControlPlaneIds = {
   runtimeProfileId: DEFAULT_RUNTIME_PROFILE_ID,
-  jsonOutputDestinationId: DEFAULT_DOWNLOADABLE_JSON_DESTINATION_ID,
+  jsonOutputDestinationId: IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID,
   mongoOutputDestinationId: DEFAULT_MONGO_OUTPUT_DESTINATION_ID,
 } as const;

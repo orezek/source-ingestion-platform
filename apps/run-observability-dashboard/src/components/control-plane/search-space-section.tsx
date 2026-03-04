@@ -3,7 +3,6 @@ import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { ResourceLifecycleActions } from '@/components/control-plane/resource-lifecycle-actions';
 import {
-  archiveSearchSpaceAction,
   createSearchSpaceAction,
   deleteSearchSpaceAction,
   updateSearchSpaceAction,
@@ -92,7 +91,6 @@ export function SearchSpaceSection({ searchSpaces }: SearchSpaceSectionProps) {
                 </form>
                 <ResourceLifecycleActions
                   id={searchSpace.id}
-                  archiveAction={archiveSearchSpaceAction}
                   deleteAction={deleteSearchSpaceAction}
                 />
               </details>

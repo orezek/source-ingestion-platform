@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { parseArgs } from 'node:util';
+import { MongoClient, type Collection } from 'mongodb';
 import { z } from 'zod';
 import {
   createBrokerRunConsumer,
@@ -18,7 +19,15 @@ import {
   type RunManifest,
 } from '@repo/control-plane-contracts';
 import { deriveMongoDbName } from '@repo/job-search-spaces';
-import { runIngestionRecordWorkflow } from './app.js';
+import { envs, runIngestionRecordWorkflow } from './app.js';
+import {
+  buildItemTriggerDoc,
+  claimTrigger,
+  ensureTriggerIndexes,
+  updateTriggerFailure,
+  updateTriggerSuccess,
+  type IngestionTriggerDoc,
+} from './trigger-store.js';
 
 type WorkerRuntime = {
   workerType: 'ingestion';
@@ -169,8 +178,28 @@ async function processDetailCapturedEvent(input: {
   brokerTransport: BrokerTransportConfig;
   event: Extract<BrokerEvent, { eventType: 'crawler.detail.captured' }>;
   counters: RuntimeCounters;
+  triggerCollection: Collection<IngestionTriggerDoc> | null;
 }): Promise<void> {
   const mongoDbName = getMongoDbName(input.manifest);
+  const triggerDoc = buildItemTriggerDoc({
+    source: input.event.payload.source,
+    crawlRunId: input.event.payload.crawlRunId,
+    searchSpaceId: input.event.payload.searchSpaceId,
+    mongoDbName,
+    listingRecord: input.event.payload.listingRecord,
+    detailHtmlPath: input.event.payload.artifact.storagePath,
+    datasetFileName: 'dataset.json',
+    datasetRecordIndex: 0,
+  });
+
+  if (input.triggerCollection) {
+    const claimResult = await claimTrigger(input.triggerCollection, triggerDoc);
+    if (!claimResult.claimed) {
+      input.counters.processedEventIds.push(input.event.eventId);
+      return;
+    }
+  }
+
   await publishLifecycleEvent(input.brokerTransport, {
     eventId: `evt-${randomUUID()}`,
     eventType: 'ingestion.item.started',
@@ -188,77 +217,123 @@ async function processDetailCapturedEvent(input: {
     },
   });
 
-  const result = await runIngestionRecordWorkflow({
-    crawlRunId: input.event.payload.crawlRunId,
-    searchSpaceId: input.event.payload.searchSpaceId,
-    mongoDbNameOverride: mongoDbName,
-    inputRecord: {
-      datasetFileName: 'dataset.json',
-      datasetRecordIndex: 0,
-      listingRecord: input.event.payload.listingRecord,
-      detailHtmlPath: input.event.payload.artifact.storagePath,
-    },
-  });
-
-  input.counters.processedEventIds.push(input.event.eventId);
-  input.counters.itemsProcessed += result.structuredParsed.length;
-  input.counters.itemsSkipped += result.skippedIncomplete;
-  input.counters.itemsFailed += result.failed;
-
-  const gcpProjectId =
-    input.brokerTransport.type === 'gcp_pubsub' ? input.brokerTransport.projectId : undefined;
-  await writeDownloadableJsonSinks({
-    manifest: input.manifest,
-    sourceId: input.event.payload.sourceId,
-    structuredParsed: result.structuredParsed,
-    gcpProjectId,
-  });
-
-  const eventType =
-    result.failed > 0
-      ? 'ingestion.item.failed'
-      : result.skippedIncomplete > 0
-        ? 'ingestion.item.rejected'
-        : 'ingestion.item.succeeded';
-
-  await publishLifecycleEvent(input.brokerTransport, {
-    eventId: `evt-${randomUUID()}`,
-    eventType,
-    eventVersion: 'v1',
-    occurredAt: nowIso(),
-    runId: input.event.runId,
-    correlationId: input.event.payload.dedupeKey,
-    producer: 'jobs-ingestion-service-worker',
-    payload: {
+  try {
+    const result = await runIngestionRecordWorkflow({
       crawlRunId: input.event.payload.crawlRunId,
-      source: input.event.payload.source,
+      searchSpaceId: input.event.payload.searchSpaceId,
+      mongoDbNameOverride: mongoDbName,
+      inputRecord: {
+        datasetFileName: 'dataset.json',
+        datasetRecordIndex: 0,
+        listingRecord: input.event.payload.listingRecord,
+        detailHtmlPath: input.event.payload.artifact.storagePath,
+      },
+    });
+
+    input.counters.processedEventIds.push(input.event.eventId);
+    input.counters.itemsProcessed += result.structuredParsed.length;
+    input.counters.itemsSkipped += result.skippedIncomplete;
+    input.counters.itemsFailed += result.failed;
+
+    const gcpProjectId =
+      input.brokerTransport.type === 'gcp_pubsub' ? input.brokerTransport.projectId : undefined;
+    await writeDownloadableJsonSinks({
+      manifest: input.manifest,
       sourceId: input.event.payload.sourceId,
-      dedupeKey: input.event.payload.dedupeKey,
-      documentId:
-        result.structuredParsed.length > 0 &&
-        typeof (result.structuredParsed[0] as { id?: unknown }).id === 'string'
-          ? (result.structuredParsed[0] as { id: string }).id
-          : undefined,
-      sinkResults: input.manifest.structuredOutputDestinationSnapshots.map((destination) => ({
-        sinkType: destination.type,
-        targetRef:
-          destination.type === 'downloadable_json'
-            ? destination.config.storageType === 'local_filesystem'
-              ? destination.config.basePath
-              : destination.config.bucket
-            : destination.config.connectionUri || 'env:MONGODB_URI',
-        writeMode: destination.type === 'mongodb' ? 'upsert' : 'overwrite',
-      })),
-      error:
-        result.failed > 0
-          ? {
-              name: 'IngestionItemFailed',
-              message: 'One or more ingestion item failures were recorded.',
-            }
-          : undefined,
-      reason: result.skippedIncomplete > 0 ? 'skipped_incomplete' : undefined,
-    },
-  });
+      structuredParsed: result.structuredParsed,
+      gcpProjectId,
+    });
+
+    const eventType =
+      result.failed > 0
+        ? 'ingestion.item.failed'
+        : result.skippedIncomplete > 0
+          ? 'ingestion.item.rejected'
+          : 'ingestion.item.succeeded';
+
+    if (input.triggerCollection) {
+      await updateTriggerSuccess(input.triggerCollection, triggerDoc, {
+        status: result.status,
+        ingestionRunId: result.runId,
+        jobsProcessed: result.structuredParsed.length,
+        jobsSkippedIncomplete: result.skippedIncomplete,
+        jobsFailed: result.failed,
+        totalTokensUsed: result.stats.totalTokens,
+        totalEstimatedCostUsd: result.stats.totalEstimatedCostUsd,
+        mongoWritesStructured: result.mongoWritesStructured,
+        mongoWritesRunSummary: result.mongoWritesRunSummary,
+      });
+    }
+
+    await publishLifecycleEvent(input.brokerTransport, {
+      eventId: `evt-${randomUUID()}`,
+      eventType,
+      eventVersion: 'v1',
+      occurredAt: nowIso(),
+      runId: input.event.runId,
+      correlationId: input.event.payload.dedupeKey,
+      producer: 'jobs-ingestion-service-worker',
+      payload: {
+        crawlRunId: input.event.payload.crawlRunId,
+        source: input.event.payload.source,
+        sourceId: input.event.payload.sourceId,
+        dedupeKey: input.event.payload.dedupeKey,
+        documentId:
+          result.structuredParsed.length > 0 &&
+          typeof (result.structuredParsed[0] as { id?: unknown }).id === 'string'
+            ? (result.structuredParsed[0] as { id: string }).id
+            : undefined,
+        sinkResults: input.manifest.structuredOutputDestinationSnapshots.map((destination) => ({
+          sinkType: destination.type,
+          targetRef:
+            destination.type === 'downloadable_json'
+              ? destination.config.storageType === 'local_filesystem'
+                ? destination.config.basePath
+                : destination.config.bucket
+              : destination.config.connectionUri || 'env:MONGODB_URI',
+          writeMode: destination.type === 'mongodb' ? 'upsert' : 'overwrite',
+        })),
+        error:
+          result.failed > 0
+            ? {
+                name: 'IngestionItemFailed',
+                message: 'One or more ingestion item failures were recorded.',
+              }
+            : undefined,
+        reason: result.skippedIncomplete > 0 ? 'skipped_incomplete' : undefined,
+      },
+    });
+  } catch (error) {
+    if (input.triggerCollection) {
+      await updateTriggerFailure(input.triggerCollection, triggerDoc, error);
+    }
+
+    throw error;
+  }
+}
+
+async function runWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  const runWorker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const item = items[currentIndex];
+      if (!item) {
+        return;
+      }
+
+      await worker(item);
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 }
 
 async function main(): Promise<void> {
@@ -292,12 +367,39 @@ async function main(): Promise<void> {
     broker: brokerTransport,
     runId: manifest.runId,
   });
+  const startedAt = existingRuntime?.startedAt ?? nowIso();
+  const mongoDbName = getMongoDbName(manifest);
+  const mongoClient =
+    envs.ENABLE_MONGO_WRITE && envs.MONGODB_URI ? new MongoClient(envs.MONGODB_URI) : null;
+  let triggerCollection: Collection<IngestionTriggerDoc> | null = null;
 
   try {
-    await writeWorkerRuntime(path.resolve(runtimePath), {
+    if (mongoClient) {
+      await mongoClient.connect();
+      triggerCollection = await ensureTriggerIndexes(mongoClient, mongoDbName);
+    }
+
+    const runtimePathResolved = path.resolve(runtimePath);
+    let runtimeWriteChain = Promise.resolve();
+    const queueRuntimeWrite = async (): Promise<void> => {
+      runtimeWriteChain = runtimeWriteChain.then(() =>
+        writeWorkerRuntime(runtimePathResolved, {
+          workerType: 'ingestion',
+          status: 'running',
+          startedAt,
+          lastHeartbeatAt: nowIso(),
+          pid: process.pid,
+          logPath: existingRuntime?.logPath,
+          counters,
+        }),
+      );
+      await runtimeWriteChain;
+    };
+
+    await writeWorkerRuntime(runtimePathResolved, {
       workerType: 'ingestion',
       status: 'running',
-      startedAt: existingRuntime?.startedAt ?? nowIso(),
+      startedAt,
       lastHeartbeatAt: nowIso(),
       pid: process.pid,
       logPath: existingRuntime?.logPath,
@@ -312,31 +414,40 @@ async function main(): Promise<void> {
         (event) => !counters.processedEventIds.includes(event.eventId),
       );
 
-      for (const event of unseenEvents) {
-        if (event.eventType === 'crawler.detail.captured') {
-          await processDetailCapturedEvent({
-            manifest,
-            brokerTransport,
-            event,
-            counters,
-          });
-        } else if (event.eventType === 'crawler.run.finished') {
+      const detailEvents = unseenEvents.filter(
+        (event): event is Extract<BrokerEvent, { eventType: 'crawler.detail.captured' }> =>
+          event.eventType === 'crawler.detail.captured',
+      );
+
+      const otherEvents = unseenEvents.filter(
+        (event) => event.eventType !== 'crawler.detail.captured',
+      );
+
+      for (const event of otherEvents) {
+        if (event.eventType === 'crawler.run.finished') {
           counters.processedEventIds.push(event.eventId);
           counters.crawlerFinished = true;
         } else {
           counters.processedEventIds.push(event.eventId);
         }
 
-        await writeWorkerRuntime(path.resolve(runtimePath), {
-          workerType: 'ingestion',
-          status: 'running',
-          startedAt: existingRuntime?.startedAt ?? nowIso(),
-          lastHeartbeatAt: nowIso(),
-          pid: process.pid,
-          logPath: existingRuntime?.logPath,
-          counters,
-        });
+        await queueRuntimeWrite();
       }
+
+      await runWithConcurrency(
+        detailEvents,
+        manifest.runtimeProfileSnapshot.ingestionConcurrency,
+        async (event) => {
+          await processDetailCapturedEvent({
+            manifest,
+            brokerTransport,
+            event,
+            counters,
+            triggerCollection,
+          });
+          await queueRuntimeWrite();
+        },
+      );
 
       if (counters.crawlerFinished && unseenEvents.length === 0) {
         idlePollsAfterCrawlerFinished += 1;
@@ -350,10 +461,10 @@ async function main(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    await writeWorkerRuntime(path.resolve(runtimePath), {
+    await writeWorkerRuntime(runtimePathResolved, {
       workerType: 'ingestion',
       status: resolveRuntimeStatus(counters),
-      startedAt: existingRuntime?.startedAt ?? nowIso(),
+      startedAt,
       finishedAt: nowIso(),
       lastHeartbeatAt: nowIso(),
       pid: process.pid,
@@ -363,6 +474,7 @@ async function main(): Promise<void> {
     });
   } finally {
     await brokerConsumer.close();
+    await mongoClient?.close();
   }
 }
 

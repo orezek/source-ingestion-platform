@@ -8,11 +8,14 @@ import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { ResourceLifecycleActions } from '@/components/control-plane/resource-lifecycle-actions';
 import {
-  archivePipelineAction,
   createPipelineAction,
   deletePipelineAction,
   updatePipelineAction,
 } from '@/app/control-plane/actions';
+import {
+  buildImplicitDownloadableJsonDestination,
+  IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID,
+} from '@/server/control-plane/builtin-outputs';
 
 type PipelineSectionProps = {
   pipelines: Pipeline[];
@@ -69,6 +72,11 @@ export function PipelineSection({
   runtimeProfiles,
   structuredOutputDestinations,
 }: PipelineSectionProps) {
+  const availableStructuredOutputs = [
+    buildImplicitDownloadableJsonDestination(),
+    ...structuredOutputDestinations,
+  ];
+
   return (
     <section className="panel">
       <SectionHeading title="Pipelines" detail={`${pipelines.length} total`} />
@@ -172,17 +180,13 @@ export function PipelineSection({
                   <fieldset className="control-form__fieldset">
                     <legend>STRUCTURED OUTPUTS</legend>
                     {renderStructuredOutputChoices({
-                      destinations: structuredOutputDestinations,
+                      destinations: availableStructuredOutputs,
                       selectedIds: pipeline.structuredOutputDestinationIds,
                     })}
                   </fieldset>
                   <button type="submit">Save pipeline</button>
                 </form>
-                <ResourceLifecycleActions
-                  id={pipeline.id}
-                  archiveAction={archivePipelineAction}
-                  deleteAction={deletePipelineAction}
-                />
+                <ResourceLifecycleActions id={pipeline.id} deleteAction={deletePipelineAction} />
               </details>
             ))}
           </div>
@@ -239,10 +243,8 @@ export function PipelineSection({
           <fieldset className="control-form__fieldset">
             <legend>STRUCTURED OUTPUTS</legend>
             {renderStructuredOutputChoices({
-              destinations: structuredOutputDestinations,
-              selectedIds: structuredOutputDestinations
-                .filter((destination) => destination.type === 'downloadable_json')
-                .map((destination) => destination.id),
+              destinations: availableStructuredOutputs,
+              selectedIds: [IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID],
             })}
           </fieldset>
           <button type="submit" data-testid="create-pipeline-submit">

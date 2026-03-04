@@ -9,12 +9,17 @@ import { ErrorState } from '@/components/state/error-state';
 import { FilePreviewPanel } from '@/components/control-plane/file-preview-panel';
 import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
 import { DisclosurePanel } from '@/components/control-plane/disclosure-panel';
+import { LiveRefresh } from '@/components/control-plane/live-refresh';
 import { SectionHeading } from '@/components/control-plane/section-heading';
 import { formatCompactBytes, formatDateTime, formatNumber } from '@/server/lib/formatting';
 import { env } from '@/server/env';
 import { getControlPlaneRunDetail } from '@/server/control-plane/service';
 
 export const dynamic = 'force-dynamic';
+
+function shouldAutoRefresh(status: string): boolean {
+  return status === 'queued' || status === 'running';
+}
 
 function describeBrokerEvent(event: BrokerEvent): string {
   switch (event.eventType) {
@@ -63,6 +68,7 @@ export default async function ControlPlaneRunDetailPage({
 
     return (
       <AppShell>
+        <LiveRefresh enabled={shouldAutoRefresh(detail.runView.computedStatus)} />
         <PageHeader
           eyebrow="Run detail"
           title={detail.pipeline?.name ?? `Run ${detail.runView.run.runId.slice(0, 18)}`}

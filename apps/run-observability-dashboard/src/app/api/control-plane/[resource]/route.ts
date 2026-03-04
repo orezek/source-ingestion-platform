@@ -8,10 +8,6 @@ import type {
   StartRunRequest,
 } from '@repo/control-plane-contracts';
 import {
-  archivePipeline,
-  archiveRuntimeProfile,
-  archiveSearchSpace,
-  archiveStructuredOutputDestination,
   createPipeline,
   createRuntimeProfile,
   createSearchSpace,
@@ -139,7 +135,6 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const id = typeof body?.id === 'string' ? body.id : null;
-  const action = typeof body?.action === 'string' ? body.action : 'update';
 
   if (!id) {
     return NextResponse.json({ ok: false, error: 'Missing required field "id".' }, { status: 400 });
@@ -150,37 +145,25 @@ export async function PATCH(request: Request, context: RouteContext) {
       case 'search-spaces':
         return NextResponse.json({
           ok: true,
-          data:
-            action === 'archive'
-              ? await archiveSearchSpace(id)
-              : await updateSearchSpace(id, body as CreateSearchSpaceInput),
+          data: await updateSearchSpace(id, body as CreateSearchSpaceInput),
         });
       case 'runtime-profiles':
         return NextResponse.json({
           ok: true,
-          data:
-            action === 'archive'
-              ? await archiveRuntimeProfile(id)
-              : await updateRuntimeProfile(id, body as CreateRuntimeProfileInput),
+          data: await updateRuntimeProfile(id, body as CreateRuntimeProfileInput),
         });
       case 'structured-output-destinations':
         return NextResponse.json({
           ok: true,
-          data:
-            action === 'archive'
-              ? await archiveStructuredOutputDestination(id)
-              : await updateStructuredOutputDestination(
-                  id,
-                  body as CreateStructuredOutputDestinationInput,
-                ),
+          data: await updateStructuredOutputDestination(
+            id,
+            body as CreateStructuredOutputDestinationInput,
+          ),
         });
       case 'pipelines':
         return NextResponse.json({
           ok: true,
-          data:
-            action === 'archive'
-              ? await archivePipeline(id)
-              : await updatePipeline(id, body as CreatePipelineInput),
+          data: await updatePipeline(id, body as CreatePipelineInput),
         });
     }
   } catch (error) {
