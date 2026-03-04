@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
-import { BreadcrumbNav } from '@/components/layout/breadcrumb-nav';
 import { PageHeader } from '@/components/layout/page-header';
 import { ErrorState } from '@/components/state/error-state';
 import { JsonViewerPanel } from '@/components/control-plane/json-viewer-panel';
@@ -50,13 +49,6 @@ export default async function ControlPlaneStructuredOutputPage({
     return (
       <AppShell>
         <LiveRefresh enabled={shouldAutoRefresh(detail.runView.computedStatus)} />
-        <BreadcrumbNav
-          items={[
-            { label: 'Dashboard', href: '/' },
-            { label: `Run: ${runId}`, href: `/control-plane/runs/${runId}` },
-            { label: `Output: ${output.capture.sourceId}` },
-          ]}
-        />
         <PageHeader
           eyebrow="Structured output browser"
           title={output.capture.fileName}

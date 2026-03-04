@@ -73,7 +73,7 @@ export default async function ControlPlanePage() {
         <ControlPlaneRunsSection runs={overview.runs} pipelines={overview.pipelines} />
       </section>
 
-      <section className="control-band">
+      <section className="control-band" id="pipelines">
         <div className="control-band__header">
           <h2>Pipelines</h2>
         </div>
@@ -85,7 +85,7 @@ export default async function ControlPlanePage() {
         />
       </section>
 
-      <section className="control-band">
+      <section className="control-band" id="setup">
         <div className="control-band__header">
           <h2>Setup</h2>
         </div>

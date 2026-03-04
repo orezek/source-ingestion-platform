@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { IBM_Plex_Mono } from 'next/font/google';
 import '@/app/globals.css';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 
 const plexMono = IBM_Plex_Mono({
   subsets: ['latin'],
@@ -19,7 +20,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={plexMono.variable}>
-      <body>{children}</body>
+      <body>
+        <DashboardShell>{children}</DashboardShell>
+      </body>
     </html>
   );
 }
