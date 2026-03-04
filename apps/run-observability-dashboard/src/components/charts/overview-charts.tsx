@@ -150,39 +150,41 @@ export function OverviewChartsPanel({ charts }: { charts: OverviewCharts }) {
         </ResponsiveContainer>
       </ChartFrame>
 
-      <ChartFrame
-        title="Tokens and cost"
-        description="Total token volume and estimated cost by ingestion run."
-      >
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={charts.costAndTokensTrend}>
-            <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
-            <XAxis dataKey="label" tick={axisTick} tickLine={false} />
-            <YAxis yAxisId="left" tick={axisTick} tickLine={false} />
-            <YAxis yAxisId="right" orientation="right" tick={axisTick} tickLine={false} />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              itemStyle={tooltipItemStyle}
-              labelStyle={tooltipLabelStyle}
-            />
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="totalTokens"
-              stroke={colors.text}
-              fill={colors.accentPrecision}
-              fillOpacity={0.42}
-            />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="costUsd"
-              stroke={colors.info}
-              strokeWidth={2}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </ChartFrame>
+      <div className="chart-grid__item--full">
+        <ChartFrame
+          title="Tokens and cost"
+          description="Total token volume and estimated cost by ingestion run."
+        >
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={charts.costAndTokensTrend}>
+              <CartesianGrid strokeDasharray="2 6" stroke={colors.structure} />
+              <XAxis dataKey="label" tick={axisTick} tickLine={false} />
+              <YAxis yAxisId="left" tick={axisTick} tickLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={axisTick} tickLine={false} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                itemStyle={tooltipItemStyle}
+                labelStyle={tooltipLabelStyle}
+              />
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="totalTokens"
+                stroke={colors.text}
+                fill={colors.accentPrecision}
+                fillOpacity={0.42}
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="costUsd"
+                stroke={colors.info}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartFrame>
+      </div>
     </div>
   );
 }

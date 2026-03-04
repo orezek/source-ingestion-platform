@@ -230,7 +230,7 @@ export default async function ControlPlaneRunDetailPage({
             {detail.artifactCaptures.length === 0 ? (
               <p className="empty-copy">No captured HTML artifacts are recorded for this run.</p>
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap table-wrap--bounded">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -287,7 +287,7 @@ export default async function ControlPlaneRunDetailPage({
               No downloadable structured outputs are recorded for this run.
             </p>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap table-wrap--bounded">
               <table className="data-table">
                 <thead>
                   <tr>

@@ -498,6 +498,11 @@ textarea:focus-visible,
 .chart-grid--overview {
   gap: 1.5rem;
   align-items: stretch;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chart-grid--overview > .chart-grid__item--full {
+  grid-column: 1 / -1;
 }
 
 .control-grid {
@@ -605,6 +610,11 @@ textarea:focus-visible,
   background: var(--theme-canvas);
 }
 
+.table-wrap--bounded {
+  max-height: 32rem;
+  overflow: auto;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -624,6 +634,15 @@ textarea:focus-visible,
 
 .data-table th {
   color: var(--theme-text-secondary);
+}
+
+.table-wrap--bounded .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-top-color: transparent;
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-surface);
 }
 
 .data-table td {
@@ -900,7 +919,7 @@ textarea:focus-visible,
 .control-form > label,
 .control-form__row > label {
   width: 100%;
-  max-width: 480px;
+  max-width: 400px;
 }
 
 .control-form textarea,
@@ -920,7 +939,13 @@ textarea:focus-visible,
 .control-form textarea,
 .control-form input:not([type='checkbox']),
 .control-form select {
-  max-width: 480px;
+  max-width: 400px;
+}
+
+.filters textarea,
+.filters input,
+.filters select {
+  max-width: 400px;
 }
 
 .control-form button,
@@ -1261,7 +1286,7 @@ textarea:focus-visible,
 
 @media (max-width: 1180px) {
   .page-header__top,
-  .chart-grid,
+  .chart-grid:not(.chart-grid--overview),
   .control-grid,
   .control-grid--triple,
   .pipeline-grid,
@@ -1291,6 +1316,10 @@ textarea:focus-visible,
 @media (max-width: 1024px) {
   .chart-grid--overview {
     grid-template-columns: 1fr;
+  }
+
+  .chart-grid--overview > .chart-grid__item--full {
+    grid-column: auto;
   }
 }
 
