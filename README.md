@@ -1,4 +1,4 @@
-# Monorepo Walking Skeleton (v1.0.4)
+# Monorepo Walking Skeleton (v1.1.0)
 
 A robust, minimal foundation for scalable Node.js applications. This repository serves as a "walking skeleton"—a tiny, fully functional vertical slice of a system that proves the architecture is sound.
 

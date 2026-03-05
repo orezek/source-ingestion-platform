@@ -4,11 +4,12 @@
 
 - Owner: JobCompass observability tooling
 - Scope: `apps/run-observability-dashboard`
-- Mode: internal read-only dashboard
+- Mode: internal operator dashboard + control plane
+- Lifecycle: v1 completed (2026-03-05)
 
 ## Purpose
 
-`run-observability-dashboard` provides a two-level operational dashboard for JobCompass crawler and ingestion run summaries.
+`run-observability-dashboard` provides the v1 operator surface for crawler and ingestion operations.
 
 It answers:
 
@@ -16,6 +17,7 @@ It answers:
 - what succeeded or failed
 - where the pipeline lost jobs
 - how much time, token usage, and cost each run consumed
+- how operators configure and execute pipelines end-to-end
 
 ## Product Levels
 
@@ -39,6 +41,16 @@ Routes:
 - `/pipeline/[crawlRunId]`
 
 These views expose raw counters, run metadata, non-success audit rows, and derived handoff diagnostics.
+
+### Level 3: Control Plane (`/control-plane`)
+
+Provides:
+
+- pipeline management and run start operations
+- search-space management
+- runtime profile management
+- structured output destination management
+- run detail operation panels (events, logs, artifacts, outputs)
 
 ## Data Sources
 
@@ -89,15 +101,15 @@ The UI must render DTOs, not raw Mongo documents.
 
 ## Visual System
 
-- Primary typography: Neue Haas / Helvetica Now style fallback stack
-- Secondary typography: IBM Plex Mono
-- Palette:
-  - `#F6F0F0`
-  - `#F2E2B1`
-  - `#D5C7A3`
-  - `#BDB395`
-- Atmosphere: matte, dense, lab-like, restrained
-- Motif: parallel channel lines and technical separators
+- Design language: Swiss Authority meets Lab Report
+- Theme: dark operator canvas with structured surfaces and zero-shadow depth
+- Typography split:
+  - primary: `var(--font-primary)` for navigation, headings, and body copy
+  - secondary: `var(--font-secondary)` for metadata, identifiers, table data, logs, and JSON
+- Interaction model:
+  - precision hover/active states
+  - explicit keyboard focus rings
+  - structural loading skeletons
 
 ## Charts
 

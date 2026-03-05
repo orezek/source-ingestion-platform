@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog principles and uses Semantic Versioning.
 
+## [1.1.0] - 2026-03-05
+
+### Added
+
+- Completed and merged the control-plane v1 slice into `main`.
+- Added centralized control-plane management in `run-observability-dashboard`:
+  - pipeline, runtime profile, search space, and structured-output management
+  - run start/operate flows with run details, artifact browser, and structured output browser
+  - global app shell with persistent sidebar and dynamic breadcrumbs
+- Added event and worker log inspectors with readable formatting and live-refresh support.
+- Added local and Google Cloud adapter boundaries for broker and managed storage backends.
+
+### Changed
+
+- Unified dashboard and control-plane UI under the Lab Report design language.
+- Enforced layout containment, responsive grid structure, compact form controls, and scrollable large history/log regions.
+- Standardized empty states, interaction states, and loading skeletons for operational pages.
+- Finalized v1 docs/spec baseline and bumped root package version from `1.0.4` to `1.1.0`.
+
+### Commit Summary
+
+- `89ee291` Merge branch `feat/control-plane-v1-slice`
+
 ## [1.0.4] - 2026-02-11
 
 ### Changed
