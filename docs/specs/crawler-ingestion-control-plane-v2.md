@@ -202,7 +202,6 @@ All writes should be API-owned and idempotency-aware.
 - `ARTIFACTS_BUCKET`
 - `ARTIFACTS_PREFIX` (optional)
 - `MONGODB_URI`
-- `MONGODB_DB_NAME`
 - `LOG_LEVEL`
 - `MAX_CONCURRENT_RUNS`
 
@@ -218,7 +217,6 @@ All writes should be API-owned and idempotency-aware.
 - `OUTPUTS_BUCKET`
 - `OUTPUTS_PREFIX` (optional)
 - `MONGODB_URI`
-- `MONGODB_DB_NAME`
 - `LOG_LEVEL`
 - `MAX_CONCURRENT_RUNS`
 

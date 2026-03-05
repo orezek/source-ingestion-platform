@@ -23,7 +23,6 @@ PUBSUB_EVENTS_SUBSCRIPTION=ingestion-worker-events-subscription
 OUTPUTS_BUCKET=your-output-bucket
 OUTPUTS_PREFIX=ingestion
 MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB_NAME=crawl-ops
 INGESTION_PARSER_BACKEND=gemini
 GEMINI_API_KEY=replace-me
 LANGSMITH_API_KEY=replace-me
@@ -37,9 +36,6 @@ Optional:
 CONTROL_JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----...
 PUBSUB_AUTO_CREATE_SUBSCRIPTION=true
 ENABLE_PUBSUB_CONSUMER=true
-MONGODB_INGESTION_RUN_SUMMARIES_COLLECTION=ingestion_run_summaries
-MONGODB_INGESTION_TRIGGER_REQUESTS_COLLECTION=ingestion_trigger_requests
-MONGODB_NORMALIZED_JOB_ADS_COLLECTION=normalized_job_ads
 LLM_EXTRACTOR_PROMPT_NAME=jobcompass-job-ad-structured-extractor
 LLM_CLEANER_PROMPT_NAME=jobcompass-job-ad-text-cleaner
 GEMINI_MODEL=gemini-3-flash-preview

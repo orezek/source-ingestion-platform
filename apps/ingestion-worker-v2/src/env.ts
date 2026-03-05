@@ -59,18 +59,6 @@ export const envSchema = z
     OUTPUTS_BUCKET: z.string().trim().min(1),
     OUTPUTS_PREFIX: z.string().default(''),
     MONGODB_URI: z.string().trim().min(1),
-    MONGODB_DB_NAME: z.string().trim().min(1),
-    MONGODB_INGESTION_RUN_SUMMARIES_COLLECTION: z
-      .string()
-      .trim()
-      .min(1)
-      .default('ingestion_run_summaries'),
-    MONGODB_INGESTION_TRIGGER_REQUESTS_COLLECTION: z
-      .string()
-      .trim()
-      .min(1)
-      .default('ingestion_trigger_requests'),
-    MONGODB_NORMALIZED_JOB_ADS_COLLECTION: z.string().trim().min(1).default('normalized_job_ads'),
     INGESTION_PARSER_BACKEND: z.enum(['gemini', 'fixture']).default('gemini'),
     GEMINI_API_KEY: optionalStringSchema,
     LANGSMITH_API_KEY: optionalStringSchema,

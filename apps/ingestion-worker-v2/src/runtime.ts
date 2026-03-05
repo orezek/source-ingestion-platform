@@ -206,7 +206,7 @@ export class IngestionWorkerRuntime {
   }
 
   public async initialize(): Promise<void> {
-    await this.deps.mongoClient.db(this.deps.env.MONGODB_DB_NAME).command({ ping: 1 });
+    await this.deps.mongoClient.db().command({ ping: 1 });
 
     this.persistenceReady = true;
   }

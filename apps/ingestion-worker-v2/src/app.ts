@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const outputsBucket = storage.bucket(envs.OUTPUTS_BUCKET);
 
   await mongoClient.connect();
-  await mongoClient.db(envs.MONGODB_DB_NAME).command({ ping: 1 });
+  await mongoClient.db().command({ ping: 1 });
 
   const runtime = new IngestionWorkerRuntime({
     env: envs,
@@ -249,7 +249,6 @@ async function main(): Promise<void> {
       topic: envs.PUBSUB_EVENTS_TOPIC,
       subscription: subscriptionName,
       outputBucket: envs.OUTPUTS_BUCKET,
-      mongoDb: envs.MONGODB_DB_NAME,
       parserBackend: envs.INGESTION_PARSER_BACKEND,
       parserVersion: envs.PARSER_VERSION,
     },
