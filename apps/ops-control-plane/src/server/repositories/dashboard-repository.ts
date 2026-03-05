@@ -109,5 +109,9 @@ export function createDashboardRepository(mode = env.DASHBOARD_DATA_MODE): Dashb
     return new FixtureDashboardRepository();
   }
 
+  if (!env.MONGODB_URI) {
+    return new FixtureDashboardRepository();
+  }
+
   return new MongoDashboardRepository();
 }
