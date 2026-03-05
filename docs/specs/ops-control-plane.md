@@ -1,15 +1,15 @@
-# Spec: `run-observability-dashboard`
+# Spec: `ops-control-plane`
 
 ## Status
 
 - Owner: JobCompass observability tooling
-- Scope: `apps/run-observability-dashboard`
+- Scope: `apps/ops-control-plane`
 - Mode: internal operator dashboard + control plane
 - Lifecycle: v1 completed (2026-03-05)
 
 ## Purpose
 
-`run-observability-dashboard` provides the v1 operator surface for crawler and ingestion operations.
+`ops-control-plane` provides the v1 operator surface for crawler and ingestion operations.
 
 It answers:
 

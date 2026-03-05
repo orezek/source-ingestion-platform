@@ -47,7 +47,7 @@ Capture what was delivered and merged for crawler + ingestion control plane v1.
 - `docs/specs/crawler-ingestion-control-plane-v1.md`
 - `docs/specs/control-plane-domain-api-v1.md`
 - `docs/specs/pipeline-events-sinks-v1.md`
-- `docs/specs/run-observability-dashboard.md`
+- `docs/specs/ops-control-plane.md`
 
 ## Follow-up
 

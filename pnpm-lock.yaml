@@ -319,7 +319,7 @@ importers:
         specifier: 'catalog:'
         version: 5.8.3
 
-  apps/run-observability-dashboard:
+  apps/ops-control-plane:
     dependencies:
       '@repo/control-plane-adapters':
         specifier: workspace:*

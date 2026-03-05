@@ -1,6 +1,6 @@
 # Run Observability Dashboard
 
-`run-observability-dashboard` is an internal Next.js dashboard for operational visibility into JobCompass crawler and ingestion runs.
+`ops-control-plane` is an internal Next.js dashboard for operational visibility into JobCompass crawler and ingestion runs.
 
 ## Purpose
 
@@ -114,7 +114,7 @@ Control-plane state:
 ## Development
 
 ```bash
-pnpm -C apps/run-observability-dashboard dev
+pnpm -C apps/ops-control-plane dev
 ```
 
 App-local `dev`, `build`, `start`, `check-types`, and `test` commands first build the shared
@@ -123,11 +123,11 @@ workspace contract packages so they do not depend on pre-existing `dist/` artifa
 ## Validation
 
 ```bash
-pnpm -C apps/run-observability-dashboard lint
-pnpm -C apps/run-observability-dashboard check-types
-pnpm -C apps/run-observability-dashboard build
-pnpm -C apps/run-observability-dashboard test
-pnpm -C apps/run-observability-dashboard test:e2e
+pnpm -C apps/ops-control-plane lint
+pnpm -C apps/ops-control-plane check-types
+pnpm -C apps/ops-control-plane build
+pnpm -C apps/ops-control-plane test
+pnpm -C apps/ops-control-plane test:e2e
 ```
 
 ## Design Notes

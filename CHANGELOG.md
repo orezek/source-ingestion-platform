@@ -9,7 +9,7 @@ The format is based on Keep a Changelog principles and uses Semantic Versioning.
 ### Added
 
 - Completed and merged the control-plane v1 slice into `main`.
-- Added centralized control-plane management in `run-observability-dashboard`:
+- Added centralized control-plane management in `ops-control-plane`:
   - pipeline, runtime profile, search space, and structured-output management
   - run start/operate flows with run details, artifact browser, and structured output browser
   - global app shell with persistent sidebar and dynamic breadcrumbs
