@@ -1102,7 +1102,10 @@ export class IngestionWorkerRuntime {
       .aggregate<{
         _id: string;
         count: number;
-      }>([{ $group: { _id: '$id', count: { $sum: 1 } } }, { $match: { _id: { $type: 'string' }, count: { $gt: 1 } } }])
+      }>([
+        { $group: { _id: '$id', count: { $sum: 1 } } },
+        { $match: { _id: { $type: 'string' }, count: { $gt: 1 } } },
+      ])
       .toArray();
 
     for (const duplicate of duplicateIds) {
