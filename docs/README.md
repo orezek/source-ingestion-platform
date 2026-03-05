@@ -32,6 +32,12 @@ This directory contains design and implementation documentation for the JobCompa
 - App spec (planner/worker graph, observability, testing): `docs/specs/job-compass-chat.md`
 - App changelog (feature and workflow history): `apps/job-compass-chat/CHANGELOG.md`
 
+### `ops-control-plane`
+
+- App README (operator usage, routes, env): `apps/ops-control-plane/README.md`
+- App spec (dashboard/control-plane IA and UI contract): `docs/specs/ops-control-plane.md`
+- App changelog (release and fix history): `apps/ops-control-plane/CHANGELOG.md`
+
 ## Related Top-Level Docs
 
 - Root repo changelog: `CHANGELOG.md`
@@ -53,3 +59,5 @@ This directory contains design and implementation documentation for the JobCompa
 11. `apps/jobs-crawler-actor/README.md`
 12. `apps/jobs-ingestion-service/README.md`
 13. `apps/job-compass-chat/README.md`
+14. `docs/specs/ops-control-plane.md`
+15. `apps/ops-control-plane/README.md`

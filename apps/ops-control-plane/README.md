@@ -1,4 +1,4 @@
-# Run Observability Dashboard
+# Ops Control Plane
 
 `ops-control-plane` is an internal Next.js dashboard for operational visibility into JobCompass crawler and ingestion runs.
 
