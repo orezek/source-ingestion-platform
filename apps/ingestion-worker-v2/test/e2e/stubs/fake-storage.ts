@@ -49,7 +49,11 @@ export class FakeBucket {
   }
 
   public listObjectPaths(): string[] {
-    return [...this.objects.keys()];
+    const paths: string[] = [];
+    this.objects.forEach((_value, key) => {
+      paths.push(key);
+    });
+    return paths;
   }
 }
 

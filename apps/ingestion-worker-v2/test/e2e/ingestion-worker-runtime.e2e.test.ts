@@ -1,8 +1,7 @@
-import assert from 'node:assert/strict';
+import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
-import test, { after, before } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import * as path from 'node:path';
+import { after, before, test } from 'node:test';
 import type { Bucket, Storage } from '@google-cloud/storage';
 import type { Topic } from '@google-cloud/pubsub';
 import {
@@ -105,8 +104,7 @@ const collections: CollectionNames = {
     'normalized_job_ads',
 };
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const fixtureDir = path.resolve(currentDir, '../fixtures');
+const fixtureDir = path.resolve(process.cwd(), 'test/fixtures');
 type ListingRecordSnapshot = {
   sourceId: string;
   adUrl: string;
