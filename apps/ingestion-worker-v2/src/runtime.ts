@@ -1064,62 +1064,9 @@ export class IngestionWorkerRuntime {
       { runId: 1 },
       { unique: true, name: 'runId_unique' },
     );
-    await this.dropLegacyNormalizedDedupeIndexIfExists(run);
-    await this.normalizeLegacyNormalizedDocuments(run);
     await this.getNormalizedCollectionForRun(run).createIndex(
       { id: 1 },
       { unique: true, name: 'id_unique' },
     );
-  }
-
-  private async dropLegacyNormalizedDedupeIndexIfExists(run: RunState): Promise<void> {
-    try {
-      await this.getNormalizedCollectionForRun(run).dropIndex('dedupeKey_unique');
-    } catch (error) {
-      const codeName =
-        typeof error === 'object' &&
-        error !== null &&
-        'codeName' in error &&
-        typeof error.codeName === 'string'
-          ? error.codeName
-          : null;
-
-      if (codeName === 'IndexNotFound') {
-        return;
-      }
-
-      throw error;
-    }
-  }
-
-  private async normalizeLegacyNormalizedDocuments(run: RunState): Promise<void> {
-    const collection = this.getNormalizedCollectionForRun(run);
-
-    await collection.updateMany({}, { $unset: { dedupeKey: '', createdAt: '' } });
-    await collection.deleteMany({ id: { $exists: false } });
-
-    const duplicateIds = await collection
-      .aggregate<{
-        _id: string;
-        count: number;
-      }>([
-        { $group: { _id: '$id', count: { $sum: 1 } } },
-        { $match: { _id: { $type: 'string' }, count: { $gt: 1 } } },
-      ])
-      .toArray();
-
-    for (const duplicate of duplicateIds) {
-      const latestDoc = await collection
-        .find({ id: duplicate._id })
-        .sort({ updatedAt: -1, lastSeenAt: -1, scrapedAt: -1, _id: -1 })
-        .limit(1)
-        .next();
-
-      if (!latestDoc?._id) {
-        continue;
-      }
-
-      await collection.deleteMany({ id: duplicate._id, _id: { $ne: latestDoc._id } });
-    }
   }
 }
