@@ -135,7 +135,8 @@ const goldenParityCases: GoldenParityCase[] = [
     fixtureFileName: 'job-html-2001063102.html',
     listingRecord: {
       sourceId: '2001063102',
-      adUrl: 'https://www.jobs.cz/rpd/2001063102/',
+      adUrl:
+        'https://www.jobs.cz/rpd/2001063102/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
       jobTitle: 'Technical Program Manager',
       companyName: 'Univerzita Karlova – Matematicko-fyzikální fakulta',
       location: 'Praha – Malá Strana',
@@ -154,7 +155,8 @@ const goldenParityCases: GoldenParityCase[] = [
     fixtureFileName: 'job-html-2001090812.html',
     listingRecord: {
       sourceId: '2001090812',
-      adUrl: 'https://www.jobs.cz/rpd/2001090812/',
+      adUrl:
+        'https://www.jobs.cz/rpd/2001090812/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
       jobTitle: 'IT Manažer',
       companyName: 'Gas Storage CZ, a.s.',
       location: 'Praha - Strašnice',
@@ -173,7 +175,8 @@ const goldenParityCases: GoldenParityCase[] = [
     fixtureFileName: 'job-html-2001095645.html',
     listingRecord: {
       sourceId: '2001095645',
-      adUrl: 'https://www.jobs.cz/rpd/2001095645/',
+      adUrl:
+        'https://www.jobs.cz/rpd/2001095645/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
       jobTitle: 'Senior Data Scientist /ML Developer',
       companyName: 'DER Touristik CZ a.s',
       location: 'Praha - Chodov',
@@ -583,6 +586,7 @@ test(
         assert.equal(normalizedDoc.source, 'jobs.cz');
         assert.equal(normalizedDoc.sourceId, fixtureCase.sourceId);
         assert.equal(normalizedDoc.adUrl, fixtureCase.listingRecord.adUrl);
+        assert.match(normalizedDoc.adUrl, /\?searchId=.*&rps=\d+/);
         assert.equal(normalizedDoc.listing.jobTitle, fixtureCase.listingRecord.jobTitle);
         assert.equal(normalizedDoc.listing.companyName, fixtureCase.listingRecord.companyName);
         assert.equal(normalizedDoc.ingestion.runId, runId);
@@ -663,7 +667,8 @@ test(
         sourceId,
         listingRecord: {
           sourceId,
-          adUrl: 'https://www.jobs.cz/rpd/2001090812/',
+          adUrl:
+            'https://www.jobs.cz/rpd/2001090812/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
           jobTitle: 'IT Manažer',
           companyName: 'Gas Storage CZ, a.s.',
           location: 'Praha - Strašnice',
@@ -735,7 +740,8 @@ test(
           detailHtmlPath: `/tmp/ingestion-worker-v2-${runId}.html`,
           listingRecord: {
             sourceId,
-            adUrl: 'https://www.jobs.cz/rpd/missing-2000905776/',
+            adUrl:
+              'https://www.jobs.cz/rpd/missing-2000905776/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
             jobTitle: 'Missing Detail Fixture',
             companyName: null,
             location: null,
