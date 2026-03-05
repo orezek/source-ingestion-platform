@@ -47,6 +47,7 @@ This repository is not just a collection of files; it is an opinionated engineer
 │   ├── job-compass-chat/     # Terminal-first LangGraph planning playground
 │   ├── jobs-crawler-actor/   # Crawler worker
 │   ├── jobs-ingestion-service/ # Ingestion worker
+│   ├── ingestion-worker-v2/  # Lightweight V2 ingestion worker
 │   └── ops-control-plane/    # Operator dashboard and control plane
 ├── packages/                 # Shared internal libraries
 │   ├── env-config/           # Type-safe environment variable parsing

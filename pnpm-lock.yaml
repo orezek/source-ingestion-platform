@@ -7,10 +7,10 @@ settings:
 catalogs:
   default:
     '@google-cloud/pubsub':
-      specifier: ^5.3.0
+      specifier: 5.3.0
       version: 5.3.0
     '@google-cloud/storage':
-      specifier: ^7.19.0
+      specifier: 7.19.0
       version: 7.19.0
     '@langchain/google-genai':
       specifier: ^2.1.20
@@ -52,7 +52,7 @@ catalogs:
       specifier: ^9.0.0
       version: 9.39.2
     fastify:
-      specifier: ^5.6.0
+      specifier: 5.7.4
       version: 5.7.4
     ink:
       specifier: ^6.8.0
@@ -64,7 +64,7 @@ catalogs:
       specifier: ^1.2.25
       version: 1.2.25
     mongodb:
-      specifier: ^7.1.0
+      specifier: 7.1.0
       version: 7.1.0
     next:
       specifier: ^16.1.6
@@ -134,6 +134,49 @@ importers:
       '@repo/env-config':
         specifier: workspace:*
         version: link:../../packages/env-config
+      zod:
+        specifier: 'catalog:'
+        version: 4.3.5
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../../packages/eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages/typescript-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.0.3
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.2(jiti@2.6.1)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.20.3
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+
+  apps/ingestion-worker-v2:
+    dependencies:
+      '@google-cloud/pubsub':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@google-cloud/storage':
+        specifier: 'catalog:'
+        version: 7.19.0
+      '@repo/control-plane-contracts':
+        specifier: workspace:*
+        version: link:../../packages/control-plane-contracts
+      '@repo/env-config':
+        specifier: workspace:*
+        version: link:../../packages/env-config
+      fastify:
+        specifier: 'catalog:'
+        version: 5.7.4
+      mongodb:
+        specifier: 'catalog:'
+        version: 7.1.0(socks@2.8.7)
       zod:
         specifier: 'catalog:'
         version: 4.3.5

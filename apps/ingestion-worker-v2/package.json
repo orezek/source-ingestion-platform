@@ -1,0 +1,37 @@
+{
+  "name": "ingestion-worker-v2",
+  "version": "1.0.0",
+  "description": "Lightweight ingestion worker v2 with Fastify, Pub/Sub, GCS, and MongoDB.",
+  "license": "ISC",
+  "author": "Oldrich Rezek oldrich.rezek@oldrichrezek.com",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "tsx watch src/app.ts",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "catalog:",
+    "@google-cloud/storage": "catalog:",
+    "@repo/control-plane-contracts": "workspace:*",
+    "@repo/env-config": "workspace:*",
+    "fastify": "catalog:",
+    "mongodb": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
