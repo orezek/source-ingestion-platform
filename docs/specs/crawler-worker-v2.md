@@ -87,7 +87,6 @@ The command must contain:
 - `correlationId`
 - `manifestVersion`
 - `pipelineId`
-- `pipelineVersion`
 
 Semantics:
 
@@ -140,13 +139,12 @@ Deferred to v3:
 Required worker-facing persistence inputs:
 
 - `dbName`
-- `crawlRunSummariesCollection`
-- `normalizedJobAdsCollection`
 
 Canonical rule:
 
 - `dbName` is created by the control plane from stable pipeline identity
 - the worker must not synthesize fallback database names from env
+- collection names are canonical and must not be sent in crawler `StartRun`
 
 ### Artifact Sink
 
@@ -159,11 +157,10 @@ Supported types:
 - `gcs`
 - `local_filesystem` for explicit dev mode
 
-### Event Context And Safety
+### Safety Controls
 
 Also accepted:
 
-- `eventContext`
 - `timeouts`
 
 ## What The Worker Must Know
@@ -184,6 +181,7 @@ The crawler must not know:
 - standalone structured output destinations
 - ingestion worker internals
 - control-plane CRUD semantics
+- non-execution audit metadata
 
 ## Reconciliation And Inactive Marking
 

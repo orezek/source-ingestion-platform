@@ -265,32 +265,31 @@ implementation note:
 - `runId`, `idempotencyKey`, `requestedAt`, `correlationId`
 - `manifestVersion`
 - `runtimeSnapshot` (concurrency, limits, flags)
-- crawler `inputRef`:
-  - `source`
-  - `searchSpaceId`
-  - `searchSpaceSnapshot` (`name`, `description`, `startUrls`, `maxItems`,
+- crawler `StartRun` only:
+  - `pipelineId`
+  - `inputRef`
+  - `inputRef.source`
+  - `inputRef.searchSpaceId`
+  - `inputRef.searchSpaceSnapshot` (`name`, `description`, `startUrls`, `maxItems`,
     `allowInactiveMarking`)
-  - `emitDetailCapturedEvents`
-- `inputRef` (for ingestion: crawler dataset/artifact refs)
-  - each ingestion `inputRef.records[]` must carry `source`, `sourceId`, `dedupeKey`,
+  - `inputRef.emitDetailCapturedEvents`
+  - `artifactSink`
+  - `persistenceTargets.dbName`
+  - optional `timeouts`
+- ingestion `StartRun` only:
+  - `pipelineId`
+  - `inputRef` (crawler dataset/artifact refs)
+  - each `inputRef.records[]` must carry `source`, `sourceId`, `dedupeKey`,
     `detailHtmlPath`, and full `listingRecord` snapshot from crawler output
-- `artifactSink` / `outputSinks` (bucket paths, modes)
-- `persistenceTargets`:
-  - `dbName`
-  - `crawlRunSummariesCollection`
-  - `ingestionRunSummariesCollection`
-  - `ingestionTriggerRequestsCollection`
-  - `normalizedJobAdsCollection`
-  - write flags/policies per collection where needed
-- `eventContext` (run metadata for emitted events)
-- `timeouts`/`safety` per run (optional, bounded)
+  - `outputSinks`
+  - `persistenceTargets.dbName`
+  - optional `timeouts`
 
 control-plane note:
 
 - control-plane can keep full `pipelineSnapshot` in its own run ledger for audit/replay
 - worker-facing `StartRun` payload is intentionally minimal and must not include unused config blobs
-- crawler worker should receive `pipelineId` and `pipelineVersion` as provenance, but not the full
-  pipeline aggregate
+- crawler worker should receive `pipelineId` as provenance, but not the full pipeline aggregate
 - see `docs/specs/crawler-worker-v2.md`
 
 execution modes:
@@ -327,7 +326,7 @@ security constraint:
 
 - `StartRun` must not include database credentials or secret material
 - workers receive credentials from bootstrap env/secrets only
-- control plane sends logical routing targets (db + collection names), not secrets
+- control plane sends only logical routing targets required for execution, not secrets
 
 database routing constraint (canonical for v2):
 
@@ -338,6 +337,8 @@ database routing constraint (canonical for v2):
 - db name generation must be deterministic and length-bounded (current safety target: max 38 chars)
 - workers must treat `dbName` as an input contract and must not synthesize fallback DB names from env
 - worker bootstrap env keeps only `MONGODB_URI` for credentials/connectivity
+- canonical collection names are fixed by the platform and must not be sent in worker-facing
+  `StartRun`
 - pipeline execution identity must remain stable:
   - `source` is immutable after pipeline creation
   - `searchSpace` is immutable after pipeline creation
