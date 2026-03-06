@@ -265,48 +265,48 @@ export const ingestionRunFinishedEventV2Schema = v2WorkerLifecycleEnvelopeSchema
   }),
 });
 
-export const ingestionLifecyclePayloadV2Schema = z.object({
+export const ingestionItemBasePayloadV2Schema = z.object({
   crawlRunId: nonEmptyStringSchema,
   source: nonEmptyStringSchema,
   sourceId: nonEmptyStringSchema,
   dedupeKey: nonEmptyStringSchema,
-  documentId: optionalStringSchema,
-  sinkResults: z
-    .array(
-      z.object({
-        sinkType: z.enum(['mongodb', 'downloadable_json']),
-        targetRef: nonEmptyStringSchema,
-        writeMode: z.enum(['upsert', 'overwrite']),
-      }),
-    )
-    .optional(),
-  error: z
-    .object({
-      name: nonEmptyStringSchema,
-      message: nonEmptyStringSchema,
-    })
-    .optional(),
+});
+
+export const ingestionItemStartedPayloadV2Schema = ingestionItemBasePayloadV2Schema;
+
+export const ingestionItemSucceededPayloadV2Schema = ingestionItemBasePayloadV2Schema.extend({
+  documentId: nonEmptyStringSchema,
+});
+
+export const ingestionItemFailedPayloadV2Schema = ingestionItemBasePayloadV2Schema.extend({
+  error: z.object({
+    name: nonEmptyStringSchema,
+    message: nonEmptyStringSchema,
+  }),
+});
+
+export const ingestionItemRejectedPayloadV2Schema = ingestionItemBasePayloadV2Schema.extend({
   reason: optionalStringSchema,
 });
 
 export const ingestionItemStartedEventV2Schema = v2WorkerLifecycleEnvelopeSchema.extend({
   eventType: z.literal('ingestion.item.started'),
-  payload: ingestionLifecyclePayloadV2Schema,
+  payload: ingestionItemStartedPayloadV2Schema,
 });
 
 export const ingestionItemSucceededEventV2Schema = v2WorkerLifecycleEnvelopeSchema.extend({
   eventType: z.literal('ingestion.item.succeeded'),
-  payload: ingestionLifecyclePayloadV2Schema,
+  payload: ingestionItemSucceededPayloadV2Schema,
 });
 
 export const ingestionItemFailedEventV2Schema = v2WorkerLifecycleEnvelopeSchema.extend({
   eventType: z.literal('ingestion.item.failed'),
-  payload: ingestionLifecyclePayloadV2Schema,
+  payload: ingestionItemFailedPayloadV2Schema,
 });
 
 export const ingestionItemRejectedEventV2Schema = v2WorkerLifecycleEnvelopeSchema.extend({
   eventType: z.literal('ingestion.item.rejected'),
-  payload: ingestionLifecyclePayloadV2Schema,
+  payload: ingestionItemRejectedPayloadV2Schema,
 });
 
 export const workerLifecycleEventV2Schema = z.discriminatedUnion('eventType', [
@@ -621,13 +621,6 @@ export const runtimeBrokerEventV2Fixtures = [
       sourceId: '2000905774',
       dedupeKey: 'jobs.cz:prague-tech-jobs:crawl-run-v2-fixture-001:2000905774',
       documentId: 'jobs.cz:2000905774',
-      sinkResults: [
-        {
-          sinkType: 'mongodb',
-          targetRef: 'crawl-ops-prague-tech.normalized_job_ads/jobs.cz:2000905774',
-          writeMode: 'upsert',
-        },
-      ],
     },
   }),
 ] as const;
@@ -726,49 +719,110 @@ export const buildCrawlerRunFinishedEventV2 = (input: {
     },
   });
 
-export const buildIngestionLifecycleEventV2 = (input: {
-  eventType:
-    | 'ingestion.item.started'
-    | 'ingestion.item.succeeded'
-    | 'ingestion.item.failed'
-    | 'ingestion.item.rejected';
-  runId: string;
-  crawlRunId: string;
-  source: string;
-  sourceId: string;
-  dedupeKey: string;
-  documentId?: string;
-  sinkResults?: Array<{
-    sinkType: 'mongodb' | 'downloadable_json';
-    targetRef: string;
-    writeMode: 'upsert' | 'overwrite';
-  }>;
-  error?: {
-    name: string;
-    message: string;
-  };
-  reason?: string;
-  producer?: string;
-}) =>
-  runtimeBrokerEventV2Schema.parse({
+export const buildIngestionLifecycleEventV2 = (
+  input:
+    | {
+        eventType: 'ingestion.item.started';
+        runId: string;
+        crawlRunId: string;
+        source: string;
+        sourceId: string;
+        dedupeKey: string;
+        producer?: string;
+      }
+    | {
+        eventType: 'ingestion.item.succeeded';
+        runId: string;
+        crawlRunId: string;
+        source: string;
+        sourceId: string;
+        dedupeKey: string;
+        documentId: string;
+        producer?: string;
+      }
+    | {
+        eventType: 'ingestion.item.failed';
+        runId: string;
+        crawlRunId: string;
+        source: string;
+        sourceId: string;
+        dedupeKey: string;
+        error: {
+          name: string;
+          message: string;
+        };
+        producer?: string;
+      }
+    | {
+        eventType: 'ingestion.item.rejected';
+        runId: string;
+        crawlRunId: string;
+        source: string;
+        sourceId: string;
+        dedupeKey: string;
+        reason: string;
+        producer?: string;
+      },
+) => {
+  const envelope = {
     eventId: `evt-${randomUUID()}`,
-    eventVersion: 'v2',
-    eventType: input.eventType,
+    eventVersion: 'v2' as const,
     occurredAt: nowIso(),
     runId: input.runId,
     correlationId: input.dedupeKey,
     producer: input.producer ?? 'ingestion-worker',
-    payload: {
-      crawlRunId: input.crawlRunId,
-      source: input.source,
-      sourceId: input.sourceId,
-      dedupeKey: input.dedupeKey,
-      documentId: input.documentId,
-      sinkResults: input.sinkResults,
-      error: input.error,
-      reason: input.reason,
-    },
-  });
+  };
+
+  switch (input.eventType) {
+    case 'ingestion.item.started':
+      return ingestionItemStartedEventV2Schema.parse({
+        ...envelope,
+        eventType: input.eventType,
+        payload: {
+          crawlRunId: input.crawlRunId,
+          source: input.source,
+          sourceId: input.sourceId,
+          dedupeKey: input.dedupeKey,
+        },
+      });
+    case 'ingestion.item.succeeded':
+      return ingestionItemSucceededEventV2Schema.parse({
+        ...envelope,
+        eventType: input.eventType,
+        payload: {
+          crawlRunId: input.crawlRunId,
+          source: input.source,
+          sourceId: input.sourceId,
+          dedupeKey: input.dedupeKey,
+          documentId: input.documentId,
+        },
+      });
+    case 'ingestion.item.failed':
+      return ingestionItemFailedEventV2Schema.parse({
+        ...envelope,
+        eventType: input.eventType,
+        payload: {
+          crawlRunId: input.crawlRunId,
+          source: input.source,
+          sourceId: input.sourceId,
+          dedupeKey: input.dedupeKey,
+          error: input.error,
+        },
+      });
+    case 'ingestion.item.rejected':
+      return ingestionItemRejectedEventV2Schema.parse({
+        ...envelope,
+        eventType: input.eventType,
+        payload: {
+          crawlRunId: input.crawlRunId,
+          source: input.source,
+          sourceId: input.sourceId,
+          dedupeKey: input.dedupeKey,
+          reason: input.reason,
+        },
+      });
+  }
+};
 
 export type V2StartRunRequest = z.infer<typeof startRunRequestV2Schema>;
 export type V2StartRunResponse = z.infer<typeof startRunResponseV2Schema>;

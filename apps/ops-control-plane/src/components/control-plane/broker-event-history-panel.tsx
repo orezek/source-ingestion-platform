@@ -13,7 +13,7 @@ function describeBrokerEvent(event: BrokerEvent): string {
     case 'ingestion.item.succeeded':
     case 'ingestion.item.failed':
     case 'ingestion.item.rejected':
-      return `${event.payload.sourceId} • ${event.payload.reason ?? event.payload.documentId ?? 'no extra details'}`;
+      return `${event.payload.sourceId} • ${event.payload.reason ?? event.payload.error?.message ?? event.payload.documentId ?? 'no extra details'}`;
   }
 }
 

@@ -118,8 +118,6 @@ type StartRunResponse = z.infer<typeof startRunAcceptedResponseV2Schema>;
 
 const INGESTION_RUN_SUMMARIES_COLLECTION = 'ingestion_run_summaries';
 const NORMALIZED_JOB_ADS_COLLECTION = 'normalized_job_ads';
-const MONGODB_WRITE_MODE = 'upsert' as const;
-const DOWNLOADABLE_JSON_WRITE_MODE = 'overwrite' as const;
 
 export class ConflictError extends Error {
   public readonly statusCode = 409;
@@ -632,26 +630,8 @@ export class IngestionWorkerRuntime {
         createdAt: nowIso(),
       });
 
-      const sinkResults: Array<{
-        sinkType: 'mongodb' | 'downloadable_json';
-        targetRef: string;
-        writeMode: 'upsert' | 'overwrite';
-      }> = [
-        {
-          sinkType: 'mongodb',
-          targetRef: mongoTargetRef,
-          writeMode: MONGODB_WRITE_MODE,
-        },
-      ];
-      if (downloadableJsonPath) {
-        sinkResults.push({
-          sinkType: 'downloadable_json',
-          targetRef: downloadableJsonPath,
-          writeMode: DOWNLOADABLE_JSON_WRITE_MODE,
-        });
-      }
       await this.publishIngestionItemEvent('ingestion.item.succeeded', run, item, {
-        sinkResults,
+        documentId: normalizedDoc.id,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -943,11 +923,7 @@ export class IngestionWorkerRuntime {
     run: RunState,
     item: ItemInput,
     options?: {
-      sinkResults?: Array<{
-        sinkType: 'mongodb' | 'downloadable_json';
-        targetRef: string;
-        writeMode: 'upsert' | 'overwrite';
-      }>;
+      documentId?: string;
       error?: {
         name: string;
         message: string;
@@ -962,10 +938,9 @@ export class IngestionWorkerRuntime {
       source: item.source,
       sourceId: item.sourceId,
       dedupeKey: item.dedupeKey,
-      documentId: item.dedupeKey,
-      sinkResults: options?.sinkResults,
-      error: options?.error,
-      reason: options?.reason,
+      ...(options?.documentId ? { documentId: options.documentId } : {}),
+      ...(options?.error ? { error: options.error } : {}),
+      ...(options?.reason ? { reason: options.reason } : {}),
       producer: this.deps.env.SERVICE_NAME,
     });
 

@@ -25,3 +25,7 @@ Notes:
 - V2 runtime broker events now live in `src/v2.ts`.
 - `src/index.ts` remains the legacy/v1 compatibility surface for older broker event builders and
   readers still used by v1-era apps.
+- V2 event design rule:
+  - `crawler.detail.captured` is the rich crawler-to-ingestion handoff event
+  - `crawler.run.finished` is minimal
+  - ingestion item lifecycle events are intentionally lean and do not carry sink routing blobs

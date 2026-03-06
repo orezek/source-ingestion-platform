@@ -413,6 +413,30 @@ Each event should include:
 Detailed crawler counters and reconciliation telemetry must be read from `crawl_run_summaries`,
 not duplicated into the runtime event payload.
 
+`crawler.detail.captured` remains the rich handoff event and should contain:
+
+- `crawlRunId`
+- `searchSpaceId`
+- `source`
+- `sourceId`
+- `dedupeKey`
+- `listingRecord`
+- `artifact`
+
+Ingestion item lifecycle events should stay lean:
+
+- `ingestion.item.started`
+  - `crawlRunId`, `source`, `sourceId`, `dedupeKey`
+- `ingestion.item.succeeded`
+  - `crawlRunId`, `source`, `sourceId`, `dedupeKey`, `documentId`
+- `ingestion.item.failed`
+  - `crawlRunId`, `source`, `sourceId`, `dedupeKey`, `error`
+- `ingestion.item.rejected`
+  - `crawlRunId`, `source`, `sourceId`, `dedupeKey`, `reason`
+
+Do not put sink routing or large telemetry blobs into ingestion item events. Those belong in worker
+summaries, output derivation from the manifest, or storage adapters.
+
 ## v2.0 Detailed Event And Persistence Map
 
 This section maps current v1 event types to the v2.0 target routing model.
