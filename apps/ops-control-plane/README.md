@@ -108,8 +108,20 @@ Database selection:
 Control-plane state:
 
 - file-backed resources live under `CONTROL_PLANE_DATA_DIR`
-- brokered handoff events live under `CONTROL_PLANE_BROKER_DIR`
+- brokered handoff events are currently archived under `CONTROL_PLANE_BROKER_DIR`
+- the run detail "Event history" UI currently reads from that archived event directory, not from a
+  database-backed event index
 - bootstrap search spaces are imported from `CONTROL_PLANE_BOOTSTRAP_SEARCH_SPACES_DIR`
+
+Target v2 architecture:
+
+- broker events should be projected into `control_plane_run_event_index` in the control-plane
+  database
+- `control_plane_run_event_index` and `control_plane_runs` are intended MongoDB collections in
+  that control-plane database
+- `control_plane_runs` stores projected run state
+- `control_plane_run_event_index` stores projected event history
+- the UI should read event history from that projection, not directly from filesystem archives
 
 ## Development
 

@@ -42,6 +42,17 @@ That means:
 
 The pipeline is not a loose pointer set to mutable shared resources.
 
+## Core Terms
+
+- pipeline = stable definition and production boundary
+- run = one execution instance of that pipeline
+
+Examples:
+
+- one pipeline can produce many runs over time
+- `control_plane_pipelines` stores pipeline definitions
+- `control_plane_runs` stores run-state projections for those executions
+
 ## Pipeline Aggregate
 
 ### Required Identity
@@ -94,7 +105,6 @@ Within that database, the canonical collection names remain fixed:
 
 - `crawl_run_summaries`
 - `ingestion_run_summaries`
-- `ingestion_trigger_requests`
 - `normalized_job_ads`
 
 Consequences:
@@ -113,6 +123,13 @@ Consequences:
 - `control_plane_run_manifests`
 - `control_plane_run_event_index`
 - `control_plane_bootstrap_profiles`
+
+These are MongoDB collections in the control-plane database.
+
+Projection roles:
+
+- `control_plane_runs` stores one current-state projection document per run
+- `control_plane_run_event_index` stores many event-history documents per run
 
 ### Removed As First-Class Runtime Resources
 

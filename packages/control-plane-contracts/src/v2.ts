@@ -57,6 +57,21 @@ export const v2OutputSinkSchema = z.object({
   type: z.literal('downloadable_json'),
 });
 
+export const v2CrawlerSearchSpaceSnapshotSchema = z.object({
+  name: nonEmptyStringSchema,
+  description: optionalStringSchema.default(''),
+  startUrls: z.array(z.url()).min(1),
+  maxItems: z.number().int().positive(),
+  allowInactiveMarking: z.boolean(),
+});
+
+export const v2CrawlerInputRefSchema = z.object({
+  source: nonEmptyStringSchema,
+  searchSpaceId: nonEmptyStringSchema,
+  searchSpaceSnapshot: v2CrawlerSearchSpaceSnapshotSchema,
+  emitDetailCapturedEvents: z.boolean(),
+});
+
 const v2SourceListingRecordSchema = z.object({
   sourceId: nonEmptyStringSchema,
   adUrl: z.url(),
@@ -121,7 +136,8 @@ const v2StartRunRequestBaseSchema = z.object({
 
 export const crawlerStartRunRequestV2Schema = v2StartRunRequestBaseSchema.extend({
   workerType: z.literal('crawler'),
-  inputRef: z.undefined().optional(),
+  inputRef: v2CrawlerInputRefSchema,
+  artifactSink: v2ArtifactSinkSchema,
 });
 
 export const ingestionStartRunRequestV2Schema = v2StartRunRequestBaseSchema.extend({
@@ -333,6 +349,21 @@ export const crawlerStartRunRequestV2Fixture = crawlerStartRunRequestV2Schema.pa
   runtimeSnapshot: {
     crawlerMaxConcurrency: 3,
     crawlerMaxRequestsPerMinute: 60,
+  },
+  inputRef: {
+    source: 'jobs.cz',
+    searchSpaceId: 'prague-tech-jobs',
+    searchSpaceSnapshot: {
+      name: 'Prague Tech Jobs',
+      description: 'Jobs.cz search pages for Prague tech roles.',
+      startUrls: [
+        'https://www.jobs.cz/prace/praha/?q=software',
+        'https://www.jobs.cz/prace/praha/?q=data',
+      ],
+      maxItems: 200,
+      allowInactiveMarking: true,
+    },
+    emitDetailCapturedEvents: true,
   },
   persistenceTargets: {
     dbName: 'crawl-ops-prague-tech',

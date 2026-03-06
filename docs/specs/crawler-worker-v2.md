@@ -77,6 +77,13 @@ The crawler worker accepts:
 
 This is the crawler `StartRun` command.
 
+Minimal worker HTTP surface:
+
+- `GET /healthz`
+- `GET /readyz`
+- `POST /v1/runs`
+- `POST /v1/runs/{runId}/cancel`
+
 ### Identity And Provenance
 
 The command must contain:
@@ -85,14 +92,12 @@ The command must contain:
 - `idempotencyKey`
 - `requestedAt`
 - `correlationId`
-- `manifestVersion`
-- `pipelineId`
 
 Semantics:
 
-- `pipelineId` identifies the stable pipeline definition
 - `runId` identifies one concrete execution instance
 - for crawler/integration purposes, `runId` is also the canonical `crawlRunId`
+- pipeline provenance remains in the control-plane run ledger, not in the worker-facing command
 
 ### Crawler `inputRef`
 
@@ -123,12 +128,12 @@ Crawler-relevant runtime fields:
 
 - `crawlerMaxConcurrency`
 - `crawlerMaxRequestsPerMinute`
-- `debugLog`
 
 Not part of v2 runtime input:
 
 - ingestion parser/model settings
 - structured output destination details
+- worker logging flags and other bootstrap behavior
 
 Deferred to v3:
 
@@ -168,7 +173,6 @@ Also accepted:
 The crawler must know:
 
 - stable run identity
-- stable pipeline provenance
 - immutable source/search-space snapshot
 - crawler concurrency/rate settings
 - whether detail-captured events should be emitted
@@ -194,6 +198,12 @@ This is safe only because:
 - `source` and `searchSpace` are immutable once the pipeline is created
 
 If those conditions are violated, inactive marking becomes invalid and must not run.
+
+Operational rule:
+
+- inactive marking must only execute on a successful full crawl run when
+  `searchSpaceSnapshot.allowInactiveMarking=true`
+- failed, stopped, or partial runs must not mark records inactive
 
 ## Artifact Rules
 

@@ -24,6 +24,18 @@ For v2.0, this document also defines the target production architecture and deli
 - persistence convergence and explicit domain boundaries
 - standalone deployability of control plane, crawler worker, and ingestion worker
 
+## Core Terms
+
+- pipeline = stable definition and production boundary
+- run = one execution instance of that pipeline
+
+Examples:
+
+- one pipeline can produce many runs over time
+- worker-facing `StartRun` creates one run
+- `control_plane_pipelines` stores pipeline definitions
+- `control_plane_runs` stores run-state projections for those executions
+
 ## V2.0 Target Architecture
 
 ### Core Direction
@@ -57,7 +69,7 @@ platform decision (canonical for v2.0):
 
 - canonical write boundary for control-plane domain
 - owns pipeline-centric configuration CRUD, run creation, scheduling, lifecycle transitions
-- publishes run/work commands to broker
+- issues worker `StartRun` commands over REST
 - validates and persists execution state transitions
 - exposes machine-readable API contract (OpenAPI)
 
@@ -70,23 +82,31 @@ canonical v2 control-plane rule:
 
 #### 3. Crawler Worker Service
 
-- consumes crawler run commands/events
+- accepts crawler `StartRun` over REST
 - executes crawl workload
 - writes crawler artifacts + crawler telemetry
 - emits crawler lifecycle and capture events
 
 #### 4. Ingestion Worker Service
 
-- consumes ingestion commands/events
+- accepts ingestion `StartRun` over REST
+- consumes crawler runtime events for handoff/finalization
 - executes normalization/output routing workload
 - writes ingestion telemetry + production output payloads
 - emits ingestion lifecycle events
 
 ### Integration Contract
 
-- async control path: broker topics/queues for run orchestration
-- sync control path: REST API for operator actions and read models
+- sync command path: REST API for operator actions and worker `StartRun`
+- async runtime path: broker topics/queues for lifecycle and handoff events
 - all services must be able to operate without monorepo-relative filesystem assumptions
+
+current implementation note:
+
+- the existing `ops-control-plane` run detail page still reads event history from archived broker
+  event JSON files under `CONTROL_PLANE_BROKER_DIR`
+- that file-backed archive is a current implementation detail, not the target v2 control-plane
+  event model
 
 ## v2.0 Data Domain Model
 
@@ -151,6 +171,9 @@ collections:
 
 notes:
 
+- these are MongoDB collections in the control-plane database
+- `control_plane_runs` stores one projected run-state document per run
+- `control_plane_run_event_index` stores indexed event-history documents for runs
 - this is distinct from telemetry summaries
 - this is distinct from static configuration
 
@@ -243,19 +266,14 @@ implementation note:
 
 - `GET /healthz`
 - `GET /readyz`
-- `GET /v1/capabilities`
 - `POST /v1/runs` (accepts `StartRun` snapshot)
-- `GET /v1/runs/{runId}` (status + counters)
 - `POST /v1/runs/{runId}/cancel`
-- `GET /v1/runs/{runId}/artifacts` (metadata/index, not raw blob)
 
 ### Ingestion REST Endpoints
 
 - `GET /healthz`
 - `GET /readyz`
-- `GET /v1/capabilities`
 - `POST /v1/runs`
-- `GET /v1/runs/{runId}`
 - `POST /v1/runs/{runId}/cancel`
 - `GET /v1/runs/{runId}/outputs` (metadata/index)
 
@@ -360,7 +378,6 @@ gcp mapping (canonical):
 
 minimum event families:
 
-- `run.requested`
 - `crawler.run.started`
 - `crawler.detail.captured`
 - `crawler.run.finished`
@@ -391,10 +408,11 @@ Design rule:
 - Buckets are for large blobs (HTML artifacts and downloadable JSON outputs), not control metadata.
 - workers write operational telemetry and production outputs directly to MongoDB collections using
   `StartRun` persistence targets.
+- worker command ingress is REST; broker events are runtime signals, not the canonical v2 command
+  path
 
 ### Current Event Types (as implemented today)
 
-- `crawler.run.requested`
 - `crawler.detail.captured`
 - `crawler.run.finished`
 - `ingestion.item.started`
@@ -404,15 +422,14 @@ Design rule:
 
 ### Event Routing Matrix
 
-| Event Type                 | Produced By              | Publish To                 | Primary Consumers                                | Persistent Projections (Mongo)                                                                            | Blob/Bucket Side Effects                                              |
-| -------------------------- | ------------------------ | -------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `crawler.run.requested`    | Control API/Orchestrator | Pub/Sub `run-events` topic | Crawler worker, Control projection worker        | `control_plane_runs` status transition (`queued` -> `running` intent), `control_plane_run_event_index`    | None                                                                  |
-| `crawler.detail.captured`  | Crawler worker           | Pub/Sub `run-events` topic | Ingestion worker, Control projection worker      | `control_plane_run_event_index`, optional `control_plane_artifact_index` (runId/sourceId -> artifact ref) | Crawler already wrote HTML dump + dataset metadata to artifact bucket |
-| `crawler.run.finished`     | Crawler worker           | Pub/Sub `run-events` topic | Control projection worker, Ingestion worker gate | `crawl_run_summaries`, `control_plane_runs` crawler phase status, `control_plane_run_event_index`         | None (summary references bucket/object paths as metadata)             |
-| `ingestion.item.started`   | Ingestion worker         | Pub/Sub `run-events` topic | Control projection worker                        | `control_plane_run_event_index`, optional in-flight counters projection on `control_plane_runs`           | None                                                                  |
-| `ingestion.item.succeeded` | Ingestion worker         | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` incremental projection, `control_plane_run_event_index`                         | Ingestion writes normalized JSON object to output bucket (if enabled) |
-| `ingestion.item.failed`    | Ingestion worker         | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` failure counters + failed job ids, `control_plane_run_event_index`              | None direct; failure metadata persisted                               |
-| `ingestion.item.rejected`  | Ingestion worker         | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` skipped/non-success job ids, `control_plane_run_event_index`                    | None direct; rejection metadata persisted                             |
+| Event Type                 | Produced By      | Publish To                 | Primary Consumers                                | Persistent Projections (Mongo)                                                                            | Blob/Bucket Side Effects                                              |
+| -------------------------- | ---------------- | -------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `crawler.detail.captured`  | Crawler worker   | Pub/Sub `run-events` topic | Ingestion worker, Control projection worker      | `control_plane_run_event_index`, optional `control_plane_artifact_index` (runId/sourceId -> artifact ref) | Crawler already wrote HTML dump + dataset metadata to artifact bucket |
+| `crawler.run.finished`     | Crawler worker   | Pub/Sub `run-events` topic | Control projection worker, Ingestion worker gate | `crawl_run_summaries`, `control_plane_runs` crawler phase status, `control_plane_run_event_index`         | None (summary references bucket/object paths as metadata)             |
+| `ingestion.item.started`   | Ingestion worker | Pub/Sub `run-events` topic | Control projection worker                        | `control_plane_run_event_index`, optional in-flight counters projection on `control_plane_runs`           | None                                                                  |
+| `ingestion.item.succeeded` | Ingestion worker | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` incremental projection, `control_plane_run_event_index`                         | Ingestion writes normalized JSON object to output bucket (if enabled) |
+| `ingestion.item.failed`    | Ingestion worker | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` failure counters + failed job ids, `control_plane_run_event_index`              | None direct; failure metadata persisted                               |
+| `ingestion.item.rejected`  | Ingestion worker | Pub/Sub `run-events` topic | Control projection worker                        | `ingestion_run_summaries` skipped/non-success job ids, `control_plane_run_event_index`                    | None direct; rejection metadata persisted                             |
 
 ### Crawler-To-Ingestion Handoff
 
@@ -436,6 +453,9 @@ Behavior:
 - owns `control_plane_runs`, `control_plane_run_manifests`, and run-state transitions
 - owns configuration domains and bootstrap profiles
 - owns authoritative event-index write policy (`control_plane_run_event_index`)
+- target v2 read path:
+  - the UI reads event history from `control_plane_run_event_index`
+  - filesystem broker archives are optional diagnostics only, not the primary operator read model
 
 #### Crawler Worker
 

@@ -149,25 +149,6 @@ async function main(): Promise<void> {
     subscriptionEnabled: envs.ENABLE_PUBSUB_CONSUMER,
   }));
 
-  app.get('/v1/capabilities', async () => ({
-    contractVersion: 'v2',
-    workerType: 'ingestion',
-    endpoints: [
-      'GET /healthz',
-      'GET /readyz',
-      'GET /v1/capabilities',
-      'POST /v1/runs',
-      'GET /v1/runs/{runId}',
-      'POST /v1/runs/{runId}/cancel',
-      'GET /v1/runs/{runId}/outputs',
-    ],
-    transport: {
-      eventBroker: 'gcp_pubsub',
-      outputStorage: 'gcs',
-      persistence: 'mongodb',
-    },
-  }));
-
   app.post('/v1/runs', async (request, reply) => {
     const parsed = ingestionStartRunRequestV2Schema.safeParse(request.body);
     if (!parsed.success) {
@@ -190,22 +171,6 @@ async function main(): Promise<void> {
           ok: false,
           error: error.message,
           code: 'RUN_ID_CONFLICT',
-        };
-      }
-
-      throw error;
-    }
-  });
-
-  app.get('/v1/runs/:runId', async (request, reply) => {
-    try {
-      return runtime.getRun((request.params as { runId: string }).runId);
-    } catch (error) {
-      if (error instanceof NotFoundError) {
-        reply.code(error.statusCode);
-        return {
-          ok: false,
-          error: error.message,
         };
       }
 

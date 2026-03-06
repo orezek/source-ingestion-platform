@@ -91,9 +91,7 @@ output routing rule:
 
 - `GET /healthz`
 - `GET /readyz`
-- `GET /v1/capabilities`
 - `POST /v1/runs`
-- `GET /v1/runs/:runId`
 - `POST /v1/runs/:runId/cancel`
 - `GET /v1/runs/:runId/outputs`
 
