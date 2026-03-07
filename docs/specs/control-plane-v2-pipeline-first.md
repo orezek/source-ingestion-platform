@@ -233,6 +233,8 @@ Recommended UI direction:
 - no global "manage search spaces/runtime profiles/structured outputs" screens for live runtime
   config
 - UI reads run and pipeline state through `control-service`, not from pipeline-owned databases
+- `control-center-v2` design should follow the mobile-first screen-map brief in
+  `docs/specs/control-center-v2-screen-map-brief.md`
 
 ## Consequences For Worker Design
 

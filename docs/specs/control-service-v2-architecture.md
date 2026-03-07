@@ -82,9 +82,11 @@ This keeps the UI simple while preserving the event-driven worker model.
 Responsibilities:
 
 - operator-facing UI
-- pipeline create/update/delete forms
-- run start/stop/cancel interactions
+- pipeline create and rename flows
+- run start/cancel interactions
 - rendering dashboards, lists, detail pages, and live run views
+- mobile-first responsive operator experience
+- trusted server-side session/auth boundary for calls into `control-service`
 
 Not responsible for:
 
@@ -92,6 +94,11 @@ Not responsible for:
 - consuming Pub/Sub subscriptions
 - writing MongoDB projections directly
 - reading worker APIs or pipeline databases directly
+- holding the shared backend bearer token in the browser
+
+Design brief note:
+
+- the canonical screen-map brief lives in `docs/specs/control-center-v2-screen-map-brief.md`
 
 ### `control-service`
 

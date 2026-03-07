@@ -68,6 +68,9 @@ platform decision (canonical for v2.0):
 - reads live data from `control-service` only
 - does not talk to workers directly
 - does not consume Pub/Sub subscriptions
+- should be designed mobile-first
+- should follow `docs/specs/control-center-v2-screen-map-brief.md` for screen-map and UI behavior
+  requirements
 
 #### 2. Control Service
 
