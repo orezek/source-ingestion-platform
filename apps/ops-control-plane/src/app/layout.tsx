@@ -11,7 +11,7 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: 'Run Observability Dashboard',
-  description: 'Operational dashboard for JobCompass crawler and ingestion run summaries.',
+  description: 'Operational dashboard for OmniCrawl crawler and ingestion run summaries.',
   icons: {
     icon: '/dashboard-mark.svg',
   },

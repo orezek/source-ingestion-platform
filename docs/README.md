@@ -1,6 +1,6 @@
 # Documentation Index
 
-This directory contains design and implementation documentation for the JobCompass pipeline.
+This directory contains design and implementation documentation for the OmniCrawl pipeline.
 
 ## Start Here
 
@@ -30,11 +30,11 @@ This directory contains design and implementation documentation for the JobCompa
 - App spec (contracts, pipeline semantics, Mongo responsibilities): `docs/specs/jobs-ingestion-service.md`
 - App changelog (parser versions and behavior changes): `apps/jobs-ingestion-service/CHANGELOG.md`
 
-### `job-compass-chat`
+### `omni-crawl-chat`
 
-- App README (runtime usage, env, TUI behavior): `apps/job-compass-chat/README.md`
-- App spec (planner/worker graph, observability, testing): `docs/specs/job-compass-chat.md`
-- App changelog (feature and workflow history): `apps/job-compass-chat/CHANGELOG.md`
+- App README (runtime usage, env, TUI behavior): `apps/omni-crawl-chat/README.md`
+- App spec (planner/worker graph, observability, testing): `docs/specs/omni-crawl-chat.md`
+- App changelog (feature and workflow history): `apps/omni-crawl-chat/CHANGELOG.md`
 
 ### `ops-control-plane`
 
@@ -63,9 +63,9 @@ This directory contains design and implementation documentation for the JobCompa
 11. `docs/specs/crawler-worker-v2.md`
 12. `docs/specs/jobs-crawler-actor.md`
 13. `docs/specs/jobs-ingestion-service.md`
-14. `docs/specs/job-compass-chat.md`
+14. `docs/specs/omni-crawl-chat.md`
 15. `apps/jobs-crawler-actor/README.md`
 16. `apps/jobs-ingestion-service/README.md`
-17. `apps/job-compass-chat/README.md`
+17. `apps/omni-crawl-chat/README.md`
 18. `docs/specs/ops-control-plane.md`
 19. `apps/ops-control-plane/README.md`

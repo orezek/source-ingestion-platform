@@ -28,7 +28,7 @@ variable "structured_output_bucket_name" {
 variable "control_plane_pubsub_topic_name" {
   description = "Pub/Sub topic for brokered control-plane runtime events."
   type        = string
-  default     = "jobcompass-control-plane-events"
+  default     = "omnicrawl-control-plane-events"
 }
 
 variable "force_destroy_buckets" {

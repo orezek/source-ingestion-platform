@@ -5,7 +5,7 @@ import { HeuristicPlannerRouter } from '../../src/planner/heuristic-planner.js';
 
 const planner = new HeuristicPlannerRouter();
 
-describe('job-compass-chat graph integration', () => {
+describe('omni-crawl-chat graph integration', () => {
   it('solves a single task', async () => {
     const state = await runChatGraph({ planner, maxSteps: 10 }, 'what is 4 + 5');
 

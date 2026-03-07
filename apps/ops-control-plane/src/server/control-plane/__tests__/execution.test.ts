@@ -34,7 +34,7 @@ function buildManifest(overrides: Record<string, unknown> = {}) {
     artifactStorageSnapshot: {
       type: 'local_filesystem' as const,
       config: {
-        basePath: '/tmp/jobcompass-control-plane-execution-test/artifacts',
+        basePath: '/tmp/omnicrawl-control-plane-execution-test/artifacts',
       },
     },
     structuredOutputDestinationSnapshots: [],
@@ -63,19 +63,19 @@ beforeEach(() => {
     DASHBOARD_DATA_MODE: 'fixture',
     DASHBOARD_FIXTURE_DIR: './src/test/fixtures',
     CONTROL_PLANE_EXECUTION_MODE: 'local_cli',
-    CONTROL_PLANE_DATA_DIR: '/tmp/jobcompass-control-plane-execution-test/state',
-    CONTROL_PLANE_BROKER_DIR: '/tmp/jobcompass-control-plane-execution-test/broker',
-    CONTROL_PLANE_WORKER_LOG_DIR: '/tmp/jobcompass-control-plane-execution-test/logs',
-    CONTROL_PLANE_DEFAULT_ARTIFACT_DIR: '/tmp/jobcompass-control-plane-execution-test/artifacts',
+    CONTROL_PLANE_DATA_DIR: '/tmp/omnicrawl-control-plane-execution-test/state',
+    CONTROL_PLANE_BROKER_DIR: '/tmp/omnicrawl-control-plane-execution-test/broker',
+    CONTROL_PLANE_WORKER_LOG_DIR: '/tmp/omnicrawl-control-plane-execution-test/logs',
+    CONTROL_PLANE_DEFAULT_ARTIFACT_DIR: '/tmp/omnicrawl-control-plane-execution-test/artifacts',
     CONTROL_PLANE_DEFAULT_JSON_OUTPUT_DIR:
-      '/tmp/jobcompass-control-plane-execution-test/json-output',
+      '/tmp/omnicrawl-control-plane-execution-test/json-output',
     CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND: 'local_filesystem',
     CONTROL_PLANE_DOWNLOADABLE_OUTPUT_BACKEND: 'local_filesystem',
     CONTROL_PLANE_INGESTION_PARSER_BACKEND: 'gemini',
     CONTROL_PLANE_BROKER_BACKEND: 'local',
-    CONTROL_PLANE_GCP_PUBSUB_TOPIC: 'jobcompass-control-plane-events',
-    CONTROL_PLANE_GCP_PUBSUB_SUBSCRIPTION_PREFIX: 'jobcompass-control-plane-run',
-    JOB_COMPASS_DB_PREFIX: 'job-compass',
+    CONTROL_PLANE_GCP_PUBSUB_TOPIC: 'omnicrawl-control-plane-events',
+    CONTROL_PLANE_GCP_PUBSUB_SUBSCRIPTION_PREFIX: 'omnicrawl-control-plane-run',
+    JOB_COMPASS_DB_PREFIX: 'omni-crawl',
     MONGODB_URI: 'mongodb://127.0.0.1:27027',
   });
   Reflect.deleteProperty(process.env, 'GEMINI_API_KEY');
@@ -249,10 +249,10 @@ describe('control-plane local_cli env overrides', () => {
     const envOverrides = buildCrawlerWorkerEnvOverrides({
       manifest: buildManifest(),
       runId: 'crawl-run-test',
-      mongoDbName: 'job-compass-prague-tech-jobs',
+      mongoDbName: 'omni-crawl-prague-tech-jobs',
       crawlerSummaryPath:
-        '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
-      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
+        '/tmp/omnicrawl-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/omnicrawl-control-plane-execution-test/generated-search-spaces',
     });
 
     expect(envOverrides.CRAWLEE_LOG_LEVEL).toBe('INFO');
@@ -260,7 +260,7 @@ describe('control-plane local_cli env overrides', () => {
     expect(envOverrides.ENABLE_MONGO_RUN_SUMMARY_WRITE).toBe('true');
     expect(envOverrides.ENABLE_INGESTION_TRIGGER).toBe('false');
     expect(envOverrides.JOB_COMPASS_SEARCH_SPACES_DIR).toBe(
-      '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
+      '/tmp/omnicrawl-control-plane-execution-test/generated-search-spaces',
     );
     expect(envOverrides.JOB_COMPASS_ARTIFACT_STORE_TYPE).toBe('local_filesystem');
     expect(envOverrides.JOB_COMPASS_BROKER_BACKEND).toBe('local');
@@ -282,10 +282,10 @@ describe('control-plane local_cli env overrides', () => {
         },
       }),
       runId: 'crawl-run-test',
-      mongoDbName: 'job-compass-prague-tech-jobs',
+      mongoDbName: 'omni-crawl-prague-tech-jobs',
       crawlerSummaryPath:
-        '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
-      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
+        '/tmp/omnicrawl-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/omnicrawl-control-plane-execution-test/generated-search-spaces',
     });
 
     expect(envOverrides.CRAWLEE_LOG_LEVEL).toBe('DEBUG');
@@ -294,9 +294,9 @@ describe('control-plane local_cli env overrides', () => {
   it('maps GCS artifacts, Pub/Sub broker settings, and managed downloadable JSON into worker env overrides', async () => {
     Object.assign(process.env, {
       CONTROL_PLANE_BROKER_BACKEND: 'gcp_pubsub',
-      CONTROL_PLANE_GCP_PROJECT_ID: 'jobcompass-test',
-      CONTROL_PLANE_GCP_PUBSUB_TOPIC: 'jobcompass-control-plane-events',
-      CONTROL_PLANE_GCP_PUBSUB_SUBSCRIPTION_PREFIX: 'jobcompass-run',
+      CONTROL_PLANE_GCP_PROJECT_ID: 'omnicrawl-test',
+      CONTROL_PLANE_GCP_PUBSUB_TOPIC: 'omnicrawl-control-plane-events',
+      CONTROL_PLANE_GCP_PUBSUB_SUBSCRIPTION_PREFIX: 'omnicrawl-run',
     });
     vi.resetModules();
 
@@ -317,7 +317,7 @@ describe('control-plane local_cli env overrides', () => {
       artifactStorageSnapshot: {
         type: 'gcs' as const,
         config: {
-          bucket: 'jobcompass-artifacts-test',
+          bucket: 'omnicrawl-artifacts-test',
           prefix: 'v1',
         },
       },
@@ -328,7 +328,7 @@ describe('control-plane local_cli env overrides', () => {
           type: 'downloadable_json' as const,
           config: {
             storageType: 'gcs' as const,
-            bucket: 'jobcompass-json-test',
+            bucket: 'omnicrawl-json-test',
             prefix: 'normalized',
           },
         },
@@ -346,25 +346,25 @@ describe('control-plane local_cli env overrides', () => {
     const crawlerEnv = buildCrawlerWorkerEnvOverrides({
       manifest,
       runId: 'crawl-run-test',
-      mongoDbName: 'job-compass-prague-tech-jobs',
+      mongoDbName: 'omni-crawl-prague-tech-jobs',
       crawlerSummaryPath:
-        '/tmp/jobcompass-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
-      searchSpacesDir: '/tmp/jobcompass-control-plane-execution-test/generated-search-spaces',
+        '/tmp/omnicrawl-control-plane-execution-test/state/runs/crawl-run-test/crawler-run-summary.json',
+      searchSpacesDir: '/tmp/omnicrawl-control-plane-execution-test/generated-search-spaces',
     });
 
     const ingestionEnv = buildIngestionWorkerEnvOverrides({
       manifest,
-      mongoDbName: 'job-compass-prague-tech-jobs',
+      mongoDbName: 'omni-crawl-prague-tech-jobs',
     });
 
     expect(crawlerEnv.JOB_COMPASS_ARTIFACT_STORE_TYPE).toBe('gcs');
-    expect(crawlerEnv.JOB_COMPASS_GCS_BUCKET).toBe('jobcompass-artifacts-test');
+    expect(crawlerEnv.JOB_COMPASS_GCS_BUCKET).toBe('omnicrawl-artifacts-test');
     expect(crawlerEnv.JOB_COMPASS_BROKER_BACKEND).toBe('gcp_pubsub');
-    expect(crawlerEnv.JOB_COMPASS_GCP_PROJECT_ID).toBe('jobcompass-test');
+    expect(crawlerEnv.JOB_COMPASS_GCP_PROJECT_ID).toBe('omnicrawl-test');
     expect(ingestionEnv.MONGODB_URI).toBe('mongodb://127.0.0.1:27027');
     expect(ingestionEnv.INGESTION_PARSER_BACKEND).toBe('gemini');
     expect(ingestionEnv.JOB_COMPASS_BROKER_BACKEND).toBe('gcp_pubsub');
-    expect(ingestionEnv.JOB_COMPASS_GCP_PUBSUB_TOPIC).toBe('jobcompass-control-plane-events');
+    expect(ingestionEnv.JOB_COMPASS_GCP_PUBSUB_TOPIC).toBe('omnicrawl-control-plane-events');
   });
 
   it('requires LANGSMITH_API_KEY for local_cli Gemini ingestion preflight', async () => {
@@ -374,7 +374,7 @@ describe('control-plane local_cli env overrides', () => {
     Reflect.deleteProperty(process.env, 'LANGSMITH_API_KEY');
     vi.resetModules();
 
-    tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'jobcompass-execution-empty-env-'));
+    tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'omnicrawl-execution-empty-env-'));
     vi.doMock('@/server/control-plane/paths', async () => {
       const actual = await vi.importActual<typeof import('@/server/control-plane/paths')>(
         '@/server/control-plane/paths',
@@ -409,7 +409,7 @@ describe('control-plane local_cli env overrides', () => {
                 type: 'downloadable_json' as const,
                 config: {
                   storageType: 'local_filesystem' as const,
-                  basePath: '/tmp/jobcompass-control-plane-execution-test/json-output',
+                  basePath: '/tmp/omnicrawl-control-plane-execution-test/json-output',
                 },
               },
             ],
@@ -450,7 +450,7 @@ describe('control-plane local_cli env overrides', () => {
           type: 'downloadable_json' as const,
           config: {
             storageType: 'local_filesystem' as const,
-            basePath: '/tmp/jobcompass-control-plane-execution-test/json-output',
+            basePath: '/tmp/omnicrawl-control-plane-execution-test/json-output',
           },
         },
       ],
@@ -460,14 +460,14 @@ describe('control-plane local_cli env overrides', () => {
 
     const ingestionEnv = buildIngestionWorkerEnvOverrides({
       manifest,
-      mongoDbName: 'job-compass-prague-tech-jobs',
+      mongoDbName: 'omni-crawl-prague-tech-jobs',
     });
     expect(ingestionEnv.INGESTION_PARSER_BACKEND).toBe('fixture');
   });
 
   it('detects worker keys from app-local env files for local_cli preflight', async () => {
     const { hasWorkerEnvValueInAppDir } = await import('@/server/control-plane/execution');
-    tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'jobcompass-execution-env-'));
+    tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'omnicrawl-execution-env-'));
 
     await writeFile(
       path.join(tempRootDir, '.env.local'),

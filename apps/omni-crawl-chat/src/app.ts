@@ -4,13 +4,13 @@ import { stdin as input, stdout as output } from 'node:process';
 import React from 'react';
 import { render } from 'ink';
 
-import { loadJobCompassChatEnv } from './env.js';
+import { loadOmniCrawlChatEnv } from './env.js';
 import { runChatGraph } from './graph/graph.js';
 import { createPlanner } from './planner/create-planner.js';
 import { AppScreen } from './tui/app-screen.js';
 
 const printUsage = (): void => {
-  console.log(`Usage: pnpm -C apps/job-compass-chat start -- --prompt "what is (2 + 3) * 4"`);
+  console.log(`Usage: pnpm -C apps/omni-crawl-chat start -- --prompt "what is (2 + 3) * 4"`);
 };
 
 const parsePromptArg = (argv: string[]): string | null => {
@@ -45,7 +45,7 @@ const parsePromptArg = (argv: string[]): string | null => {
 const promptInteractively = async (): Promise<string> => {
   const interfaceHandle = readline.createInterface({ input, output });
   try {
-    const response = await interfaceHandle.question('job-compass-chat> ');
+    const response = await interfaceHandle.question('omni-crawl-chat> ');
     return response.trim();
   } finally {
     interfaceHandle.close();
@@ -53,7 +53,7 @@ const promptInteractively = async (): Promise<string> => {
 };
 
 const main = async (): Promise<void> => {
-  const env = loadJobCompassChatEnv();
+  const env = loadOmniCrawlChatEnv();
   const promptFromArgs = parsePromptArg(process.argv.slice(2));
   const userMessage = promptFromArgs ?? (process.stdin.isTTY ? await promptInteractively() : null);
 
@@ -83,6 +83,6 @@ const main = async (): Promise<void> => {
 
 main().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'Unknown error';
-  console.error(`job-compass-chat failed: ${message}`);
+  console.error(`omni-crawl-chat failed: ${message}`);
   process.exitCode = 1;
 });

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `job-compass-chat` are documented in this file.
+All notable changes to `omni-crawl-chat` are documented in this file.
 
 The format is based on Keep a Changelog principles and uses Semantic Versioning.
 
@@ -14,7 +14,7 @@ The format is based on Keep a Changelog principles and uses Semantic Versioning.
 
 ### Added
 
-- Initial release of `job-compass-chat` as a terminal-first LangGraph planning playground.
+- Initial release of `omni-crawl-chat` as a terminal-first LangGraph planning playground.
 - Planner-router architecture with three deterministic worker nodes:
   - addition/subtraction
   - multiplication/division

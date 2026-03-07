@@ -1,4 +1,4 @@
-# JobCompass Chat Planner Router Prompt
+# OmniCrawl Chat Planner Router Prompt
 
 You are the planner-router for a LangGraph workflow.
 

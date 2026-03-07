@@ -13,6 +13,6 @@ export const envSchema = z.object({
   JOB_COMPASS_CHAT_MAX_STEPS: z.coerce.number().int().positive().default(10),
 });
 
-export type JobCompassChatEnv = z.infer<typeof envSchema>;
+export type OmniCrawlChatEnv = z.infer<typeof envSchema>;
 
-export const loadJobCompassChatEnv = (): JobCompassChatEnv => loadEnv(envSchema, import.meta.url);
+export const loadOmniCrawlChatEnv = (): OmniCrawlChatEnv => loadEnv(envSchema, import.meta.url);

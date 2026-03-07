@@ -1,8 +1,8 @@
-# job-compass-chat
+# omni-crawl-chat
 
-Terminal-first LangGraph planning playground for JobCompass.
+Terminal-first LangGraph planning playground for OmniCrawl.
 
-This app is intentionally narrow in V1. It proves the planning loop, dependency handling, parallel worker dispatch, and operator-safe observability before real JobCompass chat capabilities are added.
+This app is intentionally narrow in V1. It proves the planning loop, dependency handling, parallel worker dispatch, and operator-safe observability before real OmniCrawl chat capabilities are added.
 
 ## What V1 Does
 
@@ -76,35 +76,35 @@ Important vars:
 Build:
 
 ```bash
-pnpm -C apps/job-compass-chat build
+pnpm -C apps/omni-crawl-chat build
 ```
 
 Run with an explicit prompt:
 
 ```bash
-pnpm -C apps/job-compass-chat start -- --prompt "what is (2 + 3) * 4"
+pnpm -C apps/omni-crawl-chat start -- --prompt "what is (2 + 3) * 4"
 ```
 
 Run interactively:
 
 ```bash
-pnpm -C apps/job-compass-chat start
+pnpm -C apps/omni-crawl-chat start
 ```
 
 Heuristic mode example:
 
 ```bash
-JOB_COMPASS_CHAT_PLANNER_MODE=heuristic pnpm -C apps/job-compass-chat start -- --prompt "divide 5 by 0"
+JOB_COMPASS_CHAT_PLANNER_MODE=heuristic pnpm -C apps/omni-crawl-chat start -- --prompt "divide 5 by 0"
 ```
 
 ## Validation
 
 ```bash
-pnpm -C apps/job-compass-chat lint
-pnpm -C apps/job-compass-chat check-types
-pnpm -C apps/job-compass-chat build
-pnpm -C apps/job-compass-chat test
-pnpm -C apps/job-compass-chat test:e2e
+pnpm -C apps/omni-crawl-chat lint
+pnpm -C apps/omni-crawl-chat check-types
+pnpm -C apps/omni-crawl-chat build
+pnpm -C apps/omni-crawl-chat test
+pnpm -C apps/omni-crawl-chat test:e2e
 ```
 
 ## Files

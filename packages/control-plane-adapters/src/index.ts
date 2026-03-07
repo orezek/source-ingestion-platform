@@ -608,7 +608,7 @@ export async function createBrokerRunConsumer(input: {
   const pubsub = getPubSubClient(input.broker.projectId);
   const topic = pubsub.topic(input.broker.topicName);
   const subscriptionName = [
-    input.broker.subscriptionNamePrefix ?? 'jobcompass-control-plane-run',
+    input.broker.subscriptionNamePrefix ?? 'omnicrawl-control-plane-run',
     sanitizePubSubNameSegment(input.runId),
     randomUUID().slice(0, 8),
   ].join('-');

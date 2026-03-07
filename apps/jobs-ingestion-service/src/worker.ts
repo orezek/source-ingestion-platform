@@ -92,7 +92,7 @@ async function writeWorkerRuntime(runtimePath: string, runtime: WorkerRuntime): 
 
 function getMongoDbName(manifest: RunManifest): string {
   return deriveMongoDbName({
-    dbPrefix: process.env.JOB_COMPASS_DB_PREFIX ?? 'job-compass',
+    dbPrefix: process.env.JOB_COMPASS_DB_PREFIX ?? 'omni-crawl',
     searchSpaceId: manifest.searchSpaceSnapshot.id,
     explicitDbName: process.env.MONGODB_DB_NAME,
   });

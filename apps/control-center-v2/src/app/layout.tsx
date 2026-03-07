@@ -17,7 +17,7 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: 'Control Center v2',
-  description: 'Mobile-first operator UI for JobCompass control-service v2.',
+  description: 'Mobile-first operator UI for OmniCrawl control-service v2.',
 };
 
 export const dynamic = 'force-dynamic';

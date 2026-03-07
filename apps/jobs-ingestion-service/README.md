@@ -84,7 +84,7 @@ scrapped_jobs/
   "source": "jobs.cz",
   "crawlRunId": "<crawl-run-id>",
   "searchSpaceId": "prague-tech-jobs",
-  "mongoDbName": "job-compass-prague-tech-jobs",
+  "mongoDbName": "omni-crawl-prague-tech-jobs",
   "listingRecord": {
     "sourceId": "2001077729",
     "adUrl": "https://www.jobs.cz/rpd/2001077729/...",
@@ -110,7 +110,7 @@ scrapped_jobs/
   "source": "jobs.cz",
   "crawlRunId": "<crawl-run-id>",
   "searchSpaceId": "prague-tech-jobs",
-  "mongoDbName": "job-compass-prague-tech-jobs"
+  "mongoDbName": "omni-crawl-prague-tech-jobs"
 }
 ```
 

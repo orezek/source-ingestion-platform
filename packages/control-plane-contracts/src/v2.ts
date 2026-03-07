@@ -522,7 +522,7 @@ export const runtimeBrokerEventV2Fixtures = [
         sourceId: '2000905774',
         adUrl: 'https://www.jobs.cz/rpd/2000905774/',
         jobTitle: 'Senior Software Engineer',
-        companyName: 'JobCompass Labs',
+        companyName: 'OmniCrawl Labs',
         location: 'Prague',
         salary: null,
         publishedInfoText: 'Aktualizováno dnes',
@@ -1303,7 +1303,7 @@ export const controlServiceHeartbeatResponseV2Fixture =
   });
 
 export const controlServicePubSubConfigV2Fixture = controlServicePubSubConfigV2Schema.parse({
-  gcpProjectId: 'jobcompass-prod',
+  gcpProjectId: 'omnicrawl-prod',
   eventsTopic: 'run-events',
   eventsSubscription: 'control-service-events-subscription',
   autoCreateSubscription: true,

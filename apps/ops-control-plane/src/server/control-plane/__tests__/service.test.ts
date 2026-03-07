@@ -9,7 +9,7 @@ import { IMPLICIT_DOWNLOADABLE_JSON_DESTINATION_ID } from '@/server/control-plan
 let tempRootDir: string;
 
 beforeEach(async () => {
-  tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'jobcompass-control-plane-'));
+  tempRootDir = await mkdtemp(path.join(os.tmpdir(), 'omnicrawl-control-plane-'));
   process.env.DASHBOARD_DATA_MODE = 'fixture';
   process.env.DASHBOARD_FIXTURE_DIR = './src/test/fixtures';
   process.env.CONTROL_PLANE_DATA_DIR = path.join(tempRootDir, 'state');

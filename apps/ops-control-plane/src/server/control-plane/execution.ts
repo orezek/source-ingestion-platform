@@ -617,7 +617,7 @@ async function simulateFixtureExecution({ run, manifest }: ExecuteRunInput): Pro
     sourceId: 'fixture-001',
     adUrl: manifest.searchSpaceSnapshot.startUrls[0] ?? 'https://www.jobs.cz/rpd/fixture-001/',
     jobTitle: 'Fixture platform engineer',
-    companyName: 'JobCompass Labs',
+    companyName: 'OmniCrawl Labs',
     location: 'Prague',
     salary: '90 000 CZK',
     publishedInfoText: 'Fixture mode',

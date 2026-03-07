@@ -1,6 +1,6 @@
 # @repo/job-search-spaces
 
-Shared search-space schemas and runtime helpers for JobCompass apps.
+Shared search-space schemas and runtime helpers for OmniCrawl apps.
 
 ## Responsibilities
 

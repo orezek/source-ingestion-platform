@@ -2,7 +2,7 @@
 
 ## Status
 
-- Owner: JobCompass observability tooling
+- Owner: OmniCrawl observability tooling
 - Scope: `apps/ops-control-plane`
 - Mode: internal operator dashboard + control plane
 - Lifecycle: v1 completed (2026-03-05)

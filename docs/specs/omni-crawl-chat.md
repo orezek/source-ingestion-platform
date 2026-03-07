@@ -1,8 +1,8 @@
-# Spec: `job-compass-chat`
+# Spec: `omni-crawl-chat`
 
 ## Goal
 
-Create a new app, `job-compass-chat`, that will eventually become the chat interface for JobCompass.
+Create a new app, `omni-crawl-chat`, that will eventually become the chat interface for OmniCrawl.
 
 The first release is intentionally narrow. It is not a job-search assistant yet. It is a learning and architecture app used to validate an agentic LangGraph loop with:
 
@@ -14,7 +14,7 @@ The first release is intentionally narrow. It is not a job-search assistant yet.
 - structured observability and testability
 - a local terminal user interface suitable for inspection and debugging
 
-This release exists to prove the orchestration model before real JobCompass retrieval, analytics, or user-facing workflows are added.
+This release exists to prove the orchestration model before real OmniCrawl retrieval, analytics, or user-facing workflows are added.
 
 ## V1 Scope
 
@@ -59,7 +59,7 @@ V1 does not include:
 
 The app is a Node app inside the monorepo:
 
-- `apps/job-compass-chat`
+- `apps/omni-crawl-chat`
 
 The app uses LangGraph with a cyclic execution graph and a DAG-like task plan stored in state.
 
@@ -178,7 +178,7 @@ V1 uses Pattern B.
 
 Reason:
 
-- it is the better learning architecture for future JobCompass workflows
+- it is the better learning architecture for future OmniCrawl workflows
 - it makes planning, dependency handling, and state transitions explicit
 - it keeps workers deterministic
 
@@ -588,7 +588,7 @@ Expected behavior:
 Recommended initial structure:
 
 ```text
-apps/job-compass-chat/
+apps/omni-crawl-chat/
   prompts/
     planner-router.md
   src/
@@ -651,7 +651,7 @@ Recommended default model:
 
 The planner-router instruction prompt should live in:
 
-- `apps/job-compass-chat/prompts/planner-router.md`
+- `apps/omni-crawl-chat/prompts/planner-router.md`
 
 Reason:
 
@@ -703,13 +703,13 @@ Recommended initial app package version:
 
 - `1.0.0`
 
-This first release is a proof-of-architecture release for the future JobCompass chat system.
+This first release is a proof-of-architecture release for the future OmniCrawl chat system.
 
 ## Acceptance criteria
 
 V1 is complete when:
 
-- the app exists under `apps/job-compass-chat`
+- the app exists under `apps/omni-crawl-chat`
 - the graph runs with a cyclic planner/worker loop
 - the planner-router can produce a small task plan
 - dependencies are explicit in state

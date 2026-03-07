@@ -1,7 +1,7 @@
 {
   "name": "@repo/control-plane-contracts",
   "version": "1.0.0",
-  "description": "Shared v1 control-plane manifests, config, and event contracts for JobCompass workers.",
+  "description": "Shared v1 control-plane manifests, config, and event contracts for OmniCrawl workers.",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.13.1",

@@ -1,7 +1,7 @@
 {
-  "name": "job-compass-chat",
+  "name": "omni-crawl-chat",
   "version": "1.0.0",
-  "description": "Terminal-first LangGraph chat playground for JobCompass planning and observability.",
+  "description": "Terminal-first LangGraph chat playground for OmniCrawl planning and observability.",
   "license": "ISC",
   "author": "Oldrich Rezek oldrich.rezek@oldrichrezek.com",
   "private": true,

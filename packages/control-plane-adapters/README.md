@@ -1,6 +1,6 @@
 # `@repo/control-plane-adapters`
 
-Shared runtime adapters for the JobCompass control plane.
+Shared runtime adapters for the OmniCrawl control plane.
 
 This package owns:
 

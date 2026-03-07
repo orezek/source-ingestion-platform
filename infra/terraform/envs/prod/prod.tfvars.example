@@ -1,5 +1,5 @@
 project_id                   = "your-gcp-project-id"
-artifact_bucket_name         = "your-jobcompass-artifacts-bucket"
-structured_output_bucket_name = "your-jobcompass-structured-output-bucket"
-control_plane_pubsub_topic_name = "jobcompass-control-plane-events"
+artifact_bucket_name         = "your-omnicrawl-artifacts-bucket"
+structured_output_bucket_name = "your-omnicrawl-structured-output-bucket"
+control_plane_pubsub_topic_name = "omnicrawl-control-plane-events"
 force_destroy_buckets        = false

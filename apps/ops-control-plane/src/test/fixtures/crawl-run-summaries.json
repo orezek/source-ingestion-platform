@@ -74,7 +74,7 @@
         "skippedReason": null
       },
       "crawlState": {
-        "mongoDbName": "job-compass"
+        "mongoDbName": "omni-crawl"
       }
     }
   },
@@ -149,7 +149,7 @@
         "skippedReason": null
       },
       "crawlState": {
-        "mongoDbName": "job-compass"
+        "mongoDbName": "omni-crawl"
       }
     }
   }

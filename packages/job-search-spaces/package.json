@@ -1,7 +1,7 @@
 {
   "name": "@repo/job-search-spaces",
   "version": "1.0.0",
-  "description": "Shared search-space schemas and runtime helpers for JobCompass crawlers and ingestion.",
+  "description": "Shared search-space schemas and runtime helpers for OmniCrawl crawlers and ingestion.",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.13.1",

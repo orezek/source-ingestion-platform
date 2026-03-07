@@ -10,7 +10,7 @@ This directory contains Terraform configuration for infrastructure managed outsi
 ## Getting Started
 
 1. Install Terraform.
-2. Create the backend bucket (`jobcompass-tfstate-001`) in GCS.
+2. Create the backend bucket (`omnicrawl-tfstate-001`) in GCS.
 3. Copy the environment example file and set real values:
 
 ```bash

@@ -825,8 +825,8 @@ Priority cleanup items:
 
 - replace `JOB_COMPASS_DB_PREFIX` with a crawler/ingestion-neutral setting name
 - define a short canonical default database prefix owned by the platform
-- remove legacy `job-compass` terminology from operational env defaults where the app is no longer
-  actually "Job Compass"
+- remove legacy `omni-crawl` terminology from operational env defaults where the app is no longer
+  actually "Omni Crawl"
 - separate product naming from storage naming so database prefixes do not inherit stale branding
 - document and enforce one migration path for old env vars, including deprecation behavior and
   removal timing

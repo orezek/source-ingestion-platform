@@ -1,6 +1,6 @@
 # Ops Control Plane
 
-`ops-control-plane` is an internal Next.js dashboard for operational visibility into JobCompass crawler and ingestion runs.
+`ops-control-plane` is an internal Next.js dashboard for operational visibility into OmniCrawl crawler and ingestion runs.
 
 ## Purpose
 

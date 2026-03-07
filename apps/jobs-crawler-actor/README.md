@@ -105,9 +105,9 @@ Default DB derivation:
 
 Example:
 
-- `JOB_COMPASS_DB_PREFIX=job-compass`
+- `JOB_COMPASS_DB_PREFIX=omni-crawl`
 - `searchSpaceId=prague-tech-jobs`
-- resolved DB: `job-compass-prague-tech-jobs`
+- resolved DB: `omni-crawl-prague-tech-jobs`
 
 `MONGODB_DB_NAME` is an explicit override and should be used rarely.
 
@@ -179,7 +179,7 @@ Payload:
   "source": "jobs.cz",
   "crawlRunId": "<crawl-run-id>",
   "searchSpaceId": "prague-tech-jobs",
-  "mongoDbName": "job-compass-prague-tech-jobs",
+  "mongoDbName": "omni-crawl-prague-tech-jobs",
   "listingRecord": {
     "sourceId": "2001077729",
     "adUrl": "https://www.jobs.cz/rpd/2001077729/...",

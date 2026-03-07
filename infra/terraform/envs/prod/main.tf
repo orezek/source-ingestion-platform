@@ -5,7 +5,7 @@ provider "google" {
 
 locals {
   labels = {
-    app         = "jobcompass"
+    app         = "omnicrawl"
     environment = "prod"
     managed_by  = "terraform"
   }

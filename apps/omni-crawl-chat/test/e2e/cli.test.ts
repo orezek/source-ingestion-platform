@@ -12,7 +12,7 @@ const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
 const stripAnsi = (value: string): string => value.replace(ansiPattern, '');
 
-describe('job-compass-chat CLI e2e', () => {
+describe('omni-crawl-chat CLI e2e', () => {
   it('renders TUI output with planner observability', async () => {
     const { stdout } = await execFileAsync(
       'node',
