@@ -92,7 +92,7 @@ export function RunListClient({
       </div>
 
       <Card>
-        <CardContent className="grid gap-4 p-4 md:grid-cols-4 md:items-end">
+        <CardContent className="grid gap-4 p-4 md:flex md:flex-wrap md:items-end *:md:flex-1">
           <label className="grid gap-2 text-sm">
             <span className="font-mono text-[0.68rem] uppercase tracking-[0.14em] text-muted-foreground">
               Pipeline
@@ -211,49 +211,53 @@ export function RunListClient({
           </div>
 
           <div className="hidden overflow-hidden rounded-sm border border-border md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Run</TableHead>
-                  <TableHead>Pipeline</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Crawler</TableHead>
-                  <TableHead>Ingestion</TableHead>
-                  <TableHead>Requested</TableHead>
-                  <TableHead className="text-right">Detail</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {runs.map((run) => (
-                  <TableRow key={run.runId}>
-                    <TableCell>
-                      <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                        {run.runId}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-semibold text-foreground">{run.pipelineName}</div>
-                      <div className="text-xs text-muted-foreground">{run.source}</div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={run.status} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={run.crawler.status} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={run.ingestion.status} />
-                    </TableCell>
-                    <TableCell>{formatDateTime(run.requestedAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button asChild size="sm" variant="secondary">
-                        <Link href={`/runs/${run.runId}`}>Open</Link>
-                      </Button>
-                    </TableCell>
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">Run</TableHead>
+                    <TableHead className="whitespace-nowrap">Pipeline</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="whitespace-nowrap">Crawler</TableHead>
+                    <TableHead className="whitespace-nowrap">Ingestion</TableHead>
+                    <TableHead className="whitespace-nowrap">Requested</TableHead>
+                    <TableHead className="whitespace-nowrap text-right">Detail</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((run) => (
+                    <TableRow key={run.runId}>
+                      <TableCell className="whitespace-nowrap">
+                        <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                          {run.runId}
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <div className="font-semibold text-foreground">{run.pipelineName}</div>
+                        <div className="text-xs text-muted-foreground">{run.source}</div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <StatusBadge status={run.status} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <StatusBadge status={run.crawler.status} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <StatusBadge status={run.ingestion.status} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDateTime(run.requestedAt)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right">
+                        <Button asChild size="sm" variant="secondary">
+                          <Link href={`/runs/${run.runId}`}>Open</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </>
       )}

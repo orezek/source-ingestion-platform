@@ -60,7 +60,6 @@ export const envSchema = z
     ENABLE_PUBSUB_CONSUMER: toBoolean.default(true),
     SSE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
   })
-  .strict()
   .superRefine((value, context) => {
     if (
       value.CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND === 'gcs' &&
