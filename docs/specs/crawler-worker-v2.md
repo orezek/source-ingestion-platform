@@ -35,6 +35,7 @@ It should:
 - write HTML artifacts to the configured artifact sink
 - write crawler summary telemetry to `crawl_run_summaries`
 - publish crawler lifecycle and detail-captured events
+- act as a Pub/Sub publisher only in V2 MVP
 - reconcile inactive jobs against the pipeline-owned `normalized_job_ads` collection when enabled
 
 It should not:
@@ -43,6 +44,7 @@ It should not:
 - infer crawl input by reading mutable control-plane resources
 - know anything about ingestion parser/model configuration
 - know anything about structured output routing beyond whether downstream events should be emitted
+- subscribe to runtime Pub/Sub topics
 
 ## Bootstrap Environment
 
