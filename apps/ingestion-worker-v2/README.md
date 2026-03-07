@@ -95,31 +95,25 @@ output routing rule:
 - `POST /v1/runs/:runId/cancel`
 - `GET /v1/runs/:runId/outputs`
 
-For direct `POST /v1/runs` ingestion records, each `inputRef.records[]` entry must now include:
+`POST /v1/runs` registers one event-driven ingestion run. The payload must include:
 
-- `source`
-- `sourceId`
-- `dedupeKey`
-- `detailHtmlPath`
-- full `listingRecord` snapshot (`adUrl`, `jobTitle`, `companyName`, `location`, `salary`,
-  `publishedInfoText`, `scrapedAt`, `source`, `htmlDetailPageKey`)
+- `runId`
+- `idempotencyKey`
+- `runtimeSnapshot.ingestionConcurrency` (optional telemetry/config snapshot)
+- `inputRef.crawlRunId`
+- `inputRef.searchSpaceId`
+- `persistenceTargets.dbName`
+- optional `outputSinks`
 
-## Processing modes
+## Execution model
 
-The worker supports two execution modes from the same `POST /v1/runs` endpoint:
+The worker supports one execution mode only:
 
-1. Direct REST mode
-
-- `inputRef.records` is non-empty.
-- Worker starts processing immediately from provided records.
-- Run finalizes when internal queue and active item count reach zero.
-
-2. Event-driven Pub/Sub mode
-
-- `inputRef.records` is an empty array (`[]`).
-- Worker waits for `crawler.detail.captured` events to enqueue items.
-- Run finalizes only after `crawler.run.finished` is received and queue/active items are drained.
-- If `crawler.run.finished` is never received, run stays `running`.
+- `POST /v1/runs` creates an event-driven run registration.
+- The worker waits for `crawler.detail.captured` events to enqueue items.
+- The run finalizes only after `crawler.run.finished` is received and queue/active items are
+  drained.
+- If `crawler.run.finished` is never received, the run stays `running`.
 
 Current concurrency semantics:
 
@@ -130,7 +124,7 @@ Current concurrency semantics:
 
 Event correlation safety:
 
-- In event-driven mode, each active run must use a unique `inputRef.crawlRunId`.
+- Each active run must use a unique `inputRef.crawlRunId`.
 - If multiple running runs match incoming crawler events by `crawlRunId`, those events are skipped
   as ambiguous.
 
@@ -191,8 +185,7 @@ curl -X POST http://127.0.0.1:3020/v1/runs \
     },
     "inputRef": {
       "crawlRunId": "crawl-run-local-001",
-      "searchSpaceId": "default",
-      "records": []
+      "searchSpaceId": "default"
     },
     "persistenceTargets": {
       "dbName": "crawl-ops"

@@ -97,36 +97,9 @@ export const v2StoredArtifactRefSchema = z.object({
   sizeBytes: z.number().int().positive(),
 });
 
-const v2IngestionInputRecordSchema = z
-  .object({
-    source: nonEmptyStringSchema,
-    sourceId: nonEmptyStringSchema,
-    dedupeKey: nonEmptyStringSchema,
-    detailHtmlPath: nonEmptyStringSchema,
-    listingRecord: v2SourceListingRecordSchema,
-  })
-  .superRefine((value, context) => {
-    if (value.source !== value.listingRecord.source) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['listingRecord', 'source'],
-        message: 'listingRecord.source must match record.source.',
-      });
-    }
-
-    if (value.sourceId !== value.listingRecord.sourceId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['listingRecord', 'sourceId'],
-        message: 'listingRecord.sourceId must match record.sourceId.',
-      });
-    }
-  });
-
 export const v2IngestionInputRefSchema = z.object({
   crawlRunId: nonEmptyStringSchema,
   searchSpaceId: nonEmptyStringSchema,
-  records: z.array(v2IngestionInputRecordSchema),
 });
 
 export const v2RunTimeoutsSchema = z.object({
@@ -477,27 +450,6 @@ export const ingestionStartRunRequestV2Fixture = ingestionStartRunRequestV2Schem
   inputRef: {
     crawlRunId: 'crawl-run-v2-fixture-001',
     searchSpaceId: 'prague-tech-jobs',
-    records: [
-      {
-        source: 'jobs.cz',
-        sourceId: '2000905774',
-        dedupeKey: 'jobs.cz:prague-tech-jobs:crawl-run-v2-fixture-001:2000905774',
-        detailHtmlPath:
-          'gs://crawl-ops-artifacts/runs/crawl-run-v2-fixture-001/records/job-html-2000905774.html',
-        listingRecord: {
-          sourceId: '2000905774',
-          adUrl: 'https://www.jobs.cz/rpd/2000905774/',
-          jobTitle: 'Senior Software Engineer',
-          companyName: 'JobCompass Labs',
-          location: 'Prague',
-          salary: null,
-          publishedInfoText: 'Aktualizováno dnes',
-          scrapedAt: '2026-03-05T10:00:30.000Z',
-          source: 'jobs.cz',
-          htmlDetailPageKey: 'job-html-2000905774.html',
-        },
-      },
-    ],
   },
   outputSinks: [{ type: 'downloadable_json' }],
 });

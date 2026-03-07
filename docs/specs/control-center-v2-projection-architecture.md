@@ -109,12 +109,14 @@ Responsibilities:
 - reduce runtime events into `control_plane_runs`
 - expose read APIs backed by control-plane MongoDB
 - expose live update streams to the UI via SSE or WebSocket
+- own writes to control-plane collections only
 
 Not responsible for:
 
 - doing crawl work
 - doing ingestion work
 - storing large blob payloads directly in MongoDB
+- writing pipeline-owned telemetry or business-data collections
 
 ### `crawler-worker-v2`
 
@@ -145,6 +147,290 @@ Responsibilities:
 - GCP Pub/Sub: runtime event transport
 - GCP Cloud Storage: artifact and downloadable output blob storage
 
+## Pub/Sub Topology
+
+V2 MVP keeps Pub/Sub intentionally simple.
+
+- one shared runtime topic:
+  - `PUBSUB_EVENTS_TOPIC`
+- two publishers:
+  - `crawler-worker-v2`
+  - `ingestion-worker-v2`
+- two subscribers:
+  - `ingestion-worker-v2`
+  - `control-service`
+
+Canonical runtime roles:
+
+- `crawler-worker-v2` publishes runtime facts only and does not subscribe
+- `ingestion-worker-v2` subscribes to crawler runtime events needed for handoff/finalization and
+  publishes ingestion runtime events
+- `control-service` subscribes to the full runtime event stream and projects it into
+  `control_plane_run_event_index` and `control_plane_runs`
+
+Reason:
+
+- one topic is enough for the current runtime event family
+- the event volume and ownership model do not yet justify splitting topics
+- topic splitting should be deferred until a real need appears, such as throughput, security, or
+  retention pressure
+
+## `control-service` Pub/Sub Contract
+
+`control-service` is a subscriber only in V2 MVP. It does not need to publish Pub/Sub messages.
+
+### Contract Source
+
+- the canonical runtime event contract lives in `packages/control-plane-contracts/src/v2.ts`
+- `control-service` must validate every broker message with `runtimeBrokerEventV2Schema`
+- `control-service` must not define a forked event schema or tolerate undocumented event shapes
+- any new runtime event type must be added to `@repo/control-plane-contracts` before
+  `control-service` consumes it
+
+### Subscription Ownership
+
+- `control-service` owns one dedicated subscription on `PUBSUB_EVENTS_TOPIC`
+- the subscription must not be shared with `ingestion-worker-v2`
+- one logical deployment environment should have one logical control-service subscription
+- if `control-service` is scaled horizontally, replicas may share that subscription for
+  load-balanced consumption
+
+Recommended bootstrap env:
+
+- `GCP_PROJECT_ID`
+- `PUBSUB_EVENTS_TOPIC`
+- `PUBSUB_EVENTS_SUBSCRIPTION`
+- `PUBSUB_AUTO_CREATE_SUBSCRIPTION`
+- `ENABLE_PUBSUB_CONSUMER`
+
+Recommended default subscription naming rule:
+
+- `${SERVICE_NAME}-events-subscription`
+
+### Delivery Semantics
+
+- Pub/Sub delivery is at-least-once
+- `eventId` is the idempotency key for projection writes
+- `control_plane_run_event_index` must enforce a unique index on `eventId`
+- duplicate delivery must be treated as a no-op, not as a new event
+
+### Consumed Event Types
+
+For V2 MVP, `control-service` consumes the full runtime event stream:
+
+- `crawler.run.started`
+- `crawler.detail.captured`
+- `crawler.run.finished`
+- `ingestion.run.started`
+- `ingestion.item.started`
+- `ingestion.item.succeeded`
+- `ingestion.item.failed`
+- `ingestion.item.rejected`
+- `ingestion.run.finished`
+
+### Envelope Requirements
+
+Every valid Pub/Sub message consumed by `control-service` must contain:
+
+- `eventId`
+- `eventType`
+- `eventVersion`
+- `occurredAt`
+- `runId`
+- `correlationId`
+- `producer`
+- `payload`
+
+The payload shape is selected by the discriminated `eventType` union in
+`runtimeBrokerEventV2Schema`.
+
+### Processing Rules
+
+Recommended handling for each Pub/Sub message:
+
+1. receive the message from the control-service subscription
+2. parse the message body as UTF-8 JSON
+3. validate the parsed payload with `runtimeBrokerEventV2Schema`
+4. begin a MongoDB transaction
+5. check whether `eventId` already exists in `control_plane_run_event_index`
+6. if it already exists:
+   - commit no-op
+   - ack message
+7. if it does not exist:
+   - insert the indexed event document
+   - load the `control_plane_runs` document for `runId`
+   - if the run exists, apply the reducer and upsert the run projection
+   - if the run does not exist, keep the event with `projectionStatus = orphaned`
+   - commit
+8. ack only after the transaction commits successfully
+
+### Failure Handling
+
+- malformed JSON or contract-invalid messages are poison messages:
+  - log them with enough metadata to trace the producer
+  - increment error metrics / alerts
+  - ack them so they do not create infinite redelivery loops
+- duplicate `eventId` deliveries are expected under at-least-once delivery:
+  - treat them as no-op
+  - ack them
+- unknown-run events are anomalous but valid:
+  - persist them in `control_plane_run_event_index`
+  - set `projectionStatus = orphaned`
+  - do not synthesize a `control_plane_runs` document
+  - ack them
+- transient infrastructure failures are retryable:
+  - examples: MongoDB transaction failure, connection loss, temporary Pub/Sub client errors
+  - nack the message so Pub/Sub can redeliver it
+
+### Consumer Health Surface
+
+`control-service` readiness and heartbeat endpoints should expose subscriber state.
+
+Minimum expectations:
+
+- `GET /readyz`
+  - returns not ready when MongoDB is unavailable
+  - returns not ready when the Pub/Sub consumer is enabled but not initialized
+- `GET /heartbeat`
+  - returns `subscriptionEnabled`
+  - returns `consumerReady`
+  - returns `subscriptionName`
+  - returns `lastMessageReceivedAt`
+  - returns `lastMessageAppliedAt`
+  - returns `lastErrorAt`
+
+## `control-service` REST Contract
+
+V2 should make `control-service` the only HTTP API used by `control-center-v2`.
+
+### REST Design Rules
+
+- all control-service routes should be versioned under `/v1`
+- request and response bodies should be JSON
+- `control-center-v2` should never call worker REST APIs directly
+- `control-service` owns all command writes into control-plane MongoDB
+- all run and pipeline reads should come from control-plane MongoDB read models
+- live updates are a separate SSE contract and are not part of the REST surface below
+
+### Service Endpoints
+
+- `GET /healthz`
+  - liveness only
+  - returns process metadata such as `serviceName` and `serviceVersion`
+- `GET /readyz`
+  - readiness for load balancers and container runtime probes
+  - must fail if MongoDB is unavailable
+  - must fail if the Pub/Sub consumer is enabled but not initialized
+- `GET /heartbeat`
+  - lightweight UI-facing runtime status
+  - should expose subscriber and Mongo readiness fields
+
+### Pipeline Endpoints
+
+- `POST /v1/pipelines`
+  - creates one pipeline aggregate in `control_plane_pipelines`
+  - request body must contain the full pipeline-owned execution snapshot:
+    - `name`
+    - `source`
+    - `mode`
+    - `searchSpace`
+    - `runtimeProfile`
+    - `structuredOutput`
+  - request body must not contain control-plane managed fields such as:
+    - `pipelineId`
+    - `dbName`
+    - `version`
+    - `status`
+    - `createdAt`
+    - `updatedAt`
+  - response should return the persisted pipeline aggregate
+- `GET /v1/pipelines`
+  - lists pipeline summaries for the operator UI
+  - reads from `control_plane_pipelines`
+- `GET /v1/pipelines/{pipelineId}`
+  - returns one pipeline aggregate
+  - reads from `control_plane_pipelines`
+- `PATCH /v1/pipelines/{pipelineId}`
+  - request body should contain `name` only
+  - must reject attempts to mutate `source`, `searchSpace`, `runtimeProfile`,
+    `structuredOutput`, `dbName`, or `schedule`
+  - response should return the updated pipeline aggregate
+
+Deferred from V2 MVP:
+
+- pipeline-level pause and resume endpoints
+- pipeline deletion semantics are deferred from V2 MVP
+- V2 MVP should not expose:
+  - `POST /v1/pipelines/{pipelineId}/pause`
+  - `POST /v1/pipelines/{pipelineId}/resume`
+  - `DELETE /v1/pipelines/{pipelineId}`
+- if deletion is added later, it should be defined explicitly as a non-destructive control-plane
+  state transition rather than assumed filesystem or database removal
+
+### Run Command Endpoints
+
+- `POST /v1/pipelines/{pipelineId}/runs`
+  - starts one new run for the pipeline
+  - request body should be empty in V2 MVP
+  - V2 MVP should not accept per-run overrides for:
+    - `searchSpace`
+    - `runtimeProfile`
+    - `structuredOutput`
+    - `artifactSink`
+    - `outputSinks`
+    - worker concurrency
+    - pipeline database routing
+  - `control-service` must:
+    - resolve the pipeline aggregate into immutable worker command snapshots
+    - write `control_plane_runs`
+    - write `control_plane_run_manifests`
+    - if pipeline mode is `crawl_and_ingest`:
+      - dispatch ingestion `StartRun` first using minimal run context only
+      - then dispatch crawler `StartRun`
+    - if pipeline mode is `crawl_only`:
+      - dispatch crawler `StartRun` only
+  - response should return `202 Accepted` with the queued run identity and current control-plane
+    status
+- `POST /v1/runs/{runId}/cancel`
+  - requests cancellation or stop of one run
+  - request body should be empty in V2 MVP
+  - should be idempotent from the operator perspective
+  - response should return `202 Accepted` for an accepted cancellation request
+
+### Run Read Endpoints
+
+- `GET /v1/runs`
+  - lists runs from `control_plane_runs`
+  - should support simple filters such as:
+    - `pipelineId`
+    - `status`
+    - `source`
+    - `limit`
+    - `cursor`
+- `GET /v1/runs/{runId}`
+  - returns one run projection from `control_plane_runs`
+- `GET /v1/runs/{runId}/events`
+  - returns indexed run events from `control_plane_run_event_index`
+  - should support pagination by cursor or event time
+
+### Not Part Of The V2 REST Surface
+
+- standalone CRUD for live search spaces
+- standalone CRUD for live runtime profiles
+- standalone CRUD for live structured output destinations
+- bootstrap/config-pack APIs
+- `GET /v1/runs/{runId}/artifacts`
+- `GET /v1/runs/{runId}/outputs`
+
+These are intentionally excluded to preserve the pipeline-first ownership model.
+
+Reason:
+
+- the first UI can derive artifact and output views from `GET /v1/runs/{runId}` plus
+  `GET /v1/runs/{runId}/events`
+- dedicated artifact and output endpoints can be added later as convenience read APIs if the UI
+  needs them
+
 ## Control-Plane Collections
 
 The control-plane database should contain these collections:
@@ -153,12 +439,12 @@ The control-plane database should contain these collections:
 - `control_plane_runs`
 - `control_plane_run_manifests`
 - `control_plane_run_event_index`
-- `control_plane_bootstrap_profiles`
 
 For V2 MVP, these are enough.
 
 Not introduced in MVP:
 
+- `control_plane_bootstrap_profiles`
 - `control_plane_artifact_index`
 - `control_plane_output_index`
 
@@ -170,6 +456,24 @@ Reason:
 
 If those reads later become too expensive or awkward, dedicated index collections can be added as
 derived projections without changing worker contracts.
+
+## Canonical Ownership Rule
+
+This rule should stay hard in V2 MVP.
+
+- workers own execution and pipeline-local persistence
+- workers write pipeline-owned collections only:
+  - `crawl_run_summaries`
+  - `ingestion_run_summaries`
+  - `normalized_job_ads`
+- `control-service` owns the control-plane database only
+- `control-service` writes control-plane collections only:
+  - `control_plane_pipelines`
+  - `control_plane_runs`
+  - `control_plane_run_manifests`
+  - `control_plane_run_event_index`
+- `control-center-v2` never reads pipeline-owned databases directly
+- pipeline-local collections are not the primary source for the cross-pipeline UI
 
 ## Why `control_plane_runs` Must Exist
 
@@ -193,7 +497,24 @@ are not a good primary source for a cross-pipeline dashboard.
 The authoritative deep telemetry remains in pipeline-owned summary collections. The control-plane
 run projection stores only the subset needed by the UI.
 
-## Projection Collection Roles
+## Collection Roles
+
+### `control_plane_pipelines`
+
+Authoritative control-plane desired state, one document per pipeline.
+
+Purpose:
+
+- pipeline create/update/delete flows
+- stable operator-owned pipeline definition
+- immutable execution identity:
+  - source
+  - search space
+  - runtime profile
+  - structured output
+  - pipeline-owned `dbName`
+
+This is not a projection. It is the control-plane source of truth for pipeline configuration.
 
 ### `control_plane_run_manifests`
 
@@ -206,6 +527,8 @@ Purpose:
 - artifact/output path resolution
 - preserving the pipeline-owned execution snapshot
 
+This is not a projection. It is an immutable execution snapshot.
+
 ### `control_plane_run_event_index`
 
 Append-style event history, one document per runtime event.
@@ -217,6 +540,8 @@ Purpose:
 - downloadable JSON listing derivation
 - debugging and audit
 
+This is a projection/index of runtime events shaped for queries.
+
 ### `control_plane_runs`
 
 One current-state projection document per run.
@@ -227,6 +552,8 @@ Purpose:
 - run detail header/status
 - overview dashboards
 - current phase status without replaying the full event stream on every request
+
+This is the primary cross-pipeline UI read model.
 
 ## Recommended Document Shapes
 
@@ -435,21 +762,19 @@ Downloadable JSON listing for the UI should be derived from:
 
 ## Projection Algorithm
 
-Recommended handling for each Pub/Sub message:
+The transaction algorithm should follow the `control-service` Pub/Sub contract defined above.
 
-1. parse and validate the event
-2. begin MongoDB transaction
-3. check whether `eventId` already exists in `control_plane_run_event_index`
-4. if it already exists:
-   - commit no-op
-   - ack message
-5. if it does not exist:
-   - insert event document
-   - load `control_plane_runs` projection
-   - apply reducer
-   - upsert the new projection document
-   - commit
-6. ack the message only after commit
+Projection-specific rule:
+
+1. insert the indexed event document if `eventId` is new
+2. load `control_plane_runs` for `runId`
+3. if the run exists:
+   - apply the reducer
+   - upsert the projection document
+4. if the run does not exist:
+   - keep the indexed event with `projectionStatus = orphaned`
+   - do not synthesize a run projection
+5. commit before ack
 
 Reason:
 
@@ -554,7 +879,10 @@ And these control-plane MongoDB collections:
 2. `control_plane_runs`
 3. `control_plane_run_manifests`
 4. `control_plane_run_event_index`
-5. `control_plane_bootstrap_profiles`
+
+Defer until a later version:
+
+- `control_plane_bootstrap_profiles`
 
 That is the simplest architecture that:
 
@@ -563,6 +891,75 @@ That is the simplest architecture that:
 - avoids polling workers
 - avoids filesystem coupling
 - gives the UI one authoritative backend and one authoritative control-plane database to read
+
+## Remaining V2 Contract TODOs
+
+The core control-plane direction is now fixed, but several implementation contracts still need to
+be locked before coding starts.
+
+### 1. SSE Contract
+
+Still needed:
+
+- exact `GET /v1/stream` or equivalent endpoint shape
+- event names
+- payload shape
+- reconnect semantics
+- heartbeat event policy
+
+### 2. Worker Orchestration Contract
+
+Still needed:
+
+- exact crawler start sequence
+- cancel and stop propagation rules
+- retry and deduplication behavior for worker command dispatch
+
+Canonical ingestion start rule:
+
+- `control-service` starts ingestion before crawler for `crawl_and_ingest` pipelines
+- ingestion `StartRun` is an event-driven run registration command, not a batch item command
+- ingestion `StartRun` must not include `inputRef.records`
+- ingestion receives work from `crawler.detail.captured` and finalization from
+  `crawler.run.finished`
+
+### 3. Run State Machine
+
+Still needed:
+
+- exact overall run statuses
+- crawler and ingestion sub-status transitions
+- terminal state precedence rules
+- cancellation and stop semantics
+- failure summarization rules
+
+### 4. Auth Contract
+
+Still needed:
+
+- `control-center-v2` to `control-service` auth
+- `control-service` to worker auth
+- token versus JWT deployment rules
+- auth-exempt endpoint list
+
+### 5. Operational Contract
+
+Still needed:
+
+- typed `control-service` env schema
+- MongoDB index definitions
+- retention rules for control-plane collections
+- metrics and structured logging fields
+- container deployment expectations
+
+### 6. Package-Level Schemas
+
+Still needed:
+
+- move the documented `control_plane_pipelines`, `control_plane_runs`,
+  `control_plane_run_manifests`, and `control_plane_run_event_index` shapes into
+  `@repo/control-plane-contracts`
+- publish control-service REST request and response schemas from the same package
 
 ## Non-Goals
 

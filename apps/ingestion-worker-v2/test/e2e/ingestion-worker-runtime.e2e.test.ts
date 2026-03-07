@@ -5,8 +5,8 @@ import { after, before, test } from 'node:test';
 import type { Bucket, Storage } from '@google-cloud/storage';
 import type { Topic } from '@google-cloud/pubsub';
 import {
-  buildCrawlerDetailCapturedEvent,
-  buildCrawlerRunFinishedEvent,
+  buildCrawlerDetailCapturedEventV2,
+  buildCrawlerRunFinishedEventV2,
   ingestionStartRunRequestV2Schema,
 } from '@repo/control-plane-contracts';
 import { MongoClient } from 'mongodb';
@@ -30,7 +30,6 @@ type RunView = {
     rejected: number;
   };
   outputsCount: number;
-  waitForCrawlerFinished: boolean;
   crawlerFinished: boolean;
 };
 
@@ -258,27 +257,7 @@ function buildRuntimeEnv(): EnvSchema {
   };
 }
 
-function buildStartRunPayload(
-  runId: string,
-  records: Array<{
-    source: string;
-    sourceId: string;
-    dedupeKey: string;
-    detailHtmlPath: string;
-    listingRecord: {
-      sourceId: string;
-      adUrl: string;
-      jobTitle: string;
-      companyName: string | null;
-      location: string | null;
-      salary: string | null;
-      publishedInfoText: string | null;
-      scrapedAt: string;
-      source: string;
-      htmlDetailPageKey: string;
-    };
-  }>,
-) {
+function buildStartRunPayload(runId: string) {
   return ingestionStartRunRequestV2Schema.parse({
     contractVersion: 'v2',
     runId,
@@ -289,18 +268,35 @@ function buildStartRunPayload(
     inputRef: {
       crawlRunId: runId,
       searchSpaceId: 'search-space-e2e',
-      records: records.map((record) => ({
-        source: record.source,
-        sourceId: record.sourceId,
-        dedupeKey: record.dedupeKey,
-        detailHtmlPath: record.detailHtmlPath,
-        listingRecord: record.listingRecord,
-      })),
     },
     persistenceTargets: {
       dbName: sharedDbName,
     },
     outputSinks: [{ type: 'downloadable_json' }],
+  });
+}
+
+function buildCrawlerDetailCapturedFixtureEvent(input: {
+  runId: string;
+  crawlRunId: string;
+  fixtureCase: GoldenParityCase;
+}) {
+  const fixturePath = fixturePathBySourceId.get(input.fixtureCase.sourceId)!;
+
+  return buildCrawlerDetailCapturedEventV2({
+    runId: input.runId,
+    crawlRunId: input.crawlRunId,
+    searchSpaceId: 'search-space-e2e',
+    source: 'jobs.cz',
+    sourceId: input.fixtureCase.sourceId,
+    listingRecord: input.fixtureCase.listingRecord,
+    artifact: {
+      artifactType: 'html',
+      storageType: 'local_filesystem',
+      storagePath: fixturePath,
+      checksum: `checksum-${input.fixtureCase.sourceId}`,
+      sizeBytes: 4096,
+    },
   });
 }
 
@@ -440,7 +436,7 @@ function logKeptRunDocuments(runId: string): void {
 const maybeSkip = skipReason ? { skip: skipReason } : {};
 
 test(
-  'processes StartRun input records and persists summary and normalized documents',
+  'processes crawler detail events and persists summary and normalized documents',
   maybeSkip,
   async () => {
     const runId = buildRunId('e2e-start-run');
@@ -448,21 +444,31 @@ test(
 
     try {
       const { runtime, outputBucket, topic } = await createRuntimeFixture();
-      const payload = buildStartRunPayload(
-        runId,
-        goldenParityCases.map((fixtureCase) => ({
-          source: 'jobs.cz',
-          sourceId: fixtureCase.sourceId,
-          dedupeKey: `jobs.cz:search-space-e2e:${runId}:${fixtureCase.sourceId}`,
-          detailHtmlPath: fixturePathBySourceId.get(fixtureCase.sourceId)!,
-          listingRecord: fixtureCase.listingRecord,
-        })),
-      );
+      const payload = buildStartRunPayload(runId);
 
       const response = await runtime.startRun(payload);
       assert.equal(response.ok, true);
       assert.equal(response.accepted, true);
       assert.equal(response.deduplicated, false);
+
+      for (const fixtureCase of goldenParityCases) {
+        const detailEvent = buildCrawlerDetailCapturedFixtureEvent({
+          runId,
+          crawlRunId: runId,
+          fixtureCase,
+        });
+        await runtime.handlePubSubMessage(JSON.stringify(detailEvent));
+      }
+
+      const finishedEvent = buildCrawlerRunFinishedEventV2({
+        runId,
+        crawlRunId: runId,
+        source: 'jobs.cz',
+        searchSpaceId: 'search-space-e2e',
+        status: 'succeeded',
+        stopReason: 'completed',
+      });
+      await runtime.handlePubSubMessage(JSON.stringify(finishedEvent));
 
       const run = await waitForRunStatus(runtime, runId, 'succeeded');
       assert.equal(run.counters.received, goldenParityCases.length);
@@ -579,42 +585,20 @@ test(
 
     try {
       const { runtime } = await createRuntimeFixture();
-      const payload = buildStartRunPayload(runId, []);
+      const payload = buildStartRunPayload(runId);
       await runtime.startRun(payload);
 
       const initialState = getRunView(runtime, runId);
       assert.equal(initialState.status, 'running');
-      assert.equal(initialState.waitForCrawlerFinished, true);
       assert.equal(initialState.crawlerFinished, false);
 
-      const sourceId = '2001090812';
-      const fixturePath = fixturePathBySourceId.get(sourceId)!;
-      const detailEvent = buildCrawlerDetailCapturedEvent({
+      const fixtureCase = goldenParityCases.find(
+        (candidate) => candidate.sourceId === '2001090812',
+      )!;
+      const detailEvent = buildCrawlerDetailCapturedFixtureEvent({
         runId,
         crawlRunId: runId,
-        searchSpaceId: 'search-space-e2e',
-        source: 'jobs.cz',
-        sourceId,
-        listingRecord: {
-          sourceId,
-          adUrl:
-            'https://www.jobs.cz/rpd/2001090812/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
-          jobTitle: 'IT Manažer',
-          companyName: 'Gas Storage CZ, a.s.',
-          location: 'Praha - Strašnice',
-          salary: null,
-          publishedInfoText: null,
-          scrapedAt: '2026-03-05T10:00:00.000Z',
-          source: 'jobs.cz',
-          htmlDetailPageKey: 'job-html-2001090812.html',
-        },
-        artifact: {
-          artifactType: 'html',
-          storageType: 'local_filesystem',
-          storagePath: fixturePath,
-          checksum: 'checksum-2001090812',
-          sizeBytes: 2048,
-        },
+        fixtureCase,
       });
 
       await runtime.handlePubSubMessage(JSON.stringify(detailEvent));
@@ -622,13 +606,12 @@ test(
       const midState = getRunView(runtime, runId);
       assert.equal(midState.status, 'running');
 
-      const finishedEvent = buildCrawlerRunFinishedEvent({
+      const finishedEvent = buildCrawlerRunFinishedEventV2({
         runId,
         crawlRunId: runId,
+        source: 'jobs.cz',
         searchSpaceId: 'search-space-e2e',
         status: 'succeeded',
-        newJobsCount: 1,
-        failedRequests: 0,
         stopReason: 'completed',
       });
 
@@ -665,51 +648,29 @@ test(
 
     try {
       const { runtime, outputBucket } = await createRuntimeFixture();
-      const payload = buildStartRunPayload(runId, []);
+      const payload = buildStartRunPayload(runId);
       payload.inputRef.crawlRunId = crawlRunId;
       payload.outputSinks = [];
 
       await runtime.startRun(payload);
 
-      const sourceId = '2001063102';
-      const fixturePath = fixturePathBySourceId.get(sourceId)!;
-      const detailEvent = buildCrawlerDetailCapturedEvent({
+      const fixtureCase = goldenParityCases.find(
+        (candidate) => candidate.sourceId === '2001063102',
+      )!;
+      const detailEvent = buildCrawlerDetailCapturedFixtureEvent({
         runId: crawlRunId,
         crawlRunId,
-        searchSpaceId: 'search-space-e2e',
-        source: 'jobs.cz',
-        sourceId,
-        listingRecord: {
-          sourceId,
-          adUrl:
-            'https://www.jobs.cz/rpd/2001063102/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
-          jobTitle: 'Technical Program Manager',
-          companyName: 'Univerzita Karlova – Matematicko-fyzikální fakulta',
-          location: 'Praha – Malá Strana',
-          salary: null,
-          publishedInfoText: 'Aktualizováno dnes',
-          scrapedAt: '2026-03-05T10:00:00.000Z',
-          source: 'jobs.cz',
-          htmlDetailPageKey: 'job-html-2001063102.html',
-        },
-        artifact: {
-          artifactType: 'html',
-          storageType: 'local_filesystem',
-          storagePath: fixturePath,
-          checksum: 'checksum-2001063102',
-          sizeBytes: 4096,
-        },
+        fixtureCase,
       });
 
       await runtime.handlePubSubMessage(JSON.stringify(detailEvent));
 
-      const finishedEvent = buildCrawlerRunFinishedEvent({
+      const finishedEvent = buildCrawlerRunFinishedEventV2({
         runId: crawlRunId,
         crawlRunId,
+        source: 'jobs.cz',
         searchSpaceId: 'search-space-e2e',
         status: 'succeeded',
-        newJobsCount: 1,
-        failedRequests: 0,
         stopReason: 'completed',
       });
       await runtime.handlePubSubMessage(JSON.stringify(finishedEvent));
@@ -748,30 +709,48 @@ test(
     try {
       const { runtime, topic, outputBucket, logger } = await createRuntimeFixture();
       const sourceId = 'missing-2000905776';
-      const dedupeKey = `jobs.cz:search-space-e2e:${runId}:${sourceId}`;
-      const payload = buildStartRunPayload(runId, [
-        {
-          source: 'jobs.cz',
-          sourceId,
-          dedupeKey,
-          detailHtmlPath: `/tmp/ingestion-worker-v2-${runId}.html`,
-          listingRecord: {
-            sourceId,
-            adUrl:
-              'https://www.jobs.cz/rpd/missing-2000905776/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
-            jobTitle: 'Missing Detail Fixture',
-            companyName: null,
-            location: null,
-            salary: null,
-            publishedInfoText: null,
-            scrapedAt: new Date().toISOString(),
-            source: 'jobs.cz',
-            htmlDetailPageKey: 'missing-2000905776.html',
-          },
-        },
-      ]);
+      const payload = buildStartRunPayload(runId);
 
       await runtime.startRun(payload);
+      const detailEvent = buildCrawlerDetailCapturedEventV2({
+        runId,
+        crawlRunId: runId,
+        searchSpaceId: 'search-space-e2e',
+        source: 'jobs.cz',
+        sourceId,
+        listingRecord: {
+          sourceId,
+          adUrl:
+            'https://www.jobs.cz/rpd/missing-2000905776/?searchId=793f06bf-b653-4637-8010-5c1bebdf0970&rps=233',
+          jobTitle: 'Missing Detail Fixture',
+          companyName: null,
+          location: null,
+          salary: null,
+          publishedInfoText: null,
+          scrapedAt: new Date().toISOString(),
+          source: 'jobs.cz',
+          htmlDetailPageKey: 'missing-2000905776.html',
+        },
+        artifact: {
+          artifactType: 'html',
+          storageType: 'local_filesystem',
+          storagePath: `/tmp/ingestion-worker-v2-${runId}.html`,
+          checksum: 'checksum-missing-2000905776',
+          sizeBytes: 1024,
+        },
+      });
+      await runtime.handlePubSubMessage(JSON.stringify(detailEvent));
+
+      const finishedEvent = buildCrawlerRunFinishedEventV2({
+        runId,
+        crawlRunId: runId,
+        source: 'jobs.cz',
+        searchSpaceId: 'search-space-e2e',
+        status: 'completed_with_errors',
+        stopReason: 'completed',
+      });
+      await runtime.handlePubSubMessage(JSON.stringify(finishedEvent));
+
       const run = await waitForRunStatus(runtime, runId, 'completed_with_errors');
 
       assert.equal(run.counters.received, 1);

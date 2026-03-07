@@ -415,7 +415,6 @@ export function buildIngestionWorkerStartRunRequestV2(manifest: RunManifest) {
     inputRef: {
       crawlRunId: manifest.runId,
       searchSpaceId: manifest.searchSpaceSnapshot.id,
-      records: [],
     },
     persistenceTargets: {
       dbName: getMongoDbName(manifest),

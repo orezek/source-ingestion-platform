@@ -24,6 +24,9 @@ Notes:
 - `runtimeSnapshot` is worker-specific:
   - crawler: `crawlerMaxConcurrency`, `crawlerMaxRequestsPerMinute`
   - ingestion: `ingestionConcurrency`
+- ingestion `StartRun` is event-driven registration only:
+  - it includes `inputRef.crawlRunId` and `inputRef.searchSpaceId`
+  - it does not carry inline item batches or `inputRef.records`
 - `crawler.run.requested` remains exported for legacy/v1 compatibility and control-plane replay
   helpers; it is not the canonical v2 worker command path.
 - V2 runtime broker events now live in `src/v2.ts`.

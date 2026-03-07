@@ -129,7 +129,7 @@ projection architecture note:
 
 ## v2.0 Data Domain Model
 
-v2.0 keeps five first-class data domains.
+v2.0 MVP keeps four first-class data domains.
 
 ### Domain 1: Operational Telemetry
 
@@ -161,22 +161,7 @@ v2 control-plane rule:
   authoritative runtime model in v2
 - see `docs/specs/control-plane-v2-pipeline-first.md`
 
-### Domain 3: System Bootstrap / Config Packs
-
-purpose:
-
-- system-wide setup profiles that can be imported/exported and promoted across environments
-
-collections:
-
-- `control_plane_bootstrap_profiles`
-
-document intent:
-
-- one profile document represents a deployable setup style (`local-dev`, `staging`, `prod-cz`)
-- references default runtime profile, storage adapters, broker adapter, and policy defaults
-
-### Domain 4: Execution State (Run Ledger)
+### Domain 3: Execution State (Run Ledger)
 
 purpose:
 
@@ -196,7 +181,7 @@ notes:
 - this is distinct from telemetry summaries
 - this is distinct from static configuration
 
-### Domain 5: Production Output Data
+### Domain 4: Production Output Data
 
 purpose:
 
@@ -207,6 +192,11 @@ storage:
 - `normalized_job_ads` (Mongo collection or equivalent canonical store)
 - downloadable JSON objects (object storage backend)
 - captured HTML artifacts (object storage backend)
+
+Deferred from MVP:
+
+- `control_plane_bootstrap_profiles`
+- bootstrap/config-pack workflows
 
 ## v2.0 Persistence Rules
 
@@ -220,22 +210,21 @@ storage:
 
 Control-service API should expose:
 
-- configuration resources:
-  - `pipelines`
-- bootstrap resources:
-  - `bootstrap-profiles`
-  - `bootstrap-apply`
-  - `bootstrap-export`
+- service endpoints:
+  - `GET /healthz`
+  - `GET /readyz`
+  - `GET /heartbeat`
+- pipeline resources:
+  - `POST /v1/pipelines`
+  - `GET /v1/pipelines`
+  - `GET /v1/pipelines/{pipelineId}`
+  - `PATCH /v1/pipelines/{pipelineId}`
 - execution resources:
-  - `runs`
-  - `runs/{runId}`
-  - `runs/{runId}/events`
-  - `runs/{runId}/artifacts`
-  - `runs/{runId}/outputs`
-- scheduling resources (when enabled):
-  - `schedules`
-  - `schedules/{id}/pause`
-  - `schedules/{id}/resume`
+  - `POST /v1/pipelines/{pipelineId}/runs`
+  - `POST /v1/runs/{runId}/cancel`
+  - `GET /v1/runs`
+  - `GET /v1/runs/{runId}`
+  - `GET /v1/runs/{runId}/events`
 
 All writes should be control-service-owned and idempotency-aware.
 
@@ -244,6 +233,19 @@ v2 control-plane rule:
 - the primary configuration API is pipeline-first
 - source/search-space/runtime/output config for live pipelines is created inside pipeline creation,
   not as globally mutable runtime resources
+- pipeline-level pause, resume, and delete endpoints are deferred from V2 MVP
+- dedicated artifact and output read endpoints are deferred from V2 MVP
+- bootstrap/config-pack APIs are deferred from V2 MVP
+
+Control-service API detail note:
+
+- the canonical control-service REST contract lives in
+  `docs/specs/control-center-v2-projection-architecture.md`
+- V2 MVP payload simplicity rule:
+  - `POST /v1/pipelines` carries the full pipeline snapshot
+  - `PATCH /v1/pipelines/{pipelineId}` carries `name` only
+  - `POST /v1/pipelines/{pipelineId}/runs` uses an empty body
+  - `POST /v1/runs/{runId}/cancel` uses an empty body
 
 ## v2.0 Worker Bootstrap And Runtime Contracts
 
@@ -298,7 +300,7 @@ implementation note:
 
 - `GET /healthz`
 - `GET /readyz`
-- `POST /v1/runs`
+- `POST /v1/runs` (accepts event-driven `StartRun` registration snapshot)
 - `POST /v1/runs/{runId}/cancel`
 - `GET /v1/runs/{runId}/outputs` (metadata/index)
 
@@ -318,9 +320,9 @@ implementation note:
   - optional `timeouts`
 - ingestion `StartRun` only:
   - `runtimeSnapshot` (`ingestionConcurrency`)
-  - `inputRef` (crawler dataset/artifact refs)
-  - each `inputRef.records[]` must carry `source`, `sourceId`, `dedupeKey`,
-    `detailHtmlPath`, and full `listingRecord` snapshot from crawler output
+  - `inputRef`
+  - `inputRef.crawlRunId`
+  - `inputRef.searchSpaceId`
   - optional `outputSinks` (`[{ "type": "downloadable_json" }]` only)
   - `persistenceTargets.dbName`
   - optional `timeouts`
@@ -334,17 +336,9 @@ control-plane note:
 - MongoDB writes to canonical collections are implicit worker behavior; `outputSinks` only toggles
   optional downloadable JSON output
 
-execution modes:
+execution mode:
 
-1. direct REST mode
-
-- `inputRef.records` is non-empty
-- ingestion worker processes provided records immediately
-- run finalizes once queue/active item processing drains
-
-2. event-driven mode
-
-- `inputRef.records` is empty (`[]`)
+- ingestion `StartRun` registers one event-driven ingestion run
 - ingestion worker waits for `crawler.detail.captured` events
 - run finalization requires `crawler.run.finished` plus drained queue/active items
 - without `crawler.run.finished`, run remains `running`
@@ -357,7 +351,7 @@ concurrency semantics (current runtime behavior):
   throttle
 - item execution order is from a shared queue across runs; there is no per-run isolated worker pool
 
-event correlation constraint (required for event-driven mode):
+event correlation constraint:
 
 - each active ingestion run must have a unique `inputRef.crawlRunId`
 - if multiple running runs match the same crawler event by `crawlRunId`, ingestion worker skips that
@@ -394,6 +388,23 @@ database routing constraint (canonical for v2):
 - MongoDB: control config + execution ledger + telemetry projections (source of truth), not
   Pub/Sub alone
 
+Pub/Sub topology for V2 MVP:
+
+- one shared runtime topic:
+  - `PUBSUB_EVENTS_TOPIC`
+- two publishers:
+  - `crawler-worker-v2`
+  - `ingestion-worker-v2`
+- two subscribers:
+  - `ingestion-worker-v2`
+  - `control-service`
+
+Role rule:
+
+- crawler publishes only and does not subscribe
+- ingestion subscribes for crawler handoff/finalization and publishes ingestion runtime events
+- `control-service` subscribes to the full runtime stream for projections
+
 gcp mapping (canonical):
 
 - Pub/Sub = Google Cloud Pub/Sub topics/subscriptions
@@ -417,6 +428,7 @@ minimum event families:
 - `ingestion.item.started`
 - `ingestion.item.succeeded`
 - `ingestion.item.failed`
+- `ingestion.item.rejected`
 - `ingestion.run.finished`
 
 Each event should include:
@@ -428,6 +440,13 @@ Each event should include:
 - `correlationId`
 - `producer`
 - payload with versioned schema
+
+control-service subscriber note:
+
+- `control-service` consumes the full `runtimeBrokerEventV2Schema` union from
+  `packages/control-plane-contracts/src/v2.ts`
+- the detailed control-service Pub/Sub consumer contract lives in
+  `docs/specs/control-center-v2-projection-architecture.md`
 
 `crawler.run.finished` v2 payload should stay minimal:
 
@@ -519,13 +538,17 @@ Behavior:
 
 - owns `control_plane_pipelines`, `control_plane_runs`, `control_plane_run_manifests`, and
   run-state transitions
-- owns configuration domains and bootstrap profiles
+- owns control-plane configuration and execution collections only
 - owns authoritative event-index write policy (`control_plane_run_event_index`)
 - exposes the read APIs consumed by the UI
 - target v2 read path:
   - the UI reads run/event data through `control-service`
   - `control-service` reads MongoDB projections
   - filesystem broker archives are optional diagnostics only, not the primary operator read model
+- must not write pipeline-local telemetry or business-data collections:
+  - `crawl_run_summaries`
+  - `ingestion_run_summaries`
+  - `normalized_job_ads`
 
 #### Crawler Worker
 

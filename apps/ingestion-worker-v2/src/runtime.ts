@@ -82,7 +82,6 @@ type RunState = {
   startedAt: string;
   finishedAt: string | null;
   cancelRequested: boolean;
-  waitForCrawlerFinished: boolean;
   crawlerFinished: boolean;
   queueDepth: number;
   activeItems: number;
@@ -276,7 +275,6 @@ export class IngestionWorkerRuntime {
       startedAt,
       finishedAt: null,
       cancelRequested: false,
-      waitForCrawlerFinished: parsedRequest.inputRef.records.length === 0,
       crawlerFinished: false,
       queueDepth: 0,
       activeItems: 0,
@@ -300,22 +298,6 @@ export class IngestionWorkerRuntime {
     await this.ensureIndexesForRun(run);
     await this.publishRunStarted(run);
 
-    for (const record of parsedRequest.inputRef.records) {
-      const item: ItemInput = {
-        source: record.source,
-        crawlRunId: parsedRequest.inputRef.crawlRunId,
-        searchSpaceId: parsedRequest.inputRef.searchSpaceId,
-        sourceId: record.sourceId,
-        dedupeKey: record.dedupeKey,
-        detailHtmlPath: record.detailHtmlPath,
-        listingRecord: record.listingRecord,
-      };
-
-      await this.queueItem(run, item);
-    }
-
-    await this.tryFinalizeRun(run);
-
     return startRunAcceptedResponseV2Schema.parse({
       contractVersion: 'v2',
       ok: true,
@@ -324,7 +306,7 @@ export class IngestionWorkerRuntime {
       accepted: true,
       deduplicated: false,
       state: 'accepted',
-      message: 'Run accepted for ingestion execution.',
+      message: 'Run accepted for event-driven ingestion execution.',
     });
   }
 
@@ -340,7 +322,6 @@ export class IngestionWorkerRuntime {
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
       cancelRequested: run.cancelRequested,
-      waitForCrawlerFinished: run.waitForCrawlerFinished,
       crawlerFinished: run.crawlerFinished,
       queueDepth: run.queueDepth,
       activeItems: run.activeItems,
@@ -754,8 +735,7 @@ export class IngestionWorkerRuntime {
       return;
     }
 
-    const canFinalize =
-      (!run.waitForCrawlerFinished || run.crawlerFinished) && run.queueDepth === 0;
+    const canFinalize = run.crawlerFinished && run.queueDepth === 0;
     if (!canFinalize || run.activeItems > 0) {
       return;
     }

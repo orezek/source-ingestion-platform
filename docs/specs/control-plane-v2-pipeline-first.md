@@ -71,7 +71,6 @@ Examples:
 - `searchSpace`
 - `runtimeProfile`
 - `structuredOutput`
-- `schedule` (when scheduling is enabled)
 
 These are embedded pipeline-owned snapshots, not authoritative references to globally editable
 resources.
@@ -89,8 +88,6 @@ After pipeline creation, the following fields are immutable:
 After pipeline creation, the following fields remain mutable:
 
 - `name`
-- `schedule`
-- operational state (`active`, `paused`, `stopped`, `deleted`)
 
 v2 rule:
 
@@ -124,15 +121,26 @@ Consequences:
 - `control_plane_runs`
 - `control_plane_run_manifests`
 - `control_plane_run_event_index`
-- `control_plane_bootstrap_profiles`
 
 These are MongoDB collections in the control-plane database.
+
+Deferred until a later version:
+
+- `control_plane_bootstrap_profiles`
 
 Projection architecture note:
 
 - `control_plane_runs` and `control_plane_run_event_index` are derived read models maintained by a
   dedicated `control-service`
 - see `docs/specs/control-center-v2-projection-architecture.md`
+
+Canonical ownership rule:
+
+- `control-service` owns these control-plane collections only
+- workers own pipeline-local collections only:
+  - `crawl_run_summaries`
+  - `ingestion_run_summaries`
+  - `normalized_job_ads`
 
 Projection roles:
 
@@ -174,10 +182,6 @@ On save:
 After creation, the operator can:
 
 - rename the pipeline
-- configure scheduling
-- pause the pipeline
-- stop current activity
-- delete the pipeline
 
 The operator cannot edit the pipeline's execution identity.
 
@@ -188,27 +192,35 @@ When a run is started:
 - the control plane resolves the pipeline aggregate into immutable worker commands
 - the run manifest stores the full pipeline-owned snapshot for replay and audit
 - worker-facing `StartRun` payloads contain only the resolved execution data each worker needs
+- the operator-facing `POST /v1/pipelines/{pipelineId}/runs` request should be empty in V2 MVP
 
 Worker commands must not depend on reading mutable configuration resources at execution time.
+The run-start endpoint must not accept per-run overrides that bypass the pipeline aggregate.
 
 ## API Shape
 
-Primary control-plane write resources in v2:
+Primary control-service REST resources in v2:
 
-- `POST /pipelines`
-- `GET /pipelines`
-- `GET /pipelines/{pipelineId}`
-- `PATCH /pipelines/{pipelineId}` for allowed mutable fields only
-- `POST /pipelines/{pipelineId}/pause`
-- `POST /pipelines/{pipelineId}/resume`
-- `POST /pipelines/{pipelineId}/runs`
-- `DELETE /pipelines/{pipelineId}`
+- `POST /v1/pipelines`
+- `GET /v1/pipelines`
+- `GET /v1/pipelines/{pipelineId}`
+- `PATCH /v1/pipelines/{pipelineId}` for allowed mutable fields only
+- `POST /v1/pipelines/{pipelineId}/runs`
+- `GET /v1/runs`
+- `GET /v1/runs/{runId}`
 
 Not part of the primary v2 runtime API:
 
 - standalone CRUD for live search spaces
 - standalone CRUD for live runtime profiles
 - standalone CRUD for live structured output destinations
+- pipeline pause/resume endpoints
+- pipeline delete endpoint
+
+Contract detail note:
+
+- the canonical control-service REST contract lives in
+  `docs/specs/control-center-v2-projection-architecture.md`
 
 ## UI Implications
 
