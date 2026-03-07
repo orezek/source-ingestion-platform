@@ -1135,6 +1135,24 @@ Optional env with defaults:
   - default `true`
 - `SSE_HEARTBEAT_INTERVAL_MS`
   - default `15000`
+- `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND`
+  - default `local_filesystem`
+- `CONTROL_PLANE_ARTIFACT_STORAGE_LOCAL_BASE_PATH`
+  - default `control-plane-artifacts`
+- `CONTROL_PLANE_ARTIFACT_STORAGE_GCS_BUCKET`
+  - required when `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=gcs`
+- `CONTROL_PLANE_ARTIFACT_STORAGE_GCS_PREFIX`
+  - default `''`
+
+Artifact sink rule:
+
+- `control-service` owns crawler `artifactSink` selection because crawler requires it in
+  `StartRun`
+- V2 MVP should keep this small:
+  - local development may use `local_filesystem`
+  - GCP deployments should use `gcs`
+- downloadable JSON output storage remains ingestion-worker bootstrap config and is not configured
+  through `control-service`
 
 Bootstrap order:
 
