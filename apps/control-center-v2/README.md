@@ -26,6 +26,15 @@ Required:
 - `CONTROL_SERVICE_BASE_URL`
 - `CONTROL_SHARED_TOKEN`
 
+Deployment rules:
+
+- set both envs as server-side secrets only
+- do not expose either value via `NEXT_PUBLIC_*`
+- for Vercel, add both variables to the project environment and keep them available only to
+  server execution paths
+- `CONTROL_SERVICE_BASE_URL` should point at the deployed `control-service-v2` base URL
+- `CONTROL_SHARED_TOKEN` must match the token accepted by `control-service-v2`
+
 ## Development
 
 ```bash

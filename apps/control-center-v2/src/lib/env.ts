@@ -1,3 +1,4 @@
+import 'server-only';
 import { loadEnv } from '@repo/env-config';
 import { z } from 'zod';
 
