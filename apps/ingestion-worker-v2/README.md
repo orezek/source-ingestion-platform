@@ -6,7 +6,7 @@ Lightweight ingestion worker for V2 architecture.
 - Fastify REST API for run lifecycle
 - Pub/Sub event consumption (`crawler.detail.captured`, `crawler.run.finished`)
 - MongoDB persistence (`ingestion_run_summaries`, `normalized_job_ads`)
-- GCS JSON output writes
+- run-scoped downloadable JSON output delivery (`gcs` or `local_filesystem`)
 - V1-compatible full normalized job model (`listing`, `detail`, `rawDetailPage`, `ingestion`)
 
 ## Bootstrap `.env`
@@ -15,7 +15,6 @@ Lightweight ingestion worker for V2 architecture.
 CONTROL_SHARED_TOKEN=replace-me
 GCP_PROJECT_ID=your-gcp-project
 PUBSUB_EVENTS_TOPIC=run-events
-OUTPUTS_BUCKET=your-output-bucket
 MONGODB_URI=mongodb://localhost:27017
 INGESTION_PARSER_BACKEND=fixture
 ```
@@ -37,7 +36,6 @@ SERVICE_VERSION=2.0.0
 CONTROL_AUTH_MODE=token
 CONTROL_JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----...
 PUBSUB_EVENTS_SUBSCRIPTION=ingestion-worker-events-subscription
-OUTPUTS_PREFIX=ingestion
 LOG_LEVEL=info
 LOG_PRETTY=false
 MAX_CONCURRENT_RUNS=4
@@ -83,9 +81,9 @@ Recommended v2 policy:
 output routing rule:
 
 - MongoDB writes to canonical `normalized_job_ads` are always on
-- `outputSinks` is ingestion-only and only enables optional downloadable JSON writes
-- `outputSinks` does not carry bucket paths or collection names; those stay in worker bootstrap/env
-  and fixed platform conventions
+- `outputSinks` is ingestion-only and enables optional downloadable JSON writes
+- downloadable JSON routing is run-scoped and comes from `outputSinks[].delivery`
+- worker bootstrap env does not own downloadable output bucket/basePath in v2.1
 
 ## Endpoints
 
@@ -103,16 +101,24 @@ output routing rule:
 - `inputRef.crawlRunId`
 - `inputRef.searchSpaceId`
 - `persistenceTargets.dbName`
-- optional `outputSinks`
+- optional `outputSinks` with per-sink `delivery`
+
+`POST /v1/runs/:runId/cancel` requires a typed payload:
+
+- `reason: "startup_rollback" | "operator_request"`
+- optional `details` object by reason
 
 ## Execution model
 
 The worker supports one execution mode only:
 
 - `POST /v1/runs` creates an event-driven run registration.
+- Pub/Sub consumer attaches only after the first accepted `StartRun`.
 - The worker waits for `crawler.detail.captured` events to enqueue items.
 - The run finalizes only after `crawler.run.finished` is received and queue/active items are
   drained.
+- If no detail events are received within the idle timeout window (default 60s), the run
+  auto-expires as `stopped`.
 - If `crawler.run.finished` is never received, the run stays `running`.
 
 Current concurrency semantics:
@@ -192,9 +198,30 @@ curl -X POST http://127.0.0.1:3020/v1/runs \
     },
     "outputSinks": [
       {
-        "type": "downloadable_json"
+        "type": "downloadable_json",
+        "delivery": {
+          "storageType": "gcs",
+          "bucket": "control-plane-artifacts",
+          "prefix": "pipelines/pipeline-local/runs/crawl-run-local-001/outputs/downloadable-json"
+        }
       }
     ]
+  }'
+```
+
+Cancel run (operator semantics):
+
+```bash
+curl -X POST http://127.0.0.1:3020/v1/runs/crawl-run-local-001/cancel \
+  -H "Authorization: Bearer $CONTROL_SHARED_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "operator_request",
+    "details": {
+      "requestedBy": "operator",
+      "requestedAt": "2026-03-08T12:00:00.000Z",
+      "note": "Manual stop from control center"
+    }
   }'
 ```
 

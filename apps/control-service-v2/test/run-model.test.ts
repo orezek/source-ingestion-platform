@@ -31,6 +31,15 @@ test('buildRunManifest keeps ingestion start-run event-driven only', () => {
     crawlRunId: runId,
     searchSpaceId: controlPlanePipelineV2Fixture.searchSpace.id,
   });
+  assert.equal(manifest.workerCommands.ingestion?.outputSinks.length, 1);
+  assert.deepEqual(manifest.workerCommands.ingestion?.outputSinks[0], {
+    type: 'downloadable_json',
+    delivery: {
+      storageType: 'gcs',
+      bucket: 'control-plane-artifacts',
+      prefix: `runs/pipelines/${controlPlanePipelineV2Fixture.pipelineId}/runs/${runId}/outputs/downloadable-json`,
+    },
+  });
 });
 
 test('dispatch failure keeps overall run failed even after later worker stop events', () => {

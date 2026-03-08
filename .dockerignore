@@ -16,6 +16,7 @@ commitlint.config.js
 **/dist/
 .turbo/
 **/tsconfig.tsbuildinfo
+**/control-plane-artifacts/
 
 # --- Logs & Docs ---
 *.log

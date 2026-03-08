@@ -58,9 +58,57 @@ export const v2ArtifactSinkSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-export const v2OutputSinkSchema = z.object({
-  type: z.literal('downloadable_json'),
-});
+export const v2DownloadableJsonDeliverySchema = z.discriminatedUnion('storageType', [
+  z.object({
+    storageType: z.literal('local_filesystem'),
+    basePath: nonEmptyStringSchema,
+    prefix: optionalStringSchema.default(''),
+  }),
+  z.object({
+    storageType: z.literal('gcs'),
+    bucket: nonEmptyStringSchema,
+    prefix: optionalStringSchema.default(''),
+  }),
+]);
+
+export const v2OutputSinkSchema = z
+  .object({
+    type: z.literal('downloadable_json'),
+    delivery: v2DownloadableJsonDeliverySchema,
+  })
+  .strict();
+
+const v2IngestionCancelStartupRollbackDetailsSchema = z
+  .object({
+    failedWorker: z.literal('crawler').default('crawler'),
+    failedAction: z.literal('start_run').default('start_run'),
+    errorCode: optionalStringSchema,
+    errorMessage: optionalStringSchema,
+  })
+  .strict();
+
+const v2IngestionCancelOperatorRequestDetailsSchema = z
+  .object({
+    requestedBy: z.enum(['operator', 'control_service']).default('control_service'),
+    requestedAt: isoDateTimeSchema.optional(),
+    note: optionalStringSchema,
+  })
+  .strict();
+
+export const ingestionCancelRunRequestV2Schema = z.discriminatedUnion('reason', [
+  z
+    .object({
+      reason: z.literal('startup_rollback'),
+      details: v2IngestionCancelStartupRollbackDetailsSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      reason: z.literal('operator_request'),
+      details: v2IngestionCancelOperatorRequestDetailsSchema.optional(),
+    })
+    .strict(),
+]);
 
 export const v2CrawlerSearchSpaceSnapshotSchema = z.object({
   name: nonEmptyStringSchema,
@@ -452,7 +500,16 @@ export const ingestionStartRunRequestV2Fixture = ingestionStartRunRequestV2Schem
     crawlRunId: 'crawl-run-v2-fixture-001',
     searchSpaceId: 'prague-tech-jobs',
   },
-  outputSinks: [{ type: 'downloadable_json' }],
+  outputSinks: [
+    {
+      type: 'downloadable_json',
+      delivery: {
+        storageType: 'gcs',
+        bucket: 'crawl-ops-artifacts',
+        prefix: 'pipelines/pipeline-v2-fixture-001/runs/ingestion-run-v2-fixture-001/outputs',
+      },
+    },
+  ],
 });
 
 export const startRunAcceptedResponseV2Fixture = startRunAcceptedResponseV2Schema.parse({
@@ -1172,6 +1229,15 @@ export const controlServiceCancelRunRequestV2Fixture = controlServiceCancelRunRe
   {},
 );
 
+export const ingestionCancelRunRequestV2Fixture = ingestionCancelRunRequestV2Schema.parse({
+  reason: 'operator_request',
+  details: {
+    requestedBy: 'operator',
+    requestedAt: '2026-03-05T10:15:00.000Z',
+    note: 'Cancelled from control center.',
+  },
+});
+
 export const controlPlaneRunManifestV2Fixture = controlPlaneRunManifestV2Schema.parse({
   runId: 'crawl-run-v2-fixture-001',
   pipelineId: controlPlanePipelineV2Fixture.pipelineId,
@@ -1567,6 +1633,7 @@ export const buildIngestionLifecycleEventV2 = (
 
 export type V2StartRunRequest = z.infer<typeof startRunRequestV2Schema>;
 export type V2StartRunResponse = z.infer<typeof startRunResponseV2Schema>;
+export type V2IngestionCancelRunRequest = z.infer<typeof ingestionCancelRunRequestV2Schema>;
 export type V2WorkerLifecycleEvent = z.infer<typeof workerLifecycleEventV2Schema>;
 export type V2RuntimeBrokerEvent = z.infer<typeof runtimeBrokerEventV2Schema>;
 export type V2CrawlRunSummaryProjection = z.infer<typeof crawlRunSummaryProjectionV2Schema>;

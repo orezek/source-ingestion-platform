@@ -20,6 +20,7 @@ export type ControlPlaneArtifactSink = z.infer<typeof v2ArtifactSinkSchema>;
 const DISPATCH_FAILURE_STOP_REASONS = new Set([
   'ingestion_dispatch_failed',
   'crawler_dispatch_failed',
+  'startup_rollback_cancel_failed',
 ]);
 
 function slugify(value: string): string {
@@ -29,6 +30,17 @@ function slugify(value: string): string {
     .replace(/^-+/u, '')
     .replace(/-+$/u, '')
     .slice(0, 24);
+}
+
+function trimSlashes(value: string): string {
+  return value.replace(/^\/+|\/+$/g, '');
+}
+
+function joinPathSegments(...parts: string[]): string {
+  return parts
+    .map((part) => trimSlashes(part))
+    .filter((part) => part.length > 0)
+    .join('/');
 }
 
 export function generatePipelineId(name: string): string {
@@ -99,7 +111,21 @@ export function buildCrawlerStartRunRequest(
   });
 }
 
-export function buildIngestionStartRunRequest(pipeline: ControlPlanePipeline, runId: string) {
+export function buildIngestionStartRunRequest(
+  pipeline: ControlPlanePipeline,
+  runId: string,
+  artifactSink: ControlPlaneArtifactSink,
+) {
+  const deliveryPrefix = joinPathSegments(
+    artifactSink.type === 'gcs' ? artifactSink.prefix : '',
+    'pipelines',
+    pipeline.pipelineId,
+    'runs',
+    runId,
+    'outputs',
+    'downloadable-json',
+  );
+
   return ingestionStartRunRequestV2Schema.parse({
     contractVersion: 'v2',
     runId,
@@ -116,7 +142,21 @@ export function buildIngestionStartRunRequest(pipeline: ControlPlanePipeline, ru
     },
     outputSinks: pipeline.structuredOutput.destinations
       .filter((destination) => destination.type === 'downloadable_json')
-      .map(() => ({ type: 'downloadable_json' as const })),
+      .map(() => ({
+        type: 'downloadable_json' as const,
+        delivery:
+          artifactSink.type === 'gcs'
+            ? {
+                storageType: 'gcs' as const,
+                bucket: artifactSink.bucket,
+                prefix: deliveryPrefix,
+              }
+            : {
+                storageType: 'local_filesystem' as const,
+                basePath: artifactSink.basePath,
+                prefix: deliveryPrefix,
+              },
+      })),
   });
 }
 
@@ -137,7 +177,7 @@ export function buildRunManifest(input: {
       crawler: buildCrawlerStartRunRequest(pipeline, runId, artifactSink),
       ...(pipeline.mode === 'crawl_and_ingest'
         ? {
-            ingestion: buildIngestionStartRunRequest(pipeline, runId),
+            ingestion: buildIngestionStartRunRequest(pipeline, runId, artifactSink),
           }
         : {}),
     },
@@ -206,7 +246,10 @@ export function buildInitialRun(input: {
 
 export function markRunDispatchFailed(
   run: ControlPlaneRun,
-  stopReason: 'ingestion_dispatch_failed' | 'crawler_dispatch_failed',
+  stopReason:
+    | 'ingestion_dispatch_failed'
+    | 'crawler_dispatch_failed'
+    | 'startup_rollback_cancel_failed',
 ): ControlPlaneRun {
   const now = new Date().toISOString();
 

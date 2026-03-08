@@ -12,6 +12,8 @@ It owns:
   - `control_plane_runs`
   - `control_plane_run_manifests`
   - `control_plane_run_event_index`
+- worker dependency preflight checks (`/readyz`) before run dispatch
+- run-scoped artifact/output routing policy for crawler and ingestion
 
 It does not own:
 
@@ -62,13 +64,21 @@ Optional with defaults:
 - `PUBSUB_AUTO_CREATE_SUBSCRIPTION`
 - `SSE_HEARTBEAT_INTERVAL_MS`
 
-Crawler artifact sink selection is owned here because crawler `StartRun` requires an
-`artifactSink`.
+Artifact/output sink selection is owned here:
+
+- crawler receives `artifactSink`
+- ingestion receives `outputSinks[].delivery`
 
 - local development can use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=local_filesystem`
 - GCP deployment should use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=gcs`
 
-Downloadable JSON output storage stays worker-owned in `ingestion-worker-v2`.
+Run dispatch policy:
+
+- `crawl_only`: crawler readiness required
+- `crawl_and_ingest`: crawler and ingestion readiness required
+- for `crawl_and_ingest`, ingestion `StartRun` is dispatched first, crawler second
+- if crawler dispatch fails after ingestion accepted, control-service sends ingestion cancel with
+  `reason: "startup_rollback"`
 
 ## Local development
 

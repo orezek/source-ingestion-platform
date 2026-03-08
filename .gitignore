@@ -37,6 +37,9 @@ yarn-error.log*
 # TypeScript cache - globally set as "make-sure" guard.
 **/tsconfig.tsbuildinfo
 
+# Local runtime artifacts
+**/control-plane-artifacts/
+
 # Terraform
 **/.terraform/
 **/*.tfstate

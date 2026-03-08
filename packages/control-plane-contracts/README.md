@@ -37,7 +37,11 @@ Notes:
   - ingestion: `ingestionConcurrency`
 - ingestion `StartRun` is event-driven registration only:
   - it includes `inputRef.crawlRunId` and `inputRef.searchSpaceId`
+  - downloadable JSON routing is run-scoped in `outputSinks[].delivery`
   - it does not carry inline item batches or `inputRef.records`
+- ingestion `CancelRun` uses a typed reason payload:
+  - `startup_rollback`
+  - `operator_request`
 - `crawler.run.requested` remains exported for legacy/v1 compatibility and control-plane replay
   helpers; it is not the canonical v2 worker command path.
 - V2 runtime broker events now live in `src/v2.ts`.

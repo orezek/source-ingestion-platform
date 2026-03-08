@@ -2,7 +2,10 @@ import { PubSub, type Message, type Subscription } from '@google-cloud/pubsub';
 import { Storage } from '@google-cloud/storage';
 import Fastify from 'fastify';
 import { MongoClient } from 'mongodb';
-import { ingestionStartRunRequestV2Schema } from '@repo/control-plane-contracts';
+import {
+  ingestionCancelRunRequestV2Schema,
+  ingestionStartRunRequestV2Schema,
+} from '@repo/control-plane-contracts';
 import { AuthError, assertControlAuth } from './auth.js';
 import { envs } from './env.js';
 import { ConflictError, IngestionWorkerRuntime, NotFoundError } from './runtime.js';
@@ -65,7 +68,6 @@ async function main(): Promise<void> {
   const storage = new Storage({ projectId: envs.GCP_PROJECT_ID });
   const pubsub = new PubSub({ projectId: envs.GCP_PROJECT_ID });
   const eventsTopic = pubsub.topic(envs.PUBSUB_EVENTS_TOPIC);
-  const outputsBucket = storage.bucket(envs.OUTPUTS_BUCKET);
 
   await mongoClient.connect();
   await mongoClient.db().command({ ping: 1 });
@@ -75,22 +77,19 @@ async function main(): Promise<void> {
     logger: app.log,
     eventsTopic,
     storage,
-    outputsBucket,
     mongoClient,
   });
   await runtime.initialize();
 
   let subscription: Subscription | null = null;
+  let consumerAttached = false;
   const subscriptionName =
     envs.PUBSUB_EVENTS_SUBSCRIPTION ?? `${envs.SERVICE_NAME}-events-subscription`;
 
-  if (envs.ENABLE_PUBSUB_CONSUMER) {
-    subscription = await ensureSubscription({
-      pubsub,
-      topicName: envs.PUBSUB_EVENTS_TOPIC,
-      subscriptionName,
-      autoCreate: envs.PUBSUB_AUTO_CREATE_SUBSCRIPTION,
-    });
+  const attachConsumer = (): void => {
+    if (!subscription || consumerAttached) {
+      return;
+    }
 
     const messageHandler = async (message: Message): Promise<void> => {
       try {
@@ -104,6 +103,16 @@ async function main(): Promise<void> {
 
     subscription.on('message', (message) => {
       void messageHandler(message);
+    });
+    consumerAttached = true;
+  };
+
+  if (envs.ENABLE_PUBSUB_CONSUMER) {
+    subscription = await ensureSubscription({
+      pubsub,
+      topicName: envs.PUBSUB_EVENTS_TOPIC,
+      subscriptionName,
+      autoCreate: envs.PUBSUB_AUTO_CREATE_SUBSCRIPTION,
     });
 
     subscription.on('error', (error: Error) => {
@@ -162,6 +171,9 @@ async function main(): Promise<void> {
 
     try {
       const response = await runtime.startRun(parsed.data);
+      if (envs.ENABLE_PUBSUB_CONSUMER) {
+        attachConsumer();
+      }
       reply.code(response.deduplicated ? 200 : 202);
       return response;
     } catch (error) {
@@ -179,8 +191,18 @@ async function main(): Promise<void> {
   });
 
   app.post('/v1/runs/:runId/cancel', async (request, reply) => {
+    const parsed = ingestionCancelRunRequestV2Schema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        ok: false,
+        error: 'Invalid CancelRun payload.',
+        issues: parsed.error.issues,
+      };
+    }
+
     try {
-      return await runtime.cancelRun((request.params as { runId: string }).runId);
+      return await runtime.cancelRun((request.params as { runId: string }).runId, parsed.data);
     } catch (error) {
       if (error instanceof NotFoundError) {
         reply.code(error.statusCode);
@@ -227,7 +249,6 @@ async function main(): Promise<void> {
       serviceVersion: envs.SERVICE_VERSION,
       topic: envs.PUBSUB_EVENTS_TOPIC,
       subscription: subscriptionName,
-      outputBucket: envs.OUTPUTS_BUCKET,
       parserBackend: envs.INGESTION_PARSER_BACKEND,
       parserVersion: envs.PARSER_VERSION,
     },

@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 The format is based on Keep a Changelog principles and uses Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- Added v2.1 ingestion cancel reason contract for worker endpoint `POST /v1/runs/:runId/cancel`:
+  - `startup_rollback`
+  - `operator_request`
+- Added control-service worker dependency preflight checks against worker `GET /readyz` before
+  dispatching `StartRun`.
+- Added startup rollback failure handling: if crawler dispatch fails and ingestion cancel cannot be
+  completed after retries, run is marked failed with `startup_rollback_cancel_failed`.
+- Added ingestion runtime auto-expire path for no-detail runs (default 60s) and operator cancellation
+  drain semantics coverage in E2E tests.
+
+### Changed
+
+- Switched ingestion downloadable JSON routing from worker bootstrap env to run-scoped
+  `StartRun.outputSinks[].delivery`.
+- Updated control-service manifest build to emit downloadable JSON `delivery` config derived from the
+  control-plane artifact policy.
+- Updated ingestion runtime to persist downloadable JSON using per-run delivery settings (`gcs` or
+  `local_filesystem`) instead of `OUTPUTS_BUCKET` / `OUTPUTS_PREFIX` env.
+- Updated service documentation and `.env.example` files to align bootstrap ownership and readiness
+  policy for v2.1.
+
 ## [1.1.0] - 2026-03-05
 
 ### Added

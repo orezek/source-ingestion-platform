@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { after, before, test } from 'node:test';
-import type { Bucket, Storage } from '@google-cloud/storage';
+import type { Storage } from '@google-cloud/storage';
 import type { Topic } from '@google-cloud/pubsub';
 import {
   buildCrawlerDetailCapturedEventV2,
@@ -237,8 +237,6 @@ function buildRuntimeEnv(): EnvSchema {
     PUBSUB_EVENTS_SUBSCRIPTION: undefined,
     PUBSUB_AUTO_CREATE_SUBSCRIPTION: false,
     ENABLE_PUBSUB_CONSUMER: false,
-    OUTPUTS_BUCKET: 'test-output-bucket',
-    OUTPUTS_PREFIX: 'e2e',
     MONGODB_URI: mongoUri!,
     INGESTION_PARSER_BACKEND: parserBackend,
     GEMINI_API_KEY: geminiApiKey,
@@ -257,7 +255,7 @@ function buildRuntimeEnv(): EnvSchema {
   };
 }
 
-function buildStartRunPayload(runId: string) {
+function buildStartRunPayload(runId: string, idleTimeoutSeconds?: number) {
   return ingestionStartRunRequestV2Schema.parse({
     contractVersion: 'v2',
     runId,
@@ -272,7 +270,17 @@ function buildStartRunPayload(runId: string) {
     persistenceTargets: {
       dbName: sharedDbName,
     },
-    outputSinks: [{ type: 'downloadable_json' }],
+    outputSinks: [
+      {
+        type: 'downloadable_json',
+        delivery: {
+          storageType: 'gcs',
+          bucket: 'test-output-bucket',
+          prefix: `e2e/${runId}`,
+        },
+      },
+    ],
+    ...(idleTimeoutSeconds ? { timeouts: { idleTimeoutSeconds } } : {}),
   });
 }
 
@@ -327,7 +335,6 @@ async function createRuntimeFixture(): Promise<RuntimeFixture> {
     logger: logger.asFastifyLogger(),
     eventsTopic: topic as unknown as Topic,
     storage: storage as unknown as Storage,
-    outputsBucket: outputBucket as unknown as Bucket,
     mongoClient: getMongoClient(),
   });
 
@@ -434,6 +441,92 @@ function logKeptRunDocuments(runId: string): void {
 }
 
 const maybeSkip = skipReason ? { skip: skipReason } : {};
+
+test('auto-expires run with no detail events before crawler finish', maybeSkip, async () => {
+  const runId = buildRunId('e2e-auto-expire-no-details');
+  await cleanupRunDocuments(runId);
+
+  try {
+    const { runtime } = await createRuntimeFixture();
+    const payload = buildStartRunPayload(runId, 1);
+
+    await runtime.startRun(payload);
+
+    const run = await waitForRunStatus(runtime, runId, 'stopped');
+    assert.equal(run.counters.received, 0);
+    assert.equal(run.counters.processed, 0);
+    assert.equal(run.counters.failed, 0);
+
+    const db = getMongoClient().db(sharedDbName);
+    const summary = await waitForDocument({
+      read: async () => db.collection(collections.ingestionRunSummaries).findOne({ runId }),
+    });
+    assert.equal(summary.status, 'stopped');
+    assert.equal(summary.jobsTotal, 0);
+    assert.equal(summary.jobsProcessed, 0);
+    assert.equal(summary.jobsFailed, 0);
+    logKeptRunDocuments(runId);
+  } finally {
+    await cleanupRunDocuments(runId);
+  }
+});
+
+test('operator cancellation drains queued events and finalizes as stopped', maybeSkip, async () => {
+  const runId = buildRunId('e2e-operator-cancel-drain');
+  await cleanupRunDocuments(runId);
+
+  try {
+    const { runtime } = await createRuntimeFixture();
+    const payload = buildStartRunPayload(runId);
+    await runtime.startRun(payload);
+
+    const fixtureCase = goldenParityCases.find((candidate) => candidate.sourceId === '2001090812')!;
+    const detailEvent = buildCrawlerDetailCapturedFixtureEvent({
+      runId,
+      crawlRunId: runId,
+      fixtureCase,
+    });
+    await runtime.handlePubSubMessage(JSON.stringify(detailEvent));
+
+    await runtime.cancelRun(runId, {
+      reason: 'operator_request',
+      details: {
+        requestedBy: 'operator',
+        requestedAt: new Date().toISOString(),
+        note: 'Operator requested run cancellation.',
+      },
+    });
+
+    const finishedEvent = buildCrawlerRunFinishedEventV2({
+      runId,
+      crawlRunId: runId,
+      source: 'jobs.cz',
+      searchSpaceId: 'search-space-e2e',
+      status: 'stopped',
+      stopReason: 'cancelled_by_operator',
+    });
+    await runtime.handlePubSubMessage(JSON.stringify(finishedEvent));
+
+    const run = await waitForRunStatus(runtime, runId, 'stopped');
+    assert.equal(run.counters.received, 1);
+    assert.equal(run.counters.processed, 1);
+    assert.equal(run.counters.rejected, 0);
+    assert.equal(run.counters.failed, 0);
+
+    const db = getMongoClient().db(sharedDbName);
+    const summary = await waitForDocument({
+      read: async () => db.collection(collections.ingestionRunSummaries).findOne({ runId }),
+    });
+    assert.equal(summary.status, 'stopped');
+    assert.equal(summary.jobsProcessed, 1);
+    assert.equal(summary.jobsFailed, 0);
+    assert.deepEqual(summary.processedJobIds, ['jobs.cz:2001090812']);
+    assert.deepEqual(summary.nonSuccessJobIds, []);
+    logKeptRunDocuments(runId);
+  } finally {
+    await cleanupRunDocuments(runId);
+  }
+});
 
 test(
   'processes crawler detail events and persists summary and normalized documents',

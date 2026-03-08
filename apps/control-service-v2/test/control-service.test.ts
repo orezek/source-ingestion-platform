@@ -187,6 +187,12 @@ test('startPipelineRun dispatches ingestion first then crawler for crawl_and_ing
 
   const calls: string[] = [];
   const workerClient = {
+    async ensureCrawlerReady() {
+      calls.push('ready:crawler');
+    },
+    async ensureIngestionReady() {
+      calls.push('ready:ingestion');
+    },
     async startIngestionRun(payload: { runId: string }) {
       calls.push(`ingestion:${payload.runId}`);
       return {
@@ -214,7 +220,7 @@ test('startPipelineRun dispatches ingestion first then crawler for crawl_and_ing
     async cancelCrawlerRun() {
       return 'accepted' as const;
     },
-    async cancelIngestionRun() {
+    async cancelIngestionRun(_payload: { runId: string; reason: string }) {
       return 'accepted' as const;
     },
   };
@@ -239,9 +245,11 @@ test('startPipelineRun dispatches ingestion first then crawler for crawl_and_ing
 
   assert.equal(response.pipelineId, controlPlanePipelineV2Fixture.pipelineId);
   assert.equal(response.status, 'queued');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0]?.startsWith('ingestion:'), true);
-  assert.equal(calls[1]?.startsWith('crawler:'), true);
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0], 'ready:crawler');
+  assert.equal(calls[1], 'ready:ingestion');
+  assert.equal(calls[2]?.startsWith('ingestion:'), true);
+  assert.equal(calls[3]?.startsWith('crawler:'), true);
 
   const persistedRun = store.runs.get(response.runId);
   assert.ok(persistedRun);
@@ -257,7 +265,10 @@ test('startPipelineRun marks run failed and cancels ingestion when crawler dispa
   store.pipelines.set(controlPlanePipelineV2Fixture.pipelineId, controlPlanePipelineV2Fixture);
 
   let cancelledRunId: string | null = null;
+  let cancelReason: string | null = null;
   const workerClient = {
+    async ensureCrawlerReady() {},
+    async ensureIngestionReady() {},
     async startIngestionRun(payload: { runId: string }) {
       return {
         ok: true as const,
@@ -275,8 +286,9 @@ test('startPipelineRun marks run failed and cancels ingestion when crawler dispa
     async cancelCrawlerRun() {
       return 'accepted' as const;
     },
-    async cancelIngestionRun(runId: string) {
-      cancelledRunId = runId;
+    async cancelIngestionRun(payload: { runId: string; reason: string }) {
+      cancelledRunId = payload.runId;
+      cancelReason = payload.reason;
       return 'accepted' as const;
     },
   };
@@ -310,4 +322,115 @@ test('startPipelineRun marks run failed and cancels ingestion when crawler dispa
   assert.equal(failedRun?.status, 'failed');
   assert.equal(failedRun?.stopReason, 'crawler_dispatch_failed');
   assert.equal(cancelledRunId, failedRun?.runId ?? null);
+  assert.equal(cancelReason, 'startup_rollback');
+});
+
+test('startPipelineRun fails fast when required worker readiness check fails', async () => {
+  const store = new InMemoryStore();
+  store.pipelines.set(controlPlanePipelineV2Fixture.pipelineId, controlPlanePipelineV2Fixture);
+
+  const workerClient = {
+    async ensureCrawlerReady() {},
+    async ensureIngestionReady() {
+      throw new WorkerClientError('ingestion worker readiness check failed (503).');
+    },
+    async startIngestionRun() {
+      throw new Error('should not be called');
+    },
+    async startCrawlerRun() {
+      throw new Error('should not be called');
+    },
+    async cancelCrawlerRun() {
+      return 'accepted' as const;
+    },
+    async cancelIngestionRun(_payload: { runId: string; reason: string }) {
+      return 'accepted' as const;
+    },
+  };
+
+  const logger = createLogger();
+  const streamHub = new StreamHub(logger as never);
+  const state = new ControlServiceState({
+    serviceName: 'control-service-v2',
+    serviceVersion: 'test',
+    subscriptionEnabled: true,
+  });
+  const service = new ControlService(
+    createEnv(),
+    store,
+    workerClient,
+    state,
+    streamHub,
+    logger as never,
+  );
+
+  await assert.rejects(
+    () => service.startPipelineRun(controlPlanePipelineV2Fixture.pipelineId),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, 'INGESTION_WORKER_UNAVAILABLE');
+      return true;
+    },
+  );
+
+  assert.equal(store.runs.size, 0);
+  assert.equal(store.manifests.size, 0);
+});
+
+test('startPipelineRun marks run failed when startup rollback cancel fails', async () => {
+  const store = new InMemoryStore();
+  store.pipelines.set(controlPlanePipelineV2Fixture.pipelineId, controlPlanePipelineV2Fixture);
+
+  const workerClient = {
+    async ensureCrawlerReady() {},
+    async ensureIngestionReady() {},
+    async startIngestionRun(payload: { runId: string }) {
+      return {
+        ok: true as const,
+        accepted: true as const,
+        deduplicated: false as const,
+        state: 'accepted' as const,
+        workerType: 'ingestion' as const,
+        runId: payload.runId,
+        contractVersion: 'v2' as const,
+      };
+    },
+    async startCrawlerRun() {
+      throw new WorkerClientError('Crawler worker unavailable.');
+    },
+    async cancelCrawlerRun() {
+      return 'accepted' as const;
+    },
+    async cancelIngestionRun(_payload: { runId: string; reason: string }) {
+      throw new WorkerClientError('ingestion cancel request failed (500).');
+    },
+  };
+
+  const logger = createLogger();
+  const streamHub = new StreamHub(logger as never);
+  const state = new ControlServiceState({
+    serviceName: 'control-service-v2',
+    serviceVersion: 'test',
+    subscriptionEnabled: true,
+  });
+  const service = new ControlService(
+    createEnv(),
+    store,
+    workerClient,
+    state,
+    streamHub,
+    logger as never,
+  );
+
+  await assert.rejects(
+    () => service.startPipelineRun(controlPlanePipelineV2Fixture.pipelineId),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, 'STARTUP_ROLLBACK_CANCEL_FAILED');
+      return true;
+    },
+  );
+
+  const failedRun = [...store.runs.values()].at(0);
+  assert.ok(failedRun);
+  assert.equal(failedRun?.status, 'failed');
+  assert.equal(failedRun?.stopReason, 'startup_rollback_cancel_failed');
 });

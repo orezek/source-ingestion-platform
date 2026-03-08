@@ -32,7 +32,12 @@ import { WorkerClientError } from './worker-client.js';
 
 export type ControlServiceWorkerClient = Pick<
   import('./worker-client.js').WorkerClient,
-  'startCrawlerRun' | 'startIngestionRun' | 'cancelCrawlerRun' | 'cancelIngestionRun'
+  | 'startCrawlerRun'
+  | 'startIngestionRun'
+  | 'cancelCrawlerRun'
+  | 'cancelIngestionRun'
+  | 'ensureCrawlerReady'
+  | 'ensureIngestionReady'
 >;
 
 function isDuplicateKeyError(error: unknown): error is MongoServerError {
@@ -161,6 +166,8 @@ export class ControlService {
       });
     }
 
+    await this.ensureWorkerDependenciesReady(pipeline.mode);
+
     const runId = generateRunId();
     const manifest = buildRunManifest({
       pipeline,
@@ -187,15 +194,10 @@ export class ControlService {
     } catch (error) {
       if (manifest.workerCommands.ingestion) {
         try {
-          await this.workerClient.cancelIngestionRun(runId);
+          await this.cancelIngestionAfterCrawlerDispatchFailure(runId);
         } catch (cancelError) {
-          this.logger.warn(
-            {
-              err: cancelError,
-              runId,
-            },
-            'Best-effort ingestion cancel failed after crawler dispatch failure.',
-          );
+          await this.failRunAfterDispatchError(run, 'startup_rollback_cancel_failed');
+          throw this.mapWorkerError('STARTUP_ROLLBACK_CANCEL_FAILED', cancelError);
         }
       }
 
@@ -239,7 +241,15 @@ export class ControlService {
       }
 
       if (run.ingestion.enabled) {
-        const ingestionResult = await this.workerClient.cancelIngestionRun(runId);
+        const ingestionResult = await this.workerClient.cancelIngestionRun({
+          runId,
+          reason: 'operator_request',
+          details: {
+            requestedBy: 'operator',
+            requestedAt: nowIso(),
+            note: 'Cancellation requested via control-service run cancel endpoint.',
+          },
+        });
         if (ingestionResult === 'not_found') {
           this.logger.warn({ runId }, 'Ingestion worker did not find the run during cancel.');
         }
@@ -402,6 +412,87 @@ export class ControlService {
       statusCode: 502,
       code,
       message: 'Worker request failed.',
+    });
+  }
+
+  private async ensureWorkerDependenciesReady(
+    mode: 'crawl_only' | 'crawl_and_ingest',
+  ): Promise<void> {
+    try {
+      await this.workerClient.ensureCrawlerReady();
+    } catch (error) {
+      throw this.mapWorkerDependencyError('CRAWLER_WORKER_UNAVAILABLE', 'crawler', error);
+    }
+
+    if (mode !== 'crawl_and_ingest') {
+      return;
+    }
+
+    try {
+      await this.workerClient.ensureIngestionReady();
+    } catch (error) {
+      throw this.mapWorkerDependencyError('INGESTION_WORKER_UNAVAILABLE', 'ingestion', error);
+    }
+  }
+
+  private async cancelIngestionAfterCrawlerDispatchFailure(runId: string): Promise<void> {
+    const retryCount = 3;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= retryCount; attempt += 1) {
+      try {
+        const result = await this.workerClient.cancelIngestionRun({
+          runId,
+          reason: 'startup_rollback',
+          details: {
+            failedWorker: 'crawler',
+            failedAction: 'start_run',
+            errorCode: 'CRAWLER_DISPATCH_FAILED',
+            errorMessage: 'Crawler worker StartRun failed after ingestion StartRun accepted.',
+          },
+        });
+        if (result === 'not_found') {
+          this.logger.warn(
+            { runId, attempt, retryCount },
+            'Ingestion worker did not find run during startup rollback cancel.',
+          );
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        this.logger.warn(
+          {
+            err: error,
+            runId,
+            attempt,
+            retryCount,
+          },
+          'Ingestion startup rollback cancel attempt failed.',
+        );
+      }
+    }
+
+    throw lastError ?? new Error('Ingestion startup rollback cancel failed.');
+  }
+
+  private mapWorkerDependencyError(
+    code: string,
+    worker: 'crawler' | 'ingestion',
+    error: unknown,
+  ): ControlServiceError {
+    const details =
+      error instanceof Error
+        ? {
+            worker,
+            reason: error.message,
+          }
+        : { worker };
+
+    return new ControlServiceError({
+      statusCode: 503,
+      code,
+      message: `${worker} worker is not ready to accept StartRun.`,
+      details,
     });
   }
 }

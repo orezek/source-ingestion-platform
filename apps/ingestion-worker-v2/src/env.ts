@@ -57,8 +57,6 @@ export const envSchema = z
     PUBSUB_EVENTS_SUBSCRIPTION: optionalStringSchema,
     PUBSUB_AUTO_CREATE_SUBSCRIPTION: toBoolean.default(true),
     ENABLE_PUBSUB_CONSUMER: toBoolean.default(true),
-    OUTPUTS_BUCKET: z.string().trim().min(1),
-    OUTPUTS_PREFIX: z.string().default(''),
     MONGODB_URI: z.string().trim().min(1),
     INGESTION_PARSER_BACKEND: z.enum(['gemini', 'fixture']).default('gemini'),
     GEMINI_API_KEY: optionalStringSchema,

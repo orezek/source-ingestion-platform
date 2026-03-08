@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { Topic } from '@google-cloud/pubsub';
-import type { Bucket, Storage } from '@google-cloud/storage';
+import type { Storage } from '@google-cloud/storage';
 import {
   buildIngestionLifecycleEventV2,
   crawlerDetailCapturedEventSchema as legacyCrawlerDetailCapturedEventSchema,
   crawlerDetailCapturedEventV2Schema,
   crawlerRunFinishedEventSchema as legacyCrawlerRunFinishedEventSchema,
   crawlerRunFinishedEventV2Schema,
+  ingestionCancelRunRequestV2Schema,
   ingestionRunFinishedEventV2Schema,
   ingestionRunStartedEventV2Schema,
   ingestionRunSummaryProjectionV2Schema,
@@ -24,6 +27,7 @@ import { FullModelParser } from './full-model/parser.js';
 import type { SourceListingRecord, UnifiedJobAd } from './full-model/schema.js';
 
 type IngestionStartRunRequestV2 = z.infer<typeof ingestionStartRunRequestV2Schema>;
+type IngestionCancelRunRequestV2 = z.infer<typeof ingestionCancelRunRequestV2Schema>;
 type LegacyCrawlerDetailCapturedEvent = z.infer<typeof legacyCrawlerDetailCapturedEventSchema>;
 type CrawlerDetailCapturedEventV2 = z.infer<typeof crawlerDetailCapturedEventV2Schema>;
 type LegacyCrawlerRunFinishedEvent = z.infer<typeof legacyCrawlerRunFinishedEventSchema>;
@@ -82,6 +86,7 @@ type RunState = {
   startedAt: string;
   finishedAt: string | null;
   cancelRequested: boolean;
+  cancelReason: IngestionCancelRunRequestV2['reason'] | null;
   crawlerFinished: boolean;
   queueDepth: number;
   activeItems: number;
@@ -94,6 +99,7 @@ type RunState = {
   nonSuccessJobIds: string[];
   seenDedupeKeys: Set<string>;
   lastHeartbeatAt: string;
+  noDetailTimeoutHandle: ReturnType<typeof setTimeout> | null;
 };
 
 type QueueItem = {
@@ -106,7 +112,6 @@ type RuntimeDeps = {
   logger: FastifyBaseLogger;
   eventsTopic: Topic;
   storage: Storage;
-  outputsBucket: Bucket;
   mongoClient: MongoClient;
 };
 
@@ -116,6 +121,7 @@ type StartRunResponse = z.infer<typeof startRunAcceptedResponseV2Schema>;
 
 const INGESTION_RUN_SUMMARIES_COLLECTION = 'ingestion_run_summaries';
 const NORMALIZED_JOB_ADS_COLLECTION = 'normalized_job_ads';
+const NO_DETAIL_EVENTS_TIMEOUT_MS = 60_000;
 
 export class ConflictError extends Error {
   public readonly statusCode = 409;
@@ -267,6 +273,9 @@ export class IngestionWorkerRuntime {
     }
 
     const startedAt = nowIso();
+    const noDetailTimeoutMs =
+      (parsedRequest.timeouts?.idleTimeoutSeconds ?? NO_DETAIL_EVENTS_TIMEOUT_MS / 1_000) * 1_000;
+
     const run: RunState = {
       request: parsedRequest,
       runId: parsedRequest.runId,
@@ -275,6 +284,7 @@ export class IngestionWorkerRuntime {
       startedAt,
       finishedAt: null,
       cancelRequested: false,
+      cancelReason: null,
       crawlerFinished: false,
       queueDepth: 0,
       activeItems: 0,
@@ -292,6 +302,9 @@ export class IngestionWorkerRuntime {
       nonSuccessJobIds: [],
       seenDedupeKeys: new Set<string>(),
       lastHeartbeatAt: startedAt,
+      noDetailTimeoutHandle: setTimeout(() => {
+        void this.expireRunWithoutDetailItems(parsedRequest.runId);
+      }, noDetailTimeoutMs),
     };
 
     this.runs.set(run.runId, run);
@@ -331,19 +344,27 @@ export class IngestionWorkerRuntime {
     };
   }
 
-  public async cancelRun(runId: string): Promise<Record<string, unknown>> {
+  public async cancelRun(
+    runId: string,
+    request: IngestionCancelRunRequestV2,
+  ): Promise<Record<string, unknown>> {
     const run = this.runs.get(runId);
     if (!run) {
       throw new NotFoundError(`Run "${runId}" does not exist on this worker.`);
     }
 
     run.cancelRequested = true;
+    run.cancelReason = request.reason;
     run.lastHeartbeatAt = nowIso();
-    await this.tryFinalizeRun(run, 'cancelled_by_operator');
+    await this.tryFinalizeRun(
+      run,
+      request.reason === 'startup_rollback' ? 'startup_rollback' : 'cancelled_by_operator',
+    );
 
     return {
       runId: run.runId,
       cancelRequested: true,
+      cancelReason: run.cancelReason,
       status: run.status,
       queueDepth: run.queueDepth,
       activeItems: run.activeItems,
@@ -524,6 +545,10 @@ export class IngestionWorkerRuntime {
     }
 
     run.seenDedupeKeys.add(item.dedupeKey);
+    if (run.noDetailTimeoutHandle) {
+      clearTimeout(run.noDetailTimeoutHandle);
+      run.noDetailTimeoutHandle = null;
+    }
     run.counters.received += 1;
     run.lastHeartbeatAt = nowIso();
     run.queueDepth += 1;
@@ -563,11 +588,11 @@ export class IngestionWorkerRuntime {
 
   private async processQueueItem(run: RunState, item: ItemInput): Promise<void> {
     const jobId = buildJobId(item);
-    if (run.cancelRequested) {
+    if (run.cancelRequested && run.cancelReason === 'startup_rollback') {
       run.counters.rejected += 1;
       pushUnique(run.nonSuccessJobIds, jobId);
       await this.publishIngestionItemEvent('ingestion.item.rejected', run, item, {
-        reason: 'run_cancelled',
+        reason: 'startup_rollback',
       });
       return;
     }
@@ -575,7 +600,7 @@ export class IngestionWorkerRuntime {
     await this.publishIngestionItemEvent('ingestion.item.started', run, item);
 
     try {
-      const downloadableJsonEnabled = run.request.outputSinks.some(
+      const downloadableJsonSink = run.request.outputSinks.find(
         (sink) => sink.type === 'downloadable_json',
       );
 
@@ -595,15 +620,14 @@ export class IngestionWorkerRuntime {
       );
 
       let downloadableJsonPath: string | undefined;
-      if (downloadableJsonEnabled) {
+      if (downloadableJsonSink) {
         try {
-          const downloadablePath = this.buildDownloadablePath(run, item);
-          await this.deps.outputsBucket
-            .file(downloadablePath)
-            .save(`${JSON.stringify(normalizedDoc, null, 2)}\n`, {
-              contentType: 'application/json',
-            });
-          downloadableJsonPath = `gs://${this.deps.env.OUTPUTS_BUCKET}/${downloadablePath}`;
+          downloadableJsonPath = await this.persistDownloadableJson(
+            run,
+            item,
+            normalizedDoc,
+            downloadableJsonSink.delivery,
+          );
         } catch (downloadError) {
           this.deps.logger.error(
             {
@@ -611,7 +635,6 @@ export class IngestionWorkerRuntime {
               runId: run.runId,
               sourceId: item.sourceId,
               dedupeKey: item.dedupeKey,
-              bucket: this.deps.env.OUTPUTS_BUCKET,
             },
             'Downloadable JSON upload failed. Continuing after successful Mongo persistence.',
           );
@@ -743,9 +766,22 @@ export class IngestionWorkerRuntime {
       return;
     }
 
-    if (run.cancelRequested && run.queueDepth === 0 && run.activeItems === 0) {
-      await this.finalizeRun(run, 'stopped', stopReason ?? 'cancelled_by_operator');
-      return;
+    if (run.cancelRequested) {
+      if (run.cancelReason === 'startup_rollback') {
+        if (run.queueDepth === 0 && run.activeItems === 0) {
+          await this.finalizeRun(run, 'stopped', stopReason ?? 'startup_rollback');
+        }
+        return;
+      }
+
+      if (run.cancelReason === 'operator_request') {
+        const canFinalizeCancelled =
+          run.crawlerFinished && run.queueDepth === 0 && run.activeItems === 0;
+        if (canFinalizeCancelled) {
+          await this.finalizeRun(run, 'stopped', stopReason ?? 'cancelled_by_operator');
+        }
+        return;
+      }
     }
 
     const canFinalize = run.crawlerFinished && run.queueDepth === 0;
@@ -774,6 +810,10 @@ export class IngestionWorkerRuntime {
     run.status = status;
     run.finishedAt = finishedAt;
     run.lastHeartbeatAt = finishedAt;
+    if (run.noDetailTimeoutHandle) {
+      clearTimeout(run.noDetailTimeoutHandle);
+      run.noDetailTimeoutHandle = null;
+    }
 
     const runDurationSeconds =
       Math.max(new Date(finishedAt).getTime() - new Date(run.startedAt).getTime(), 0) / 1_000;
@@ -857,10 +897,48 @@ export class IngestionWorkerRuntime {
     await this.publishRunFinished(run, status, stopReason);
   }
 
-  private buildDownloadablePath(run: RunState, item: ItemInput): string {
-    const prefix = this.deps.env.OUTPUTS_PREFIX.replace(/^\/+|\/+$/g, '');
+  private buildDownloadablePath(prefix: string, item: ItemInput): string {
+    const normalizedPrefix = prefix.replace(/^\/+|\/+$/g, '');
     const fileName = `${item.sourceId}-${randomUUID()}.json`;
-    return prefix.length > 0 ? `${prefix}/${run.runId}/${fileName}` : `${run.runId}/${fileName}`;
+    return normalizedPrefix.length > 0 ? `${normalizedPrefix}/${fileName}` : fileName;
+  }
+
+  private async persistDownloadableJson(
+    run: RunState,
+    item: ItemInput,
+    normalizedDoc: PersistedNormalizedJobAdDoc,
+    delivery: IngestionStartRunRequestV2['outputSinks'][number]['delivery'],
+  ): Promise<string> {
+    const downloadablePath = this.buildDownloadablePath(delivery.prefix, item);
+    const jsonBody = `${JSON.stringify(normalizedDoc, null, 2)}\n`;
+
+    if (delivery.storageType === 'gcs') {
+      await this.deps.storage.bucket(delivery.bucket).file(downloadablePath).save(jsonBody, {
+        contentType: 'application/json',
+      });
+      return `gs://${delivery.bucket}/${downloadablePath}`;
+    }
+
+    const targetPath = path.join(delivery.basePath, downloadablePath);
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, jsonBody, 'utf8');
+    return targetPath;
+  }
+
+  private async expireRunWithoutDetailItems(runId: string): Promise<void> {
+    const run = this.runs.get(runId);
+    if (!run || run.status !== 'running') {
+      return;
+    }
+
+    if (run.counters.received > 0 || run.crawlerFinished) {
+      return;
+    }
+
+    run.cancelRequested = true;
+    run.cancelReason = 'startup_rollback';
+    run.lastHeartbeatAt = nowIso();
+    await this.tryFinalizeRun(run, 'no_detail_events_timeout');
   }
 
   private async publishRunStarted(run: RunState): Promise<void> {
