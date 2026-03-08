@@ -72,7 +72,11 @@ Decision:
   - Artifact upload failures (for example downloadable JSON GCS upload) are best-effort and do not block ACK when Mongo persistence already succeeded.
   - transient failures (timeouts, temporary connectivity issues) use NACK or ack-deadline expiry for retry.
   - permanent failures (invalid payload, deterministic parser failure) must be recorded as failed in Mongo and then ACKed.
-- Ingestion worker must auto-expire an accepted run if no detail events are received within 60 seconds.
+- Ingestion worker consumer remains attached after first accepted `StartRun`.
+  - if an incoming crawler detail/run-finished event does not match an active ingestion run
+    (`runId`/`crawlRunId`), worker ACKs the message as `no_matching_run`.
+- Ingestion worker must auto-expire an accepted run if no detail events are received within the default 60-second window.
+  - v2.1 implementation allows overriding this idle window via `StartRun.timeouts.idleTimeoutSeconds`.
 - Dead-letter redrive workflow is deferred to V4.
 
 Rationale:
@@ -207,7 +211,8 @@ Removed from ingestion worker bootstrap in v2.1:
 8. Ingestion ACK/NACK policy is applied per message outcome (success, transient failure, permanent failure).
 9. If crawler `StartRun` fails after retries, control service cancels the ingestion run using cancel payload `reason: "startup_rollback"`.
 10. If ingestion cancel fails after retries, control service marks the run failed with stop reason `startup_rollback_cancel_failed` and returns an actionable error.
-11. Ingestion auto-expires accepted runs with no detail events after 60 seconds.
+11. Ingestion auto-expires accepted runs with no detail events after the default 60-second idle window
+    (or `StartRun.timeouts.idleTimeoutSeconds` when provided).
 12. Run finalization remains event-driven (`crawler.run.finished` + drained queue).
 
 ## 7.1 Execution Flow (operator_request cancel)
@@ -229,7 +234,7 @@ Release strategy:
   - ingestion cancel request shape (`startup_rollback` and `operator_request`),
   - dependency preflight readiness checks,
   - startup rollback cancellation path and failure handling,
-  - 60-second auto-expire and operator drain semantics.
+  - default 60-second (override-capable) auto-expire and operator drain semantics.
 - Publish updated `.env.example` documentation in the same change set.
 
 Future versions:
@@ -241,13 +246,14 @@ Future versions:
 - Track dependency preflight failures by worker type and pipeline mode.
 - Track ingestion message outcomes by category: `success`, `transient_retry`, `permanent_failed`.
 - Alert when ingestion `StartRun` retries exceed threshold.
-- Alert when ingestion runs auto-expire (no detail events in 60 seconds).
+- Alert when ingestion runs auto-expire (no detail events within configured idle window).
 - Publish run-level diagnostics including resolved storage routing (backend, bucket/basePath, prefix).
 
 Known caveats kept in v2.1:
 
-- 60-second auto-expire may incorrectly stop low-yield or slow-first-item runs; retained for now and revisited in a future version.
+- Default 60-second auto-expire may incorrectly stop low-yield or slow-first-item runs; retained for now and revisited in a future version.
 - Operator cancellation can take long on large queues because ingestion drains queued events before final stop; retained for now and revisited in a future version.
+- After consumer attach, unmatched crawler events are ACKed as `no_matching_run`; orchestration guardrails are expected to keep this rare.
 
 ## 10) V4 Compatibility
 
