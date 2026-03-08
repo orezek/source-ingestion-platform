@@ -93,3 +93,71 @@ test('dispatch failure keeps overall run failed even after later worker stop eve
   assert.equal(finalRun.crawler.status, 'stopped');
   assert.equal(finalRun.ingestion.status, 'stopped');
 });
+
+test('late crawler.run.started does not regress terminal crawler status', () => {
+  const runId = 'run-test-003';
+  const initialRun = buildInitialRun({
+    pipeline: controlPlanePipelineV2Fixture,
+    runId,
+  });
+
+  const crawlerFinishedEvent = runtimeBrokerEventV2Schema.parse({
+    eventId: 'evt-crawler-finished-003',
+    eventVersion: 'v2',
+    eventType: 'crawler.run.finished',
+    occurredAt: '2026-03-08T20:05:56.979Z',
+    runId,
+    correlationId: runId,
+    producer: 'crawler-worker-v2',
+    payload: {
+      crawlRunId: runId,
+      source: controlPlanePipelineV2Fixture.source,
+      searchSpaceId: controlPlanePipelineV2Fixture.searchSpace.id,
+      status: 'succeeded',
+      stopReason: 'no_new_jobs',
+    },
+  });
+  const crawlerStartedLateEvent = runtimeBrokerEventV2Schema.parse({
+    eventId: 'evt-crawler-started-late-003',
+    eventVersion: 'v2',
+    eventType: 'crawler.run.started',
+    occurredAt: '2026-03-08T20:05:55.833Z',
+    runId,
+    correlationId: runId,
+    producer: 'crawler-worker-v2',
+    payload: {
+      runId,
+      workerType: 'crawler',
+      status: 'running',
+      counters: {},
+    },
+  });
+  const ingestionFinishedEvent = runtimeBrokerEventV2Schema.parse({
+    eventId: 'evt-ingestion-finished-003',
+    eventVersion: 'v2',
+    eventType: 'ingestion.run.finished',
+    occurredAt: '2026-03-08T20:05:57.273Z',
+    runId,
+    correlationId: runId,
+    producer: 'ingestion-worker-v2',
+    payload: {
+      runId,
+      workerType: 'ingestion',
+      status: 'succeeded',
+      counters: {
+        jobsProcessed: 0,
+        jobsFailed: 0,
+        jobsRejected: 0,
+      },
+    },
+  });
+
+  const afterCrawlerFinished = applyRuntimeEventToRun(initialRun, crawlerFinishedEvent);
+  const afterLateStarted = applyRuntimeEventToRun(afterCrawlerFinished, crawlerStartedLateEvent);
+  const finalRun = applyRuntimeEventToRun(afterLateStarted, ingestionFinishedEvent);
+
+  assert.equal(finalRun.crawler.status, 'succeeded');
+  assert.equal(finalRun.crawler.finishedAt, '2026-03-08T20:05:56.979Z');
+  assert.equal(finalRun.crawler.startedAt, '2026-03-08T20:05:55.833Z');
+  assert.equal(finalRun.status, 'succeeded');
+});

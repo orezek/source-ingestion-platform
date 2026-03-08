@@ -25,6 +25,7 @@
   --warning: 35 34% 23%;
   --warning-foreground: 42 23% 89%;
   --border: 213 21% 21%;
+  --theme-structure: hsl(var(--border) / 0.72);
   --input: 213 21% 21%;
   --ring: 256 42% 20%;
   --radius: 0.125rem;

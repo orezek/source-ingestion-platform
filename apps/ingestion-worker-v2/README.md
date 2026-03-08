@@ -72,9 +72,9 @@ owned by the control plane/orchestrator, not the worker bootstrap env.
 Recommended v2 policy:
 
 - map one logical database to one pipeline (isolation boundary)
-- derive database names from stable pipeline identity (pipeline id), not mutable display name
+- derive database names once in the control plane at pipeline creation time
+- keep `dbName` immutable after pipeline creation, even if the display name changes
 - enforce backend-safe naming limits during generation (current hard safety target: max 38 chars)
-- keep generation deterministic (`same pipeline id -> same dbName`)
 - keep collection names stable (`crawl_run_summaries`, `ingestion_run_summaries`,
   `normalized_job_ads`)
 

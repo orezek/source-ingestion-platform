@@ -68,6 +68,8 @@ Artifact/output sink selection is owned here:
 
 - crawler receives `artifactSink`
 - ingestion receives `outputSinks[].delivery`
+- pipeline-local MongoDB `dbName` is derived by control-service at pipeline creation time,
+  capped to Mongo's name limit, and remains hidden from the UI
 
 - local development can use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=local_filesystem`
 - GCP deployment should use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=gcs`

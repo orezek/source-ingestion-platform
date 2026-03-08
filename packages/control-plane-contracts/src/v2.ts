@@ -3,6 +3,11 @@ import { z } from 'zod';
 
 const isoDateTimeSchema = z.iso.datetime();
 const nonEmptyStringSchema = z.string().trim().min(1);
+const MONGO_DB_NAME_MAX_BYTES = 38;
+const mongoDbNameSchema = nonEmptyStringSchema.max(
+  MONGO_DB_NAME_MAX_BYTES,
+  `dbName must be at most ${MONGO_DB_NAME_MAX_BYTES} bytes.`,
+);
 const optionalStringSchema = z.preprocess((value) => {
   if (typeof value === 'string' && value.trim() === '') {
     return undefined;
@@ -24,7 +29,7 @@ export const v2RunStatusSchema = z.enum([
 ]);
 
 export const v2PersistenceTargetsSchema = z.object({
-  dbName: nonEmptyStringSchema,
+  dbName: mongoDbNameSchema,
 });
 
 export const v2PipelineSnapshotSchema = z.object({
@@ -729,7 +734,7 @@ export const updateControlPlanePipelineRequestV2Schema = z
 export const controlPlanePipelineV2Schema = createControlPlanePipelineRequestV2Schema
   .extend({
     pipelineId: nonEmptyStringSchema,
-    dbName: nonEmptyStringSchema,
+    dbName: mongoDbNameSchema,
     version: z.number().int().positive(),
     status: v2ControlPlanePipelineStatusSchema.default('active'),
     createdAt: isoDateTimeSchema,
@@ -937,7 +942,7 @@ export const controlPlaneRunV2Schema = z
     pipelineId: nonEmptyStringSchema,
     pipelineName: nonEmptyStringSchema,
     mode: v2PipelineModeSchema,
-    dbName: nonEmptyStringSchema,
+    dbName: mongoDbNameSchema,
     source: nonEmptyStringSchema,
     searchSpaceId: nonEmptyStringSchema,
     status: v2RunStatusSchema,

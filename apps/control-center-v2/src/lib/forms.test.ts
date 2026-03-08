@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PIPELINE_NAME_MAX_LENGTH,
   buildCreatePipelinePayload,
   buildRenamePipelinePayload,
   pipelineCreateFormSchema,
+  pipelineRenameFormSchema,
 } from '@/lib/forms';
 
 describe('forms', () => {
@@ -93,5 +95,38 @@ describe('forms', () => {
     expect(buildRenamePipelinePayload({ name: '  Renamed Pipeline  ' })).toEqual({
       name: 'Renamed Pipeline',
     });
+  });
+
+  it('rejects pipeline names longer than the shared UI limit', () => {
+    expect(() =>
+      pipelineCreateFormSchema.parse({
+        name: 'x'.repeat(PIPELINE_NAME_MAX_LENGTH + 1),
+        source: 'jobs.cz',
+        mode: 'crawl_only',
+        searchSpaceId: 'crawler-only',
+        searchSpaceName: 'Crawler Only',
+        searchSpaceDescription: '',
+        startUrlsText: 'https://example.com/jobs',
+        maxItems: 50,
+        allowInactiveMarking: false,
+        runtimeProfileId: 'runtime-crawler',
+        runtimeProfileName: 'Crawler Runtime',
+        crawlerMaxConcurrency: 2,
+        crawlerMaxRequestsPerMinute: 30,
+        ingestionConcurrency: 9,
+        ingestionEnabled: true,
+        debugLog: true,
+        includeMongoOutput: true,
+        includeDownloadableJson: true,
+      }),
+    ).toThrow(new RegExp(`at most ${PIPELINE_NAME_MAX_LENGTH} characters`, 'i'));
+  });
+
+  it('rejects rename payloads longer than the shared UI limit', () => {
+    expect(() =>
+      pipelineRenameFormSchema.parse({
+        name: 'x'.repeat(PIPELINE_NAME_MAX_LENGTH + 1),
+      }),
+    ).toThrow(new RegExp(`at most ${PIPELINE_NAME_MAX_LENGTH} characters`, 'i'));
   });
 });

@@ -406,10 +406,17 @@ export class CrawlerWorkerRuntime {
       }
 
       this.activeRuns += 1;
-      void this.executeRun(run).finally(() => {
-        this.activeRuns = Math.max(0, this.activeRuns - 1);
-        this.pumpQueuedRuns();
-      });
+      void this.executeRun(run)
+        .catch((error) => {
+          this.deps.logger.error(
+            { err: error, runId: run.runId },
+            'Unhandled crawler run execution error.',
+          );
+        })
+        .finally(() => {
+          this.activeRuns = Math.max(0, this.activeRuns - 1);
+          this.pumpQueuedRuns();
+        });
     }
   }
 
@@ -429,14 +436,14 @@ export class CrawlerWorkerRuntime {
     run.executingPhase = 'list';
     this.startWatchdog(run);
 
-    await this.ensureCollections(request.persistenceTargets.dbName);
-    await this.publishRunStarted(run);
-
     let datasetRecords: Array<Record<string, unknown>> = [];
     let stopReason = 'completed';
     let finalStatus: Exclude<RunStatus, 'queued'> = 'succeeded';
 
     try {
+      await this.ensureCollections(request.persistenceTargets.dbName);
+      await this.publishRunStarted(run);
+
       const listPhase = await this.runListPhase(run, request.inputRef.searchSpaceSnapshot);
       const reconcileObservedAtIso = nowIso();
       const reconcileResult = await (

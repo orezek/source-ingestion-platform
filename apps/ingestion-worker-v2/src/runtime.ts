@@ -381,8 +381,16 @@ export class IngestionWorkerRuntime {
     };
 
     this.runs.set(run.runId, run);
-    await this.ensureIndexesForRun(run);
-    await this.publishRunStarted(run);
+    try {
+      await this.ensureIndexesForRun(run);
+      await this.publishRunStarted(run);
+    } catch (error) {
+      if (run.noDetailTimeoutHandle) {
+        clearTimeout(run.noDetailTimeoutHandle);
+      }
+      this.runs.delete(run.runId);
+      throw error;
+    }
 
     return startRunAcceptedResponseV2Schema.parse({
       contractVersion: 'v2',

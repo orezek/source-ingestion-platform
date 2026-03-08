@@ -9,8 +9,14 @@ import type {
 } from '@/lib/contracts';
 import { splitTextareaLines } from '@/lib/utils';
 
+export const PIPELINE_NAME_MAX_LENGTH = 20;
+
 export const pipelineCreateFormSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required.'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required.')
+    .max(PIPELINE_NAME_MAX_LENGTH, `Name must be at most ${PIPELINE_NAME_MAX_LENGTH} characters.`),
   source: z.string().trim().min(1, 'Source is required.'),
   mode: z.enum(['crawl_only', 'crawl_and_ingest']),
   searchSpaceId: z.string().trim().min(1, 'Search space ID is required.'),
@@ -34,7 +40,11 @@ export type PipelineCreateFormValues = z.input<typeof pipelineCreateFormSchema>;
 export type PipelineCreateFormData = z.output<typeof pipelineCreateFormSchema>;
 
 export const pipelineRenameFormSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required.'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name is required.')
+    .max(PIPELINE_NAME_MAX_LENGTH, `Name must be at most ${PIPELINE_NAME_MAX_LENGTH} characters.`),
 });
 
 export type PipelineRenameFormValues = z.infer<typeof pipelineRenameFormSchema>;

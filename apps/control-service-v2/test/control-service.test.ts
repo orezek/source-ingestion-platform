@@ -11,6 +11,7 @@ import { ControlService } from '../src/control-service.js';
 import { WorkerClientError } from '../src/worker-client.js';
 import type { EnvSchema } from '../src/env.js';
 import type { ControlPlaneStore } from '../src/repository.js';
+import { buildPipelineDbName } from '../src/run-model.js';
 import { ControlServiceState } from '../src/service-state.js';
 import { StreamHub } from '../src/stream-hub.js';
 import type {
@@ -258,6 +259,119 @@ test('startPipelineRun dispatches ingestion first then crawler for crawl_and_ing
   const persistedManifest = store.manifests.get(response.runId);
   assert.ok(persistedManifest);
   assert.equal(persistedManifest?.workerCommands.crawler.artifactSink.type, 'gcs');
+});
+
+test('createPipeline derives a Mongo-safe hidden dbName from the display name', async () => {
+  const store = new InMemoryStore();
+  const logger = createLogger();
+  const service = new ControlService(
+    createEnv(),
+    store,
+    {
+      async ensureCrawlerReady() {
+        return undefined;
+      },
+      async ensureIngestionReady() {
+        return undefined;
+      },
+      async startCrawlerRun() {
+        throw new Error('not used');
+      },
+      async startIngestionRun() {
+        throw new Error('not used');
+      },
+      async cancelCrawlerRun() {
+        throw new Error('not used');
+      },
+      async cancelIngestionRun() {
+        throw new Error('not used');
+      },
+    },
+    new ControlServiceState({
+      serviceName: 'control-service-v2',
+      serviceVersion: 'test',
+      subscriptionEnabled: true,
+    }),
+    new StreamHub(logger as never),
+    logger as never,
+  );
+
+  const pipeline = await service.createPipeline({
+    name: 'Vyvoj aplikaci a systemu',
+    source: 'jobs.cz',
+    mode: 'crawl_and_ingest',
+    searchSpace: {
+      id: 'vyvoj-aplikaci-a-systemu',
+      name: 'Vyvoj aplikaci a systemu',
+      description: 'Regression case for Mongo-safe db naming.',
+      startUrls: ['https://example.com/jobs'],
+      maxItems: 25,
+      allowInactiveMarking: false,
+    },
+    runtimeProfile: {
+      id: 'runtime-vyvoj',
+      name: 'Vyvoj Runtime',
+      crawlerMaxConcurrency: 3,
+      crawlerMaxRequestsPerMinute: 60,
+      ingestionConcurrency: 4,
+      ingestionEnabled: true,
+      debugLog: false,
+    },
+    structuredOutput: {
+      destinations: [{ type: 'mongodb' }],
+    },
+  });
+
+  assert.equal(pipeline.dbName, buildPipelineDbName(pipeline.name, pipeline.pipelineId));
+  assert.equal(pipeline.dbName.endsWith(pipeline.pipelineId.split('-').at(-1)!), true);
+  assert.equal(Buffer.byteLength(pipeline.dbName, 'utf8') <= 38, true);
+  assert.notEqual(pipeline.dbName, pipeline.pipelineId);
+});
+
+test('startPipelineRun rejects stored pipelines with an overlong dbName', async () => {
+  const store = new InMemoryStore();
+  store.pipelines.set(controlPlanePipelineV2Fixture.pipelineId, {
+    ...controlPlanePipelineV2Fixture,
+    dbName: 'pipeline-vyvoj-aplikaci-a-systemu-cee0eec9',
+  });
+
+  const logger = createLogger();
+  const service = new ControlService(
+    createEnv(),
+    store,
+    {
+      async ensureCrawlerReady() {
+        return undefined;
+      },
+      async ensureIngestionReady() {
+        return undefined;
+      },
+      async startCrawlerRun() {
+        throw new Error('not used');
+      },
+      async startIngestionRun() {
+        throw new Error('not used');
+      },
+      async cancelCrawlerRun() {
+        throw new Error('not used');
+      },
+      async cancelIngestionRun() {
+        throw new Error('not used');
+      },
+    },
+    new ControlServiceState({
+      serviceName: 'control-service-v2',
+      serviceVersion: 'test',
+      subscriptionEnabled: true,
+    }),
+    new StreamHub(logger as never),
+    logger as never,
+  );
+
+  await assert.rejects(
+    () => service.startPipelineRun(controlPlanePipelineV2Fixture.pipelineId),
+    /PIPELINE_INVALID_DB_NAME|MongoDB limit of 38 bytes/i,
+  );
 });
 
 test('startPipelineRun marks run failed and cancels ingestion when crawler dispatch fails', async () => {

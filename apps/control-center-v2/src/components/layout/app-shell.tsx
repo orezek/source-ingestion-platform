@@ -24,16 +24,46 @@ const heartbeatToState = (
   return 'live';
 };
 
+function getPageHeader(pathname: string): { title: string; subtitle: string } {
+  if (pathname === '/pipelines') {
+    return {
+      title: 'Pipelines',
+      subtitle: 'Manage crawler definitions and ingestion configurations.',
+    };
+  }
+
+  if (pathname === '/runs') {
+    return {
+      title: 'Execution Runs',
+      subtitle: 'Live cross-pipeline execution feed and history.',
+    };
+  }
+
+  if (/^\/runs\/[^/]+/.test(pathname)) {
+    return {
+      title: 'Run Details',
+      subtitle: 'Execution trace and telemetry for the selected run.',
+    };
+  }
+
+  if (/^\/pipelines\/[^/]+/.test(pathname)) {
+    return {
+      title: 'Pipeline Details',
+      subtitle: 'Configuration, embedded profiles, and execution history.',
+    };
+  }
+
+  return {
+    title: 'Operator Surface',
+    subtitle: 'Pipeline-owned runs with live control-plane state.',
+  };
+}
+
 function NavContent({ pathname, compact = false }: { pathname: string; compact?: boolean }) {
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="border-b border-border pb-4">
-        <div className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground">
-          Control Center V2
-        </div>
-        <div className="mt-2 text-lg font-semibold tracking-tightest text-foreground">
-          Swiss Authority / Lab Report
-        </div>
+      <div className="border-b border-[var(--theme-structure)] p-4">
+        <div className="text-base font-semibold text-foreground">Control Center v2</div>
       </div>
       <nav className="grid gap-2">
         {navItems.map((item) => {
@@ -68,6 +98,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const state = heartbeatToState(heartbeat);
+  const pageHeader = getPageHeader(pathname);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   return (
@@ -129,11 +160,9 @@ export function AppShell({
                   <Breadcrumbs />
                   <div>
                     <h1 className="text-xl font-semibold tracking-tightest sm:text-2xl">
-                      Operator Surface
+                      {pageHeader.title}
                     </h1>
-                    <p className="text-sm text-muted-foreground">
-                      Pipeline-owned runs with live control-plane state.
-                    </p>
+                    <p className="text-sm text-muted-foreground">{pageHeader.subtitle}</p>
                   </div>
                 </div>
               </div>

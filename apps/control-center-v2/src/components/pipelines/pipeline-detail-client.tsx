@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import type { ControlPlanePipeline, ControlPlaneRun } from '@/lib/contracts';
-import { buildRenamePipelinePayload } from '@/lib/forms';
+import { PIPELINE_NAME_MAX_LENGTH, buildRenamePipelinePayload } from '@/lib/forms';
 import { upsertRun, useControlStream } from '@/lib/live';
 import { formatDateTime } from '@/lib/utils';
 
@@ -107,9 +107,13 @@ export function PipelineDetailClient({
               <span className="font-mono text-[0.68rem] uppercase tracking-[0.14em] text-muted-foreground">
                 Display Name
               </span>
-              <Input value={draftName} onChange={(event) => setDraftName(event.target.value)} />
+              <Input
+                maxLength={PIPELINE_NAME_MAX_LENGTH}
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+              />
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="mt-4 flex items-center gap-4">
               <Button onClick={submitRename} disabled={renamePending} variant="secondary">
                 {renamePending ? 'Saving' : 'Rename Pipeline'}
               </Button>
@@ -118,7 +122,6 @@ export function PipelineDetailClient({
             <dl className="grid gap-2 text-sm text-muted-foreground">
               <Row label="Source" value={pipeline.source} />
               <Row label="Mode" value={pipeline.mode} />
-              <Row label="Database" value={pipeline.dbName} />
               <Row label="Version" value={String(pipeline.version)} />
               <Row label="Created" value={formatDateTime(pipeline.createdAt)} />
               <Row label="Updated" value={formatDateTime(pipeline.updatedAt)} />
@@ -135,8 +138,28 @@ export function PipelineDetailClient({
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground">
             <SnapshotBlock title="Search Space">
-              <Row label="ID" value={pipeline.searchSpace.id} />
-              <Row label="Name" value={pipeline.searchSpace.name} />
+              <Row
+                label="ID"
+                value={
+                  <span
+                    className="block max-w-[200px] truncate text-right sm:max-w-xs md:max-w-md"
+                    title={pipeline.searchSpace.id}
+                  >
+                    {pipeline.searchSpace.id}
+                  </span>
+                }
+              />
+              <Row
+                label="Name"
+                value={
+                  <span
+                    className="block max-w-[200px] truncate text-right sm:max-w-xs md:max-w-md"
+                    title={pipeline.searchSpace.name}
+                  >
+                    {pipeline.searchSpace.name}
+                  </span>
+                }
+              />
               <Row label="Max Items" value={String(pipeline.searchSpace.maxItems)} />
               <Row label="Start URLs" value={`${pipeline.searchSpace.startUrls.length} urls`} />
             </SnapshotBlock>
@@ -225,11 +248,11 @@ function SnapshotBlock({ title, children }: { title: string; children: React.Rea
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex justify-between gap-3">
-      <dt>{label}</dt>
-      <dd className="text-right text-foreground">{value}</dd>
+    <div className="flex min-w-0 justify-between gap-3">
+      <dt className="shrink-0">{label}</dt>
+      <dd className="min-w-0 text-right text-foreground">{value}</dd>
     </div>
   );
 }

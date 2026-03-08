@@ -67,13 +67,13 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
   };
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
             Pipeline Registry
           </p>
-          <h2 className="text-2xl font-semibold tracking-tightest">Frozen execution definitions</h2>
+          <h2 className="text-xl font-semibold tracking-tightest">Frozen execution definitions</h2>
         </div>
         <div className="flex items-center gap-3">
           <LiveIndicator state={connectionState} />
@@ -135,49 +135,63 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
             ))}
           </div>
 
-          <div className="hidden overflow-hidden rounded-sm border border-border md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Mode</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pipelines.map((pipeline) => (
-                  <TableRow key={pipeline.pipelineId}>
-                    <TableCell>
-                      <div>
-                        <div className="font-semibold text-foreground">{pipeline.name}</div>
-                        <div className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                          {pipeline.pipelineId}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{pipeline.source}</TableCell>
-                    <TableCell>{titleCaseFromToken(pipeline.mode)}</TableCell>
-                    <TableCell>{formatDateTime(pipeline.updatedAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button asChild size="sm" variant="secondary">
-                          <Link href={`/pipelines/${pipeline.pipelineId}`}>View</Link>
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => startRun(pipeline.pipelineId)}
-                          disabled={pendingPipelineId === pipeline.pipelineId}
-                        >
-                          {pendingPipelineId === pipeline.pipelineId ? 'Starting' : 'Start'}
-                        </Button>
-                      </div>
-                    </TableCell>
+          <div className="hidden min-w-0 rounded-sm border border-border md:block">
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Source</TableHead>
+                    <TableHead className="whitespace-nowrap">Mode</TableHead>
+                    <TableHead className="whitespace-nowrap">Updated</TableHead>
+                    <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {pipelines.map((pipeline) => (
+                    <TableRow key={pipeline.pipelineId}>
+                      <TableCell>
+                        <div className="min-w-[240px]">
+                          <div
+                            className="max-w-[300px] truncate font-semibold text-foreground sm:max-w-md"
+                            title={pipeline.name}
+                          >
+                            {pipeline.name}
+                          </div>
+                          <div
+                            className="max-w-[300px] truncate font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground sm:max-w-md"
+                            title={pipeline.pipelineId}
+                          >
+                            {pipeline.pipelineId}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{pipeline.source}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {titleCaseFromToken(pipeline.mode)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatDateTime(pipeline.updatedAt)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button asChild size="sm" variant="secondary">
+                            <Link href={`/pipelines/${pipeline.pipelineId}`}>View</Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => startRun(pipeline.pipelineId)}
+                            disabled={pendingPipelineId === pipeline.pipelineId}
+                          >
+                            {pendingPipelineId === pipeline.pipelineId ? 'Starting' : 'Start'}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </>
       )}

@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { ControlPlanePipeline } from '@/lib/contracts';
 import {
+  PIPELINE_NAME_MAX_LENGTH,
   buildCreatePipelinePayload,
   pipelineCreateFormSchema,
   type PipelineCreateFormData,
@@ -82,7 +83,11 @@ export function PipelineCreateForm() {
         </CardHeader>
         <CardContent className="grid gap-4">
           <Field label="Pipeline Name" error={form.formState.errors.name?.message}>
-            <Input {...form.register('name')} placeholder="Prague Tech Pipeline" />
+            <Input
+              {...form.register('name')}
+              maxLength={PIPELINE_NAME_MAX_LENGTH}
+              placeholder="Prague Tech Pipeline"
+            />
           </Field>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Source" error={form.formState.errors.source?.message}>

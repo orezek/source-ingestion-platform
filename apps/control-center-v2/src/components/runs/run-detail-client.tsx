@@ -20,14 +20,56 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
 import { LiveIndicator } from '@/components/state/live-indicator';
-import { StatusBadge } from '@/components/state/status-badge';
 import type { ControlPlaneRun, ControlPlaneRunEventIndex } from '@/lib/contracts';
 import { appendRunEvent, useControlStream } from '@/lib/live';
 import { formatDateTime, formatNullableCount } from '@/lib/utils';
+
+const terminalStates = new Set<ControlPlaneRun['status']>([
+  'succeeded',
+  'failed',
+  'completed_with_errors',
+  'stopped',
+]);
+
+function resolveBadgeVariant(
+  status: string | null,
+): 'neutral' | 'running' | 'success' | 'warning' | 'danger' {
+  if (!status) {
+    return 'neutral';
+  }
+
+  if (status === 'running' || status === 'queued') {
+    return 'running';
+  }
+
+  if (status === 'succeeded') {
+    return 'success';
+  }
+
+  if (status === 'completed_with_errors') {
+    return 'warning';
+  }
+
+  if (status === 'failed' || status === 'stopped') {
+    return 'danger';
+  }
+
+  return 'neutral';
+}
+
+function StatusLabeledBadge({ label, status }: { label: string; status: string | null }) {
+  return (
+    <Badge variant={resolveBadgeVariant(status)}>
+      <span className="font-mono text-[0.62rem] tracking-[0.18em]">{label}:</span>
+      <span className="ml-1">{status ?? 'disabled'}</span>
+    </Badge>
+  );
+}
 
 export function RunDetailClient({
   initialRun,
@@ -43,6 +85,7 @@ export function RunDetailClient({
   const [events, setEvents] = useState(initialEvents);
   const [cancelPending, setCancelPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isTerminal = terminalStates.has(run.status);
   const connectionState = useControlStream({
     runId: initialRun.runId,
     onRunUpserted: (nextRun) => {
@@ -88,26 +131,28 @@ export function RunDetailClient({
         </div>
         <div className="flex items-center gap-3">
           <LiveIndicator state={connectionState} />
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="danger">Cancel Run</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Cancel this run?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  The request will be sent to the control-service and propagated to the active
-                  workers.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep Running</AlertDialogCancel>
-                <AlertDialogAction onClick={cancel} disabled={cancelPending}>
-                  {cancelPending ? 'Cancelling' : 'Cancel Run'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {!isTerminal ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="danger">Cancel Run</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancel this run?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    The request will be sent to the control-service and propagated to the active
+                    workers.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep Running</AlertDialogCancel>
+                  <AlertDialogAction onClick={cancel} disabled={cancelPending}>
+                    {cancelPending ? 'Cancelling' : 'Cancel Run'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
         </div>
       </div>
 
@@ -116,16 +161,14 @@ export function RunDetailClient({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
         <Card>
           <CardHeader>
-            <CardTitle>Run Projection</CardTitle>
-            <CardDescription>
-              Current cross-pipeline state reduced by control-service.
-            </CardDescription>
+            <CardTitle>Execution Telemetry</CardTitle>
+            <CardDescription>Live execution metrics and termination status.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 text-sm text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={run.status} />
-              <StatusBadge status={run.crawler.status} />
-              <StatusBadge status={run.ingestion.status} />
+              <StatusLabeledBadge label="RUN" status={run.status} />
+              <StatusLabeledBadge label="CRAWLER" status={run.crawler.status} />
+              <StatusLabeledBadge label="INGESTION" status={run.ingestion.status} />
             </div>
             <dl className="grid gap-2">
               <Row label="Requested" value={formatDateTime(run.requestedAt)} />

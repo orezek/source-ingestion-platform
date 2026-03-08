@@ -30,6 +30,8 @@ import type { ControlServiceState } from './service-state.js';
 import type { StreamHub } from './stream-hub.js';
 import { WorkerClientError } from './worker-client.js';
 
+const MONGO_DB_NAME_MAX_BYTES = 38;
+
 export type ControlServiceWorkerClient = Pick<
   import('./worker-client.js').WorkerClient,
   | 'startCrawlerRun'
@@ -46,6 +48,18 @@ function isDuplicateKeyError(error: unknown): error is MongoServerError {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function assertPipelineDbNameIsMongoSafe(dbName: string): void {
+  if (Buffer.byteLength(dbName, 'utf8') <= MONGO_DB_NAME_MAX_BYTES) {
+    return;
+  }
+
+  throw new ControlServiceError({
+    statusCode: 422,
+    code: 'PIPELINE_INVALID_DB_NAME',
+    message: `Pipeline dbName exceeds MongoDB limit of ${MONGO_DB_NAME_MAX_BYTES} bytes.`,
+  });
 }
 
 function resolveArtifactSink(env: EnvSchema): ControlPlaneArtifactSink {
@@ -90,7 +104,7 @@ export class ControlService {
     const pipeline = controlPlanePipelineV2Schema.parse({
       ...request,
       pipelineId,
-      dbName: buildPipelineDbName(pipelineId),
+      dbName: buildPipelineDbName(request.name, pipelineId),
       version: 1,
       status: 'active',
       createdAt: timestamp,
@@ -153,6 +167,8 @@ export class ControlService {
         message: `Pipeline "${pipelineId}" was not found.`,
       });
     }
+
+    assertPipelineDbNameIsMongoSafe(pipeline.dbName);
 
     const activeRun = await this.store.findActiveRunForPipeline(pipelineId);
     if (activeRun) {

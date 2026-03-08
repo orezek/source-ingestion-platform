@@ -22,6 +22,8 @@ const DISPATCH_FAILURE_STOP_REASONS = new Set([
   'crawler_dispatch_failed',
   'startup_rollback_cancel_failed',
 ]);
+const MONGO_DB_NAME_MAX_BYTES = 38;
+const PIPELINE_DB_PREFIX = 'pl';
 
 function slugify(value: string): string {
   return value
@@ -53,8 +55,42 @@ export function generateRunId(): string {
   return `run-${randomUUID()}`;
 }
 
-export function buildPipelineDbName(pipelineId: string): string {
-  return pipelineId;
+function extractPipelineSuffix(pipelineId: string): string {
+  const suffix = pipelineId.split('-').at(-1)?.trim();
+  return suffix && suffix.length > 0 ? suffix : randomUUID().split('-')[0]!;
+}
+
+function truncateToMaxBytes(value: string, maxBytes: number): string {
+  let truncated = '';
+  for (const character of value) {
+    if (Buffer.byteLength(`${truncated}${character}`, 'utf8') > maxBytes) {
+      break;
+    }
+
+    truncated += character;
+  }
+
+  return truncated.replace(/-+$/u, '');
+}
+
+export function buildPipelineDbName(name: string, pipelineId: string): string {
+  const slug = slugify(name) || 'pipeline';
+  const suffix = extractPipelineSuffix(pipelineId);
+  const candidate = `${PIPELINE_DB_PREFIX}-${slug}-${suffix}`;
+
+  if (Buffer.byteLength(candidate, 'utf8') <= MONGO_DB_NAME_MAX_BYTES) {
+    return candidate;
+  }
+
+  const slugMaxBytes =
+    MONGO_DB_NAME_MAX_BYTES - Buffer.byteLength(`${PIPELINE_DB_PREFIX}--${suffix}`, 'utf8');
+
+  const truncatedSlug = truncateToMaxBytes(slug, slugMaxBytes);
+  if (truncatedSlug.length === 0) {
+    return `${PIPELINE_DB_PREFIX}-${suffix}`;
+  }
+
+  return `${PIPELINE_DB_PREFIX}-${truncatedSlug}-${suffix}`;
 }
 
 export function assertPipelineCreateRequestConsistency(input: {
@@ -270,6 +306,10 @@ function isDispatchFailureLockedRun(run: ControlPlaneRun): boolean {
   );
 }
 
+function isTerminalStatus(status: ControlPlaneRun['status']): boolean {
+  return status === 'succeeded' || status === 'completed_with_errors' || status === 'failed';
+}
+
 function resolveFinalRunStatus(run: ControlPlaneRun): ControlPlaneRun['status'] {
   const ingestionStatus = run.ingestion.status;
   const statuses = [run.crawler.status, ingestionStatus].filter(
@@ -351,9 +391,13 @@ export function applyRuntimeEventToRun(
 
   switch (event.eventType) {
     case 'crawler.run.started': {
-      next.crawler.status = 'running';
       next.crawler.startedAt ??= event.occurredAt;
       next.startedAt ??= event.occurredAt;
+      if (isTerminalStatus(next.crawler.status)) {
+        break;
+      }
+
+      next.crawler.status = 'running';
       if (!lockedByDispatchFailure) {
         next.status = 'running';
       }
@@ -377,9 +421,13 @@ export function applyRuntimeEventToRun(
       break;
     }
     case 'ingestion.run.started': {
-      next.ingestion.status = 'running';
       next.ingestion.startedAt ??= event.occurredAt;
       next.startedAt ??= event.occurredAt;
+      if (next.ingestion.status !== null && isTerminalStatus(next.ingestion.status)) {
+        break;
+      }
+
+      next.ingestion.status = 'running';
       if (!lockedByDispatchFailure) {
         next.status = 'running';
       }
