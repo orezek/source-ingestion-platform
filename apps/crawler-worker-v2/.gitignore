@@ -1,4 +1,5 @@
 dist
 node_modules
 storage
+control-plane-artifacts
 tsconfig.tsbuildinfo
