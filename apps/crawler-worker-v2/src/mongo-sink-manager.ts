@@ -77,28 +77,33 @@ export class MongoSinkManager {
         maxConnecting: this.options.maxConnecting,
         waitQueueTimeoutMS: this.options.waitQueueTimeoutMs,
       });
-      await client.connect();
-      const db = client.db(target.dbName);
-      await db.command({ ping: 1 });
-      entry = {
-        key,
-        dbName: target.dbName,
-        redactedUri: redactMongoUri(target.mongodbUri),
-        client,
-        db,
-        refCount: 0,
-        idleTimer: null,
-      };
-      this.entries.set(key, entry);
-      this.options.logger.debug(
-        {
-          sinkKey: key,
+      try {
+        await client.connect();
+        const db = client.db(target.dbName);
+        await db.command({ ping: 1 });
+        entry = {
+          key,
           dbName: target.dbName,
-          mongodbUri: entry.redactedUri,
-          activeSinkClients: this.entries.size,
-        },
-        'Mongo sink client created.',
-      );
+          redactedUri: redactMongoUri(target.mongodbUri),
+          client,
+          db,
+          refCount: 0,
+          idleTimer: null,
+        };
+        this.entries.set(key, entry);
+        this.options.logger.debug(
+          {
+            sinkKey: key,
+            dbName: target.dbName,
+            mongodbUri: entry.redactedUri,
+            activeSinkClients: this.entries.size,
+          },
+          'Mongo sink client created.',
+        );
+      } catch (error) {
+        await client.close().catch(() => undefined);
+        throw error;
+      }
     }
 
     if (entry.idleTimer) {
