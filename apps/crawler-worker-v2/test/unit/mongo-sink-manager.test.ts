@@ -25,23 +25,23 @@ test('acquire closes client and does not retain failed sink when ping fails', as
   let connectCalls = 0;
   let closeCalls = 0;
 
-  MongoClient.prototype.connect = (async function (this: MongoClient) {
+  MongoClient.prototype.connect = async function (this: MongoClient) {
     connectCalls += 1;
     return this;
-  }) as typeof MongoClient.prototype.connect;
+  } as typeof MongoClient.prototype.connect;
 
-  MongoClient.prototype.db = (function (this: MongoClient) {
+  MongoClient.prototype.db = function (this: MongoClient) {
     return {
       command: async () => {
         throw new Error('ping failed');
       },
     } as unknown as ReturnType<typeof MongoClient.prototype.db>;
-  }) as typeof MongoClient.prototype.db;
+  } as typeof MongoClient.prototype.db;
 
-  MongoClient.prototype.close = (async function (this: MongoClient) {
+  MongoClient.prototype.close = async function (this: MongoClient) {
     closeCalls += 1;
     return this;
-  }) as typeof MongoClient.prototype.close;
+  } as typeof MongoClient.prototype.close;
 
   try {
     const manager = createManager();
