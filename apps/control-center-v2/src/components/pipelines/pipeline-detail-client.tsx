@@ -84,6 +84,7 @@ export function PipelineDetailClient({
   const [draft, setDraft] = useState<EditablePipelineDraft>(() => createInitialDraft(pipeline));
   const [sinkMongoUri, setSinkMongoUri] = useState('');
   const [sinkDbName, setSinkDbName] = useState(pipeline.operatorSink.dbName);
+  const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [saveConfigPending, setSaveConfigPending] = useState(false);
   const [saveSinkPending, setSaveSinkPending] = useState(false);
@@ -100,8 +101,22 @@ export function PipelineDetailClient({
 
   const hasActiveRun = useMemo(() => runs.some((run) => activeRunStatuses.has(run.status)), [runs]);
   const canEditInactiveMarking = draft.mode === 'crawl_and_ingest' && draft.includeMongoOutput;
+  const configInputsDisabled = !isEditing || hasActiveRun || deletePending || saveConfigPending;
+  const sinkInputsDisabled = !isEditing || hasActiveRun || deletePending || saveSinkPending;
+
+  const cancelEditing = () => {
+    setDraft(createInitialDraft(pipeline));
+    setSinkMongoUri('');
+    setSinkDbName(pipeline.operatorSink.dbName);
+    setErrorMessage(null);
+    setIsEditing(false);
+  };
 
   const submitConfig = async () => {
+    if (!isEditing) {
+      return;
+    }
+
     setSaveConfigPending(true);
     setErrorMessage(null);
 
@@ -142,6 +157,10 @@ export function PipelineDetailClient({
   };
 
   const submitSink = async () => {
+    if (!isEditing) {
+      return;
+    }
+
     setSaveSinkPending(true);
     setErrorMessage(null);
 
@@ -269,34 +288,45 @@ export function PipelineDetailClient({
         </div>
         <div className="flex items-center gap-3">
           <LiveIndicator state={connectionState} />
-          <Button onClick={startRun} disabled={startPending || deletePending || hasActiveRun}>
-            {startPending ? 'Starting' : 'Start Run'}
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="danger" disabled={deletePending || hasActiveRun}>
-                {deletePending ? 'Deleting' : 'Delete Pipeline'}
+          {isEditing ? null : (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setIsEditing(true)}
+                disabled={deletePending || hasActiveRun || startPending}
+              >
+                Edit Pipeline
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this pipeline?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This operation permanently deletes pipeline metadata, run history, sink data, and
-                  artifacts. The action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Keep Pipeline</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={deletePipeline}
-                  disabled={deletePending || hasActiveRun}
-                >
-                  {deletePending ? 'Deleting' : 'Delete Pipeline'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+              <Button onClick={startRun} disabled={startPending || deletePending || hasActiveRun}>
+                {startPending ? 'Starting' : 'Start Run'}
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="danger" disabled={deletePending || hasActiveRun}>
+                    {deletePending ? 'Deleting' : 'Delete Pipeline'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this pipeline?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This operation permanently deletes pipeline metadata, run history, sink data,
+                      and artifacts. The action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep Pipeline</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={deletePipeline}
+                      disabled={deletePending || hasActiveRun}
+                    >
+                      {deletePending ? 'Deleting' : 'Delete Pipeline'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
         </div>
       </div>
 
@@ -329,7 +359,7 @@ export function PipelineDetailClient({
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, name: event.target.value }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               />
             </Field>
             <Field label="Mode">
@@ -342,7 +372,7 @@ export function PipelineDetailClient({
                     mode: event.target.value as 'crawl_only' | 'crawl_and_ingest',
                   }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               >
                 <option value="crawl_and_ingest">Crawl And Ingest</option>
                 <option value="crawl_only">Crawl Only</option>
@@ -351,14 +381,20 @@ export function PipelineDetailClient({
             <Field label="Source">
               <Input value={pipeline.source} disabled />
             </Field>
-            <div className="mt-2">
-              <Button
-                onClick={submitConfig}
-                disabled={hasActiveRun || deletePending || saveConfigPending}
-              >
-                {saveConfigPending ? 'Saving' : 'Save Pipeline Config'}
-              </Button>
-            </div>
+            {isEditing ? (
+              <div className="mt-2 flex items-center gap-2">
+                <Button onClick={submitConfig} disabled={configInputsDisabled}>
+                  {saveConfigPending ? 'Saving' : 'Save Pipeline Config'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={cancelEditing}
+                  disabled={saveConfigPending || saveSinkPending}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -374,7 +410,7 @@ export function PipelineDetailClient({
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, searchSpaceName: event.target.value }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               />
             </Field>
             <Field label="Description">
@@ -387,7 +423,7 @@ export function PipelineDetailClient({
                     searchSpaceDescription: event.target.value,
                   }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               />
             </Field>
             <Field label="Start URLs (one per line)">
@@ -397,7 +433,7 @@ export function PipelineDetailClient({
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, startUrlsText: event.target.value }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               />
             </Field>
             <div className="grid gap-4 md:grid-cols-[minmax(0,220px),1fr] md:items-end">
@@ -411,7 +447,7 @@ export function PipelineDetailClient({
                       maxItems: Number(event.target.value || 0),
                     }))
                   }
-                  disabled={hasActiveRun || deletePending || saveConfigPending}
+                  disabled={configInputsDisabled}
                 />
               </Field>
               <div className="flex h-11 items-center space-x-2">
@@ -427,7 +463,11 @@ export function PipelineDetailClient({
                     }))
                   }
                   disabled={
-                    !canEditInactiveMarking || hasActiveRun || deletePending || saveConfigPending
+                    !isEditing ||
+                    !canEditInactiveMarking ||
+                    hasActiveRun ||
+                    deletePending ||
+                    saveConfigPending
                   }
                 />
                 <label
@@ -453,7 +493,7 @@ export function PipelineDetailClient({
                 onChange={(event) =>
                   setDraft((current) => ({ ...current, runtimeProfileName: event.target.value }))
                 }
-                disabled={hasActiveRun || deletePending || saveConfigPending}
+                disabled={configInputsDisabled}
               />
             </Field>
             <div className="grid gap-4 md:grid-cols-3">
@@ -469,7 +509,7 @@ export function PipelineDetailClient({
                         : undefined,
                     }))
                   }
-                  disabled={hasActiveRun || deletePending || saveConfigPending}
+                  disabled={configInputsDisabled}
                 />
               </Field>
               <Field label="Crawler RPM">
@@ -484,7 +524,7 @@ export function PipelineDetailClient({
                         : undefined,
                     }))
                   }
-                  disabled={hasActiveRun || deletePending || saveConfigPending}
+                  disabled={configInputsDisabled}
                 />
               </Field>
               <Field label="Ingestion Concurrency">
@@ -500,6 +540,7 @@ export function PipelineDetailClient({
                     }))
                   }
                   disabled={
+                    !isEditing ||
                     draft.mode === 'crawl_only' ||
                     hasActiveRun ||
                     deletePending ||
@@ -530,7 +571,11 @@ export function PipelineDetailClient({
                 }))
               }
               disabled={
-                draft.mode === 'crawl_only' || hasActiveRun || deletePending || saveConfigPending
+                !isEditing ||
+                draft.mode === 'crawl_only' ||
+                hasActiveRun ||
+                deletePending ||
+                saveConfigPending
               }
             />
             {draft.includeMongoOutput ? (
@@ -541,22 +586,30 @@ export function PipelineDetailClient({
                     onChange={(event) => setSinkMongoUri(event.target.value)}
                     autoComplete="off"
                     placeholder="********"
-                    disabled={hasActiveRun || deletePending || saveSinkPending}
+                    disabled={sinkInputsDisabled}
                   />
                 </Field>
                 <Field label="Database Name">
                   <Input
                     value={sinkDbName}
                     onChange={(event) => setSinkDbName(event.target.value)}
-                    disabled={hasActiveRun || deletePending || saveSinkPending}
+                    disabled={sinkInputsDisabled}
                   />
                 </Field>
-                <Button
-                  onClick={submitSink}
-                  disabled={hasActiveRun || deletePending || saveSinkPending}
-                >
-                  {saveSinkPending ? 'Saving' : 'Save Mongo Sink'}
-                </Button>
+                {isEditing ? (
+                  <div className="flex items-center gap-2">
+                    <Button onClick={submitSink} disabled={sinkInputsDisabled}>
+                      {saveSinkPending ? 'Saving' : 'Save Mongo Sink'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={cancelEditing}
+                      disabled={saveConfigPending || saveSinkPending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <CheckboxField
@@ -569,7 +622,11 @@ export function PipelineDetailClient({
                 }))
               }
               disabled={
-                draft.mode === 'crawl_only' || hasActiveRun || deletePending || saveConfigPending
+                !isEditing ||
+                draft.mode === 'crawl_only' ||
+                hasActiveRun ||
+                deletePending ||
+                saveConfigPending
               }
             />
           </CardContent>
