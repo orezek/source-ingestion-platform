@@ -314,9 +314,12 @@ export function PipelineDetailClient({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
         <Card>
-          <CardHeader>
-            <CardTitle>Pipeline</CardTitle>
-            <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+            <div className="space-y-1.5">
+              <CardTitle>Pipeline</CardTitle>
+              <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
+            </div>
+            <StatusBadge status={pipeline.status} />
           </CardHeader>
           <CardContent className="grid gap-4">
             <Field label="Display Name">
@@ -345,17 +348,16 @@ export function PipelineDetailClient({
                 <option value="crawl_only">Crawl Only</option>
               </select>
             </Field>
-            <Field label="Source (read-only)">
+            <Field label="Source">
               <Input value={pipeline.source} disabled />
             </Field>
-            <div className="mt-4 flex items-center gap-4">
+            <div className="mt-2">
               <Button
                 onClick={submitConfig}
                 disabled={hasActiveRun || deletePending || saveConfigPending}
               >
                 {saveConfigPending ? 'Saving' : 'Save Pipeline Config'}
               </Button>
-              <StatusBadge status={pipeline.status} />
             </div>
           </CardContent>
         </Card>
@@ -398,7 +400,7 @@ export function PipelineDetailClient({
                 disabled={hasActiveRun || deletePending || saveConfigPending}
               />
             </Field>
-            <div className="grid gap-4 md:grid-cols-[minmax(0,220px),1fr]">
+            <div className="grid gap-4 md:grid-cols-[minmax(0,220px),1fr] md:items-end">
               <Field label="Max Items">
                 <Input
                   type="number"
@@ -412,23 +414,30 @@ export function PipelineDetailClient({
                   disabled={hasActiveRun || deletePending || saveConfigPending}
                 />
               </Field>
-              <CheckboxField
-                label="Allow inactive marking"
-                checked={draft.allowInactiveMarking}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    allowInactiveMarking: event.target.checked,
-                  }))
-                }
-                disabled={
-                  !canEditInactiveMarking || hasActiveRun || deletePending || saveConfigPending
-                }
-              />
+              <div className="flex h-11 items-center space-x-2">
+                <input
+                  id="allow-inactive-marking"
+                  className="h-4 w-4 accent-primary"
+                  type="checkbox"
+                  checked={draft.allowInactiveMarking}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      allowInactiveMarking: event.target.checked,
+                    }))
+                  }
+                  disabled={
+                    !canEditInactiveMarking || hasActiveRun || deletePending || saveConfigPending
+                  }
+                />
+                <label
+                  htmlFor="allow-inactive-marking"
+                  className="text-sm font-medium leading-none text-foreground"
+                >
+                  Allow inactive marking
+                </label>
+              </div>
             </div>
-            <dl className="grid gap-2 text-sm text-muted-foreground">
-              <Row label="Search Space ID" value={pipeline.searchSpace.id} />
-            </dl>
           </CardContent>
         </Card>
 
@@ -499,9 +508,6 @@ export function PipelineDetailClient({
                 />
               </Field>
             </div>
-            <dl className="grid gap-2 text-sm text-muted-foreground">
-              <Row label="Runtime Profile ID" value={pipeline.runtimeProfile.id} />
-            </dl>
           </CardContent>
         </Card>
 
@@ -527,32 +533,14 @@ export function PipelineDetailClient({
                 draft.mode === 'crawl_only' || hasActiveRun || deletePending || saveConfigPending
               }
             />
-            <CheckboxField
-              label="Downloadable JSON"
-              checked={draft.includeDownloadableJson}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  includeDownloadableJson: event.target.checked,
-                }))
-              }
-              disabled={
-                draft.mode === 'crawl_only' || hasActiveRun || deletePending || saveConfigPending
-              }
-            />
-
             {draft.includeMongoOutput ? (
-              <div className="mt-1 grid gap-4 rounded-sm border border-border bg-card/40 p-4">
-                <Field label="MongoDB URI (write-only)">
+              <div className="grid gap-4 rounded-sm border border-border bg-card/40 p-4">
+                <Field label="MongoDB URI">
                   <Input
                     value={sinkMongoUri}
                     onChange={(event) => setSinkMongoUri(event.target.value)}
                     autoComplete="off"
-                    placeholder={
-                      pipeline.operatorSink.hasMongoUri
-                        ? 'Configured. Enter new URI to rotate.'
-                        : 'mongodb+srv://cluster.example.net'
-                    }
+                    placeholder="********"
                     disabled={hasActiveRun || deletePending || saveSinkPending}
                   />
                 </Field>
@@ -571,6 +559,19 @@ export function PipelineDetailClient({
                 </Button>
               </div>
             ) : null}
+            <CheckboxField
+              label="Downloadable JSON"
+              checked={draft.includeDownloadableJson}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  includeDownloadableJson: event.target.checked,
+                }))
+              }
+              disabled={
+                draft.mode === 'crawl_only' || hasActiveRun || deletePending || saveConfigPending
+              }
+            />
           </CardContent>
         </Card>
       </div>
@@ -653,14 +654,5 @@ function CheckboxField({
         {label}
       </span>
     </label>
-  );
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 justify-between gap-3">
-      <dt className="shrink-0">{label}</dt>
-      <dd className="min-w-0 text-right text-foreground">{value}</dd>
-    </div>
   );
 }
