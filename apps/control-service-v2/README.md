@@ -79,8 +79,8 @@ Artifact sink selection is owned here:
 
 - crawler receives `artifactSink`
 - ingestion receives `outputSinks[].delivery`
-- local development can use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=local_filesystem`
-- GCP deployment should use `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=gcs`
+- system default is `CONTROL_PLANE_ARTIFACT_STORAGE_BACKEND=gcs` so HTML artifacts and downloadable JSON are bucket-backed
+- `local_filesystem` is fallback-only for temporary local debugging
 
 Run dispatch policy:
 
