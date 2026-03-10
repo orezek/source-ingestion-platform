@@ -103,6 +103,7 @@ export function RunDetailClient({
   const [loadingArtifactId, setLoadingArtifactId] = useState<string | null>(null);
   const [cancelPending, setCancelPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const cancelDialogContentId = `run-cancel-dialog-${initialRun.runId}`;
   const isTerminal = terminalStates.has(run.status);
   const connectionState = useControlStream({
     runId: initialRun.runId,
@@ -171,10 +172,10 @@ export function RunDetailClient({
           <LiveIndicator state={connectionState} />
           {!isTerminal ? (
             <AlertDialog>
-              <AlertDialogTrigger asChild>
+              <AlertDialogTrigger asChild aria-controls={cancelDialogContentId}>
                 <Button variant="danger">Cancel Run</Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent id={cancelDialogContentId}>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Cancel this run?</AlertDialogTitle>
                   <AlertDialogDescription>

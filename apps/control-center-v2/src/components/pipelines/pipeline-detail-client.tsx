@@ -99,6 +99,7 @@ export function PipelineDetailClient({
   const [savePending, setSavePending] = useState(false);
   const [startPending, setStartPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
+  const deleteDialogContentId = `pipeline-delete-dialog-${pipeline.pipelineId}`;
   const form = useForm<PipelineDetailFormValues>({
     defaultValues: {
       _form: '',
@@ -293,12 +294,12 @@ export function PipelineDetailClient({
                 {startPending ? 'Starting' : 'Start Run'}
               </Button>
               <AlertDialog>
-                <AlertDialogTrigger asChild>
+                <AlertDialogTrigger asChild aria-controls={deleteDialogContentId}>
                   <Button variant="danger" disabled={deletePending || hasActiveRun}>
                     {deletePending ? 'Deleting' : 'Delete Pipeline'}
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent id={deleteDialogContentId}>
                   <AlertDialogHeader>
                     <AlertDialogTitle>Delete this pipeline?</AlertDialogTitle>
                     <AlertDialogDescription>
