@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
@@ -15,34 +15,23 @@ const navItems = [
   { href: '/runs', label: 'Runs', short: 'RU' },
 ];
 const sidebarOpenStorageKey = 'control-center-v2.sidebar.open';
-
-function readSidebarOpenPreference(): boolean | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  try {
-    const value = window.localStorage.getItem(sidebarOpenStorageKey);
-    if (value === 'true') {
-      return true;
-    }
-    if (value === 'false') {
-      return false;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
+const sidebarOpenCookieKey = 'control-center-v2-sidebar-open';
 
 function writeSidebarOpenPreference(isOpen: boolean): void {
   if (typeof window === 'undefined') {
     return;
   }
 
+  const serialized = isOpen ? 'true' : 'false';
+
   try {
-    window.localStorage.setItem(sidebarOpenStorageKey, isOpen ? 'true' : 'false');
+    window.localStorage.setItem(sidebarOpenStorageKey, serialized);
+  } catch {
+    // Ignore storage errors (private mode/quota), keep in-memory behavior.
+  }
+
+  try {
+    window.document.cookie = `${sidebarOpenCookieKey}=${serialized}; path=/; max-age=31536000; samesite=lax`;
   } catch {
     // Ignore storage errors (private mode/quota), keep in-memory behavior.
   }
@@ -125,21 +114,16 @@ function NavContent({ pathname, compact = false }: { pathname: string; compact?:
 export function AppShell({
   children,
   heartbeat,
+  initialSidebarOpen = true,
 }: {
   children: React.ReactNode;
   heartbeat: ControlServiceHeartbeat | null;
+  initialSidebarOpen?: boolean;
 }) {
   const pathname = usePathname();
   const state = heartbeatToState(heartbeat);
   const pageHeader = getPageHeader(pathname);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  useEffect(() => {
-    const storedPreference = readSidebarOpenPreference();
-    if (storedPreference !== null) {
-      setIsSidebarOpen(storedPreference);
-    }
-  }, []);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(initialSidebarOpen);
 
   const toggleSidebar = () => {
     setIsSidebarOpen((current) => {
