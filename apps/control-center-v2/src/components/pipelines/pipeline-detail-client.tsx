@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Form } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { ControlPlanePipeline, ControlPlaneRun } from '@/lib/contracts';
@@ -29,6 +30,7 @@ import {
 } from '@/lib/forms';
 import { upsertRun, useControlStream } from '@/lib/live';
 import { formatDateTime } from '@/lib/utils';
+import { useForm } from 'react-hook-form';
 
 type EditablePipelineDraft = {
   name: string;
@@ -44,6 +46,10 @@ type EditablePipelineDraft = {
   ingestionConcurrency?: number;
   includeMongoOutput: boolean;
   includeDownloadableJson: boolean;
+};
+
+type PipelineDetailFormValues = {
+  _form: string;
 };
 
 const activeRunStatuses = new Set(['queued', 'running']);
@@ -84,12 +90,20 @@ export function PipelineDetailClient({
   const [draft, setDraft] = useState<EditablePipelineDraft>(() => createInitialDraft(pipeline));
   const [sinkMongoUri, setSinkMongoUri] = useState('');
   const [sinkDbName, setSinkDbName] = useState(pipeline.operatorSink.dbName);
+  const [editSnapshot, setEditSnapshot] = useState<{
+    draft: EditablePipelineDraft;
+    sinkDbName: string;
+  } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [saveConfigPending, setSaveConfigPending] = useState(false);
-  const [saveSinkPending, setSaveSinkPending] = useState(false);
+  const [savePending, setSavePending] = useState(false);
   const [startPending, setStartPending] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
+  const form = useForm<PipelineDetailFormValues>({
+    defaultValues: {
+      _form: '',
+    },
+  });
   const connectionState = useControlStream({
     pipelineId: pipeline.pipelineId,
     onRunUpserted: (run) => {
@@ -101,67 +115,39 @@ export function PipelineDetailClient({
 
   const hasActiveRun = useMemo(() => runs.some((run) => activeRunStatuses.has(run.status)), [runs]);
   const canEditInactiveMarking = draft.mode === 'crawl_and_ingest' && draft.includeMongoOutput;
-  const configInputsDisabled = !isEditing || hasActiveRun || deletePending || saveConfigPending;
-  const sinkInputsDisabled = !isEditing || hasActiveRun || deletePending || saveSinkPending;
+  const configInputsDisabled = !isEditing || hasActiveRun || deletePending || savePending;
+  const sinkInputsDisabled = !isEditing || hasActiveRun || deletePending || savePending;
 
-  const cancelEditing = () => {
-    setDraft(createInitialDraft(pipeline));
+  const startEditing = () => {
+    setEditSnapshot({
+      draft: { ...draft },
+      sinkDbName,
+    });
+    setErrorMessage(null);
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    const snapshot = editSnapshot ?? {
+      draft: createInitialDraft(pipeline),
+      sinkDbName: pipeline.operatorSink.dbName,
+    };
+
+    setDraft({ ...snapshot.draft });
+    setSinkDbName(snapshot.sinkDbName);
     setSinkMongoUri('');
-    setSinkDbName(pipeline.operatorSink.dbName);
+    setEditSnapshot(null);
     setErrorMessage(null);
     setIsEditing(false);
+    form.reset();
   };
 
-  const submitConfig = async () => {
+  const onSubmit = async () => {
     if (!isEditing) {
       return;
     }
 
-    setSaveConfigPending(true);
-    setErrorMessage(null);
-
-    let payload: ReturnType<typeof buildUpdatePipelinePayload>;
-    try {
-      payload = buildUpdatePipelinePayload(
-        pipelineUpdateFormSchema.parse({
-          ...draft,
-          operatorMongoUri: undefined,
-          operatorDbName: undefined,
-        }),
-      );
-    } catch (error) {
-      setSaveConfigPending(false);
-      setErrorMessage(error instanceof Error ? error.message : 'Invalid pipeline configuration.');
-      return;
-    }
-
-    const response = await fetch(`/api/pipelines/${pipeline.pipelineId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    setSaveConfigPending(false);
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setErrorMessage(payload?.error?.message ?? 'Unable to save pipeline configuration.');
-      return;
-    }
-
-    const updatedPipeline = (await response.json()) as ControlPlanePipeline;
-    setDraft(createInitialDraft(updatedPipeline));
-    setSinkDbName(updatedPipeline.operatorSink.dbName);
-    router.refresh();
-  };
-
-  const submitSink = async () => {
-    if (!isEditing) {
-      return;
-    }
-
-    setSaveSinkPending(true);
+    setSavePending(true);
     setErrorMessage(null);
 
     let payload: ReturnType<typeof buildUpdatePipelinePayload>;
@@ -174,8 +160,8 @@ export function PipelineDetailClient({
         }),
       );
     } catch (error) {
-      setSaveSinkPending(false);
-      setErrorMessage(error instanceof Error ? error.message : 'Invalid sink configuration.');
+      setSavePending(false);
+      setErrorMessage(error instanceof Error ? error.message : 'Invalid pipeline configuration.');
       return;
     }
 
@@ -184,17 +170,23 @@ export function PipelineDetailClient({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    setSaveSinkPending(false);
+    setSavePending(false);
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as {
         error?: { message?: string };
       } | null;
-      setErrorMessage(payload?.error?.message ?? 'Unable to update sink configuration.');
+      setErrorMessage(payload?.error?.message ?? 'Unable to update pipeline configuration.');
       return;
     }
 
+    const updatedPipeline = (await response.json()) as ControlPlanePipeline;
+    setDraft(createInitialDraft(updatedPipeline));
+    setSinkDbName(updatedPipeline.operatorSink.dbName);
     setSinkMongoUri('');
+    setEditSnapshot(null);
+    setIsEditing(false);
+    form.reset();
     router.refresh();
   };
 
@@ -292,8 +284,8 @@ export function PipelineDetailClient({
             <>
               <Button
                 variant="secondary"
-                onClick={() => setIsEditing(true)}
-                disabled={deletePending || hasActiveRun || startPending}
+                onClick={startEditing}
+                disabled={deletePending || hasActiveRun || startPending || savePending}
               >
                 Edit Pipeline
               </Button>
@@ -342,296 +334,270 @@ export function PipelineDetailClient({
       ) : null}
       {errorMessage ? <p className="text-sm text-destructive-foreground">{errorMessage}</p> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-            <div className="space-y-1.5">
-              <CardTitle>Pipeline</CardTitle>
-              <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
-            </div>
-            <StatusBadge status={pipeline.status} />
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Field label="Display Name">
-              <Input
-                maxLength={PIPELINE_NAME_MAX_LENGTH}
-                value={draft.name}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, name: event.target.value }))
-                }
-                disabled={configInputsDisabled}
-              />
-            </Field>
-            <Field label="Mode">
-              <select
-                className="flex h-11 w-full rounded-sm border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                value={draft.mode}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    mode: event.target.value as 'crawl_only' | 'crawl_and_ingest',
-                  }))
-                }
-                disabled={configInputsDisabled}
-              >
-                <option value="crawl_and_ingest">Crawl And Ingest</option>
-                <option value="crawl_only">Crawl Only</option>
-              </select>
-            </Field>
-            <Field label="Source">
-              <Input value={pipeline.source} disabled />
-            </Field>
-            {isEditing ? (
-              <div className="mt-2 flex items-center gap-2">
-                <Button onClick={submitConfig} disabled={configInputsDisabled}>
-                  {saveConfigPending ? 'Saving' : 'Save Pipeline Config'}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={cancelEditing}
-                  disabled={saveConfigPending || saveSinkPending}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Search Space</CardTitle>
-            <CardDescription>Editable crawl scope and inactive marking policy.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Field label="Name">
-              <Input
-                value={draft.searchSpaceName}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, searchSpaceName: event.target.value }))
-                }
-                disabled={configInputsDisabled}
-              />
-            </Field>
-            <Field label="Description">
-              <Textarea
-                rows={3}
-                value={draft.searchSpaceDescription}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    searchSpaceDescription: event.target.value,
-                  }))
-                }
-                disabled={configInputsDisabled}
-              />
-            </Field>
-            <Field label="Start URLs (one per line)">
-              <Textarea
-                rows={4}
-                value={draft.startUrlsText}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, startUrlsText: event.target.value }))
-                }
-                disabled={configInputsDisabled}
-              />
-            </Field>
-            <div className="grid gap-4 md:grid-cols-[minmax(0,220px),1fr] md:items-end">
-              <Field label="Max Items">
-                <Input
-                  type="number"
-                  value={draft.maxItems}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      maxItems: Number(event.target.value || 0),
-                    }))
-                  }
-                  disabled={configInputsDisabled}
-                />
-              </Field>
-              <div className="flex h-11 items-center space-x-2">
-                <input
-                  id="allow-inactive-marking"
-                  className="h-4 w-4 accent-primary"
-                  type="checkbox"
-                  checked={draft.allowInactiveMarking}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      allowInactiveMarking: event.target.checked,
-                    }))
-                  }
-                  disabled={
-                    !isEditing ||
-                    !canEditInactiveMarking ||
-                    hasActiveRun ||
-                    deletePending ||
-                    saveConfigPending
-                  }
-                />
-                <label
-                  htmlFor="allow-inactive-marking"
-                  className="text-sm font-medium leading-none text-foreground"
-                >
-                  Allow inactive marking
-                </label>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Runtime Profile</CardTitle>
-            <CardDescription>Editable concurrency and crawler pacing.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <Field label="Name">
-              <Input
-                value={draft.runtimeProfileName}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, runtimeProfileName: event.target.value }))
-                }
-                disabled={configInputsDisabled}
-              />
-            </Field>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Crawler Concurrency">
-                <Input
-                  type="number"
-                  value={draft.crawlerMaxConcurrency ?? ''}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      crawlerMaxConcurrency: event.target.value
-                        ? Number(event.target.value)
-                        : undefined,
-                    }))
-                  }
-                  disabled={configInputsDisabled}
-                />
-              </Field>
-              <Field label="Crawler RPM">
-                <Input
-                  type="number"
-                  value={draft.crawlerMaxRequestsPerMinute ?? ''}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      crawlerMaxRequestsPerMinute: event.target.value
-                        ? Number(event.target.value)
-                        : undefined,
-                    }))
-                  }
-                  disabled={configInputsDisabled}
-                />
-              </Field>
-              <Field label="Ingestion Concurrency">
-                <Input
-                  type="number"
-                  value={draft.ingestionConcurrency ?? ''}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      ingestionConcurrency: event.target.value
-                        ? Number(event.target.value)
-                        : undefined,
-                    }))
-                  }
-                  disabled={
-                    !isEditing ||
-                    draft.mode === 'crawl_only' ||
-                    hasActiveRun ||
-                    deletePending ||
-                    saveConfigPending
-                  }
-                />
-              </Field>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Structured Output</CardTitle>
-            <CardDescription>
-              MongoDB and downloadable JSON destination toggles. Mongo sink options are available
-              only when MongoDB output is enabled.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <CheckboxField
-              label="MongoDB"
-              checked={draft.includeMongoOutput}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  includeMongoOutput: event.target.checked,
-                }))
-              }
-              disabled={
-                !isEditing ||
-                draft.mode === 'crawl_only' ||
-                hasActiveRun ||
-                deletePending ||
-                saveConfigPending
-              }
-            />
-            {draft.includeMongoOutput ? (
-              <div className="grid gap-4 rounded-sm border border-border bg-card/40 p-4">
-                <Field label="MongoDB URI">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+                <div className="space-y-1.5">
+                  <CardTitle>Pipeline</CardTitle>
+                  <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
+                </div>
+                <StatusBadge status={pipeline.status} />
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <Field label="Display Name">
                   <Input
-                    value={sinkMongoUri}
-                    onChange={(event) => setSinkMongoUri(event.target.value)}
-                    autoComplete="off"
-                    placeholder="********"
-                    disabled={sinkInputsDisabled}
+                    maxLength={PIPELINE_NAME_MAX_LENGTH}
+                    value={draft.name}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, name: event.target.value }))
+                    }
+                    disabled={configInputsDisabled}
                   />
                 </Field>
-                <Field label="Database Name">
+                <Field label="Mode">
+                  <select
+                    className="flex h-11 w-full rounded-sm border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    value={draft.mode}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        mode: event.target.value as 'crawl_only' | 'crawl_and_ingest',
+                      }))
+                    }
+                    disabled={configInputsDisabled}
+                  >
+                    <option value="crawl_and_ingest">Crawl And Ingest</option>
+                    <option value="crawl_only">Crawl Only</option>
+                  </select>
+                </Field>
+                <Field label="Source">
+                  <Input value={pipeline.source} disabled />
+                </Field>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Search Space</CardTitle>
+                <CardDescription>Editable crawl scope and inactive marking policy.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <Field label="Name">
                   <Input
-                    value={sinkDbName}
-                    onChange={(event) => setSinkDbName(event.target.value)}
-                    disabled={sinkInputsDisabled}
+                    value={draft.searchSpaceName}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, searchSpaceName: event.target.value }))
+                    }
+                    disabled={configInputsDisabled}
                   />
                 </Field>
-                {isEditing ? (
-                  <div className="flex items-center gap-2">
-                    <Button onClick={submitSink} disabled={sinkInputsDisabled}>
-                      {saveSinkPending ? 'Saving' : 'Save Mongo Sink'}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={cancelEditing}
-                      disabled={saveConfigPending || saveSinkPending}
+                <Field label="Description">
+                  <Textarea
+                    rows={3}
+                    value={draft.searchSpaceDescription}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        searchSpaceDescription: event.target.value,
+                      }))
+                    }
+                    disabled={configInputsDisabled}
+                  />
+                </Field>
+                <Field label="Start URLs (one per line)">
+                  <Textarea
+                    rows={4}
+                    value={draft.startUrlsText}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, startUrlsText: event.target.value }))
+                    }
+                    disabled={configInputsDisabled}
+                  />
+                </Field>
+                <div className="grid gap-4 md:grid-cols-[minmax(0,220px),1fr] md:items-end">
+                  <Field label="Max Items">
+                    <Input
+                      type="number"
+                      value={draft.maxItems}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          maxItems: Number(event.target.value || 0),
+                        }))
+                      }
+                      disabled={configInputsDisabled}
+                    />
+                  </Field>
+                  <div className="flex h-11 items-center space-x-2">
+                    <input
+                      id="allow-inactive-marking"
+                      className="h-4 w-4 accent-primary"
+                      type="checkbox"
+                      checked={draft.allowInactiveMarking}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          allowInactiveMarking: event.target.checked,
+                        }))
+                      }
+                      disabled={
+                        !isEditing || !canEditInactiveMarking || hasActiveRun || deletePending
+                      }
+                    />
+                    <label
+                      htmlFor="allow-inactive-marking"
+                      className="text-sm font-medium leading-none text-foreground"
                     >
-                      Cancel
-                    </Button>
+                      Allow inactive marking
+                    </label>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Runtime Profile</CardTitle>
+                <CardDescription>Editable concurrency and crawler pacing.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4">
+                <Field label="Name">
+                  <Input
+                    value={draft.runtimeProfileName}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        runtimeProfileName: event.target.value,
+                      }))
+                    }
+                    disabled={configInputsDisabled}
+                  />
+                </Field>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field label="Crawler Concurrency">
+                    <Input
+                      type="number"
+                      value={draft.crawlerMaxConcurrency ?? ''}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          crawlerMaxConcurrency: event.target.value
+                            ? Number(event.target.value)
+                            : undefined,
+                        }))
+                      }
+                      disabled={configInputsDisabled}
+                    />
+                  </Field>
+                  <Field label="Crawler RPM">
+                    <Input
+                      type="number"
+                      value={draft.crawlerMaxRequestsPerMinute ?? ''}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          crawlerMaxRequestsPerMinute: event.target.value
+                            ? Number(event.target.value)
+                            : undefined,
+                        }))
+                      }
+                      disabled={configInputsDisabled}
+                    />
+                  </Field>
+                  <Field label="Ingestion Concurrency">
+                    <Input
+                      type="number"
+                      value={draft.ingestionConcurrency ?? ''}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          ingestionConcurrency: event.target.value
+                            ? Number(event.target.value)
+                            : undefined,
+                        }))
+                      }
+                      disabled={
+                        !isEditing || draft.mode === 'crawl_only' || hasActiveRun || deletePending
+                      }
+                    />
+                  </Field>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Structured Output</CardTitle>
+                <CardDescription>
+                  MongoDB and downloadable JSON destination toggles. Mongo sink options are
+                  available only when MongoDB output is enabled.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <CheckboxField
+                  label="MongoDB"
+                  checked={draft.includeMongoOutput}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      includeMongoOutput: event.target.checked,
+                    }))
+                  }
+                  disabled={
+                    !isEditing || draft.mode === 'crawl_only' || hasActiveRun || deletePending
+                  }
+                />
+                {draft.includeMongoOutput ? (
+                  <div className="grid gap-4 rounded-sm border border-border bg-card/40 p-4">
+                    <Field label="MongoDB URI">
+                      <Input
+                        value={sinkMongoUri}
+                        onChange={(event) => setSinkMongoUri(event.target.value)}
+                        autoComplete="off"
+                        placeholder="********"
+                        disabled={sinkInputsDisabled}
+                      />
+                    </Field>
+                    <Field label="Database Name">
+                      <Input
+                        value={sinkDbName}
+                        onChange={(event) => setSinkDbName(event.target.value)}
+                        disabled={sinkInputsDisabled}
+                      />
+                    </Field>
                   </div>
                 ) : null}
-              </div>
-            ) : null}
-            <CheckboxField
-              label="Downloadable JSON"
-              checked={draft.includeDownloadableJson}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  includeDownloadableJson: event.target.checked,
-                }))
-              }
-              disabled={
-                !isEditing ||
-                draft.mode === 'crawl_only' ||
-                hasActiveRun ||
-                deletePending ||
-                saveConfigPending
-              }
-            />
-          </CardContent>
-        </Card>
-      </div>
+                <CheckboxField
+                  label="Downloadable JSON"
+                  checked={draft.includeDownloadableJson}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      includeDownloadableJson: event.target.checked,
+                    }))
+                  }
+                  disabled={
+                    !isEditing || draft.mode === 'crawl_only' || hasActiveRun || deletePending
+                  }
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          {isEditing ? (
+            <div className="mt-4 flex items-center justify-end gap-4 rounded-sm border border-border bg-card p-4">
+              <Button type="button" variant="ghost" onClick={handleCancel} disabled={savePending}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savePending || hasActiveRun || deletePending}>
+                {savePending ? 'Saving' : 'Save Pipeline Config'}
+              </Button>
+            </div>
+          ) : null}
+        </form>
+      </Form>
 
       <Card>
         <CardHeader>
