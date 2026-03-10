@@ -759,8 +759,30 @@ export class IngestionWorkerRuntime {
         })
         .catch(async (error: unknown) => {
           this.deps.logger.error({ err: error, runId: run.runId }, 'Queue item processing failed.');
-          const result = await this.handleTransientProcessingFailure(run, workItem.item, error);
-          workItem.resolve(result);
+          try {
+            const result = await this.handleTransientProcessingFailure(run, workItem.item, error);
+            workItem.resolve(result);
+          } catch (handlerError) {
+            const jobId = buildJobId(workItem.item);
+            const wasAlreadySettled = run.seenDedupeKeys.has(workItem.item.dedupeKey);
+            run.inFlightDedupeKeys.delete(workItem.item.dedupeKey);
+            this.clearRetryTracking(run, workItem.item.dedupeKey);
+            run.seenDedupeKeys.add(workItem.item.dedupeKey);
+            if (!wasAlreadySettled) {
+              run.counters.failed += 1;
+              pushUnique(run.failedJobIds, jobId);
+              pushUnique(run.nonSuccessJobIds, jobId);
+            }
+
+            this.deps.logger.error(
+              { err: handlerError, runId: run.runId, sourceId: workItem.item.sourceId },
+              'Transient failure handler failed. Falling back to ACK permanent failure.',
+            );
+            workItem.resolve({
+              disposition: 'ack',
+              reason: 'permanent_processing_error',
+            });
+          }
         })
         .finally(async () => {
           this.activeWorkers = Math.max(0, this.activeWorkers - 1);
@@ -1359,12 +1381,25 @@ export class IngestionWorkerRuntime {
     this.clearRetryTracking(run, item.dedupeKey);
     run.seenDedupeKeys.add(item.dedupeKey);
 
-    await this.publishIngestionItemEvent('ingestion.item.failed', run, item, {
-      error: {
-        name: error instanceof Error ? error.name : 'IngestionItemError',
-        message: `Transient retry budget exhausted after ${TRANSIENT_PROCESSING_MAX_RETRY_ATTEMPTS} retries. ${message}`,
-      },
-    });
+    try {
+      await this.publishIngestionItemEvent('ingestion.item.failed', run, item, {
+        error: {
+          name: error instanceof Error ? error.name : 'IngestionItemError',
+          message: `Transient retry budget exhausted after ${TRANSIENT_PROCESSING_MAX_RETRY_ATTEMPTS} retries. ${message}`,
+        },
+      });
+    } catch (publishError) {
+      this.deps.logger.error(
+        {
+          err: publishError,
+          runId: run.runId,
+          sourceId: item.sourceId,
+          dedupeKey: item.dedupeKey,
+        },
+        'Failed to publish ingestion.item.failed event after retry exhaustion.',
+      );
+    }
+
     this.deps.logger.error(
       {
         err: error,

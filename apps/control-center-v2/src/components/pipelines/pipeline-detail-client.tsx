@@ -234,30 +234,25 @@ export function PipelineDetailClient({
   const deletePipeline = async () => {
     setDeletePending(true);
     setErrorMessage(null);
-    const response = await fetch(`/api/pipelines/${pipeline.pipelineId}`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      setDeletePending(false);
-      const payload = (await response.json().catch(() => null)) as {
-        error?: { message?: string };
-      } | null;
-      setErrorMessage(payload?.error?.message ?? 'Unable to delete pipeline.');
-      return;
-    }
-
     try {
+      const response = await fetch(`/api/pipelines/${pipeline.pipelineId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(payload?.error?.message ?? 'Unable to delete pipeline.');
+      }
+
       await pollDeleteStatus();
       router.push('/pipelines');
       router.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Pipeline delete failed.');
+    } finally {
       setDeletePending(false);
-      return;
     }
-
-    setDeletePending(false);
   };
 
   return (
