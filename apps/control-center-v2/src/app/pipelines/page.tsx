@@ -15,7 +15,11 @@ export default async function PipelinesPage() {
       .slice()
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 
-    return <PipelineListClient pipelines={pipelines} />;
+    return (
+      <div className="min-w-0 overflow-hidden">
+        <PipelineListClient pipelines={pipelines} />
+      </div>
+    );
   } catch (error) {
     if (isControlServiceUnavailableError(error)) {
       return (

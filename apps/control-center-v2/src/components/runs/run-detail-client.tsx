@@ -24,7 +24,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
-import { LiveIndicator } from '@/components/state/live-indicator';
 import type { ControlPlaneRun, ControlPlaneRunEventIndex } from '@/lib/contracts';
 import { appendRunEvent, useControlStream } from '@/lib/live';
 import { formatDateTime, formatNullableCount } from '@/lib/utils';
@@ -105,7 +104,7 @@ export function RunDetailClient({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const cancelDialogContentId = `run-cancel-dialog-${initialRun.runId}`;
   const isTerminal = terminalStates.has(run.status);
-  const connectionState = useControlStream({
+  useControlStream({
     runId: initialRun.runId,
     onRunUpserted: (nextRun) => {
       if (nextRun.runId === initialRun.runId) {
@@ -169,7 +168,6 @@ export function RunDetailClient({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <LiveIndicator state={connectionState} />
           {!isTerminal ? (
             <AlertDialog>
               <AlertDialogTrigger asChild aria-controls={cancelDialogContentId}>

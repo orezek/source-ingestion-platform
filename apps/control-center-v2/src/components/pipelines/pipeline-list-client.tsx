@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
-import { LiveIndicator } from '@/components/state/live-indicator';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -25,7 +24,7 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
 
-  const connectionState = useControlStream({
+  useControlStream({
     onRunUpserted: () => {
       if (refreshTimer.current != null) {
         return;
@@ -67,19 +66,16 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
   };
 
   return (
-    <div className="grid min-w-0 gap-4">
+    <div className="grid min-w-0 w-full overflow-hidden gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
             Pipeline Registry
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <LiveIndicator state={connectionState} />
-          <Button asChild>
-            <Link href="/pipelines/new">Create Pipeline</Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link href="/pipelines/new">Create Pipeline</Link>
+        </Button>
       </div>
 
       {errorMessage ? <p className="text-sm text-destructive-foreground">{errorMessage}</p> : null}
@@ -91,22 +87,25 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
         />
       ) : (
         <>
-          <div className="grid gap-3 md:hidden">
+          <div className="grid gap-4 md:hidden">
             {pipelines.map((pipeline) => (
               <Card key={pipeline.pipelineId}>
                 <CardContent className="grid gap-4 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                  <div className="grid gap-2">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <p
+                        className="min-w-0 max-w-[60%] flex-1 truncate font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground"
+                        title={pipeline.pipelineId}
+                      >
                         {pipeline.pipelineId}
                       </p>
-                      <h3 className="mt-1 text-lg font-semibold tracking-tightest">
-                        {pipeline.name}
-                      </h3>
+                      <span className="shrink-0 text-right font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        {titleCaseFromToken(pipeline.mode)}
+                      </span>
                     </div>
-                    <span className="font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                      {titleCaseFromToken(pipeline.mode)}
-                    </span>
+                    <h3 className="mt-1 text-lg font-semibold tracking-tightest">
+                      {pipeline.name}
+                    </h3>
                   </div>
                   <dl className="grid gap-2 text-sm text-muted-foreground">
                     <div className="flex justify-between gap-4">
@@ -134,7 +133,7 @@ export function PipelineListClient({ pipelines }: { pipelines: ControlPlanePipel
             ))}
           </div>
 
-          <div className="hidden min-w-0 rounded-sm border border-border md:block">
+          <div className="hidden overflow-hidden rounded-sm border border-border md:block">
             <div className="w-full overflow-x-auto">
               <Table>
                 <TableHeader>

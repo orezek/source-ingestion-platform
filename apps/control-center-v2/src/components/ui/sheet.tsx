@@ -40,3 +40,19 @@ export const SheetContent = React.forwardRef<
   </SheetPortal>
 ));
 SheetContent.displayName = 'SheetContent';
+
+export const SheetTitle = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Title>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Title ref={ref} className={cn(className)} {...props} />
+));
+SheetTitle.displayName = 'SheetTitle';
+
+export const SheetDescription = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Description>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
+>(({ className, ...props }, ref) => (
+  <DialogPrimitive.Description ref={ref} className={cn(className)} {...props} />
+));
+SheetDescription.displayName = 'SheetDescription';

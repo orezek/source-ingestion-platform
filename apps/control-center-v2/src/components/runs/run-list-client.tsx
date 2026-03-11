@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
-import { LiveIndicator } from '@/components/state/live-indicator';
 import { StatusBadge } from '@/components/state/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -51,7 +50,7 @@ export function RunListClient({
     source: filters.source ?? '',
     limit: String(filters.limit ?? 20),
   });
-  const connectionState = useControlStream({
+  useControlStream({
     onRunUpserted: (run) => {
       setRuns((current) => {
         if (!runMatchesFilter(run, filters)) {
@@ -85,7 +84,6 @@ export function RunListClient({
             Run Observatory
           </p>
         </div>
-        <LiveIndicator state={connectionState} />
       </div>
 
       <Card>

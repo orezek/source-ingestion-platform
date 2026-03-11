@@ -6,7 +6,13 @@ import { usePathname } from 'next/navigation';
 import { Breadcrumbs } from '@/components/layout/breadcrumbs';
 import { LiveIndicator } from '@/components/state/live-indicator';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import type { ControlServiceHeartbeat } from '@/lib/contracts';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -150,8 +156,8 @@ export function AppShell({
         </aside>
         <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
           <header className="border-b border-border bg-background/95 backdrop-blur">
-            <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-              <div className="flex min-w-0 items-start gap-3">
+            <div className="flex w-full flex-nowrap items-start justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 flex-1 items-start gap-3 overflow-hidden">
                 <div className="lg:hidden">
                   <Sheet>
                     <SheetTrigger asChild>
@@ -160,6 +166,10 @@ export function AppShell({
                       </Button>
                     </SheetTrigger>
                     <SheetContent side="left">
+                      <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+                      <SheetDescription className="sr-only">
+                        Navigate between pipelines and runs.
+                      </SheetDescription>
                       <NavContent pathname={pathname} compact />
                     </SheetContent>
                   </Sheet>
@@ -194,13 +204,15 @@ export function AppShell({
                     <h1 className="text-xl font-semibold tracking-tightest sm:text-2xl">
                       {pageHeader.title}
                     </h1>
-                    <p className="text-sm text-muted-foreground">{pageHeader.subtitle}</p>
+                    <p className="mt-1 w-full text-sm text-[var(--theme-text-secondary)]">
+                      {pageHeader.subtitle}
+                    </p>
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="ml-auto flex shrink-0 self-start flex-col items-end gap-1 text-right">
                 <LiveIndicator state={state} />
-                <div className="font-mono text-[0.68rem] uppercase tracking-[0.14em] text-muted-foreground">
+                <div className="hidden font-mono text-[0.68rem] uppercase tracking-[0.14em] text-muted-foreground sm:block">
                   {heartbeat ? formatDateTime(heartbeat.now) : 'Heartbeat unavailable'}
                 </div>
               </div>

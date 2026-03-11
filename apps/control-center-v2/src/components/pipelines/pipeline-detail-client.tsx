@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
-import { LiveIndicator } from '@/components/state/live-indicator';
 import { StatusBadge } from '@/components/state/status-badge';
 import {
   AlertDialog,
@@ -105,7 +104,7 @@ export function PipelineDetailClient({
       _form: '',
     },
   });
-  const connectionState = useControlStream({
+  useControlStream({
     pipelineId: pipeline.pipelineId,
     onRunUpserted: (run) => {
       if (run.pipelineId === pipeline.pipelineId) {
@@ -280,7 +279,6 @@ export function PipelineDetailClient({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <LiveIndicator state={connectionState} />
           {isEditing ? null : (
             <>
               <Button
