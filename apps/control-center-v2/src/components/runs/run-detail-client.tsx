@@ -249,18 +249,21 @@ export function RunDetailClient({
                     <button
                       key={artifact.artifactId}
                       type="button"
-                      className="flex items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-left hover:bg-card"
+                      className="flex w-full min-w-0 items-center justify-between gap-3 rounded-sm border border-border px-3 py-2 text-left hover:bg-card"
                       onClick={() => void openArtifact(artifact.artifactId)}
                     >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-foreground">
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <span
+                          className="truncate font-mono text-sm text-foreground"
+                          title={artifact.fileName}
+                        >
                           {artifact.fileName}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
+                        </span>
+                        <span className="text-xs text-muted-foreground">
                           {formatDateTime(artifact.createdAt)} · {artifact.sizeBytes} bytes
-                        </div>
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                         {loadingArtifactId === artifact.artifactId ? (
                           <span className="text-xs text-muted-foreground">Loading</span>
                         ) : null}
