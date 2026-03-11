@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
 import { StatusBadge } from '@/components/state/status-badge';
 import {
@@ -76,6 +76,7 @@ export function PipelineDetailClient({
   const router = useRouter();
   const [runs, setRuns] = useState(initialRuns);
   const [editSnapshot, setEditSnapshot] = useState<EditablePipelineDraft | null>(null);
+  const [titleName, setTitleName] = useState(pipeline.name);
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savePending, setSavePending] = useState(false);
@@ -98,13 +99,16 @@ export function PipelineDetailClient({
     },
   });
 
-  const watchedName = form.watch('name');
   const watchedMode = form.watch('mode');
   const watchedIncludeMongoOutput = form.watch('includeMongoOutput');
   const hasActiveRun = useMemo(() => runs.some((run) => activeRunStatuses.has(run.status)), [runs]);
   const canEditInactiveMarking = watchedMode === 'crawl_and_ingest' && watchedIncludeMongoOutput;
   const configInputsDisabled = !isEditing || hasActiveRun || deletePending || savePending;
   const sinkInputsDisabled = !isEditing || hasActiveRun || deletePending || savePending;
+
+  useEffect(() => {
+    setTitleName(pipeline.name);
+  }, [pipeline.name]);
 
   const startEditing = () => {
     setEditSnapshot({
@@ -146,6 +150,7 @@ export function PipelineDetailClient({
     }
 
     const updatedPipeline = (await response.json()) as ControlPlanePipeline;
+    setTitleName(updatedPipeline.name);
     form.reset(createInitialDraft(updatedPipeline).draft);
     setEditSnapshot(null);
     setIsEditing(false);
@@ -235,7 +240,7 @@ export function PipelineDetailClient({
           <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
             Pipeline Detail
           </p>
-          <h2 className="text-2xl font-semibold tracking-tightest">{watchedName}</h2>
+          <h2 className="text-2xl font-semibold tracking-tightest">{titleName}</h2>
           <p className="mt-1 font-mono text-xs uppercase tracking-[0.14em] text-muted-foreground">
             {pipeline.pipelineId}
           </p>
@@ -299,179 +304,179 @@ export function PipelineDetailClient({
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
-            <Card>
-              <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-                <div className="space-y-1.5">
-                  <CardTitle>Pipeline</CardTitle>
-                  <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
-                </div>
-                <StatusBadge status={pipeline.status} />
-              </CardHeader>
-              <CardContent className="grid gap-6">
-                <Field label="Display Name" error={form.formState.errors.name?.message}>
-                  <Input {...form.register('name')} disabled={configInputsDisabled} />
-                </Field>
-                <Field label="Mode" error={form.formState.errors.mode?.message}>
-                  <select
-                    className="flex h-11 w-full rounded-sm border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                    {...form.register('mode')}
-                    disabled={configInputsDisabled}
-                  >
-                    <option value="crawl_and_ingest">Crawl And Ingest</option>
-                    <option value="crawl_only">Crawl Only</option>
-                  </select>
-                </Field>
-                <Field label="Source">
-                  <Input value={pipeline.source} disabled />
-                </Field>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Search Space</CardTitle>
-                <CardDescription>Editable crawl scope and inactive marking policy.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6">
-                <Field label="Name" error={form.formState.errors.searchSpaceName?.message}>
-                  <Input {...form.register('searchSpaceName')} disabled={configInputsDisabled} />
-                </Field>
-                <Field
-                  label="Description"
-                  error={form.formState.errors.searchSpaceDescription?.message}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+              <div className="space-y-1.5">
+                <CardTitle>Pipeline</CardTitle>
+                <CardDescription>Editable pipeline identity and execution mode.</CardDescription>
+              </div>
+              <StatusBadge status={pipeline.status} />
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              <Field label="Display Name" error={form.formState.errors.name?.message}>
+                <Input {...form.register('name')} disabled={configInputsDisabled} />
+              </Field>
+              <Field label="Mode" error={form.formState.errors.mode?.message}>
+                <select
+                  className="flex h-11 w-full rounded-sm border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  {...form.register('mode')}
+                  disabled={configInputsDisabled}
                 >
-                  <Textarea
-                    rows={3}
-                    {...form.register('searchSpaceDescription')}
+                  <option value="crawl_and_ingest">Crawl And Ingest</option>
+                  <option value="crawl_only">Crawl Only</option>
+                </select>
+              </Field>
+              <Field label="Source">
+                <Input value={pipeline.source} disabled />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Search Space</CardTitle>
+              <CardDescription>Editable crawl scope and inactive marking policy.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              <Field label="Name" error={form.formState.errors.searchSpaceName?.message}>
+                <Input {...form.register('searchSpaceName')} disabled={configInputsDisabled} />
+              </Field>
+              <Field
+                label="Description"
+                error={form.formState.errors.searchSpaceDescription?.message}
+              >
+                <Textarea
+                  rows={3}
+                  {...form.register('searchSpaceDescription')}
+                  disabled={configInputsDisabled}
+                />
+              </Field>
+              <Field
+                label="Start URLs (one per line)"
+                error={form.formState.errors.startUrlsText?.message}
+              >
+                <Textarea
+                  rows={4}
+                  {...form.register('startUrlsText')}
+                  disabled={configInputsDisabled}
+                />
+              </Field>
+              <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2">
+                <Field label="Max Items" error={form.formState.errors.maxItems?.message}>
+                  <Input
+                    type="number"
+                    {...form.register('maxItems', { valueAsNumber: true })}
+                    disabled={configInputsDisabled}
+                  />
+                </Field>
+                <div className="md:pt-[2.25rem]">
+                  <CheckboxField
+                    label="Allow inactive marking"
+                    {...form.register('allowInactiveMarking')}
+                    disabled={
+                      !isEditing || !canEditInactiveMarking || hasActiveRun || deletePending
+                    }
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Runtime Profile</CardTitle>
+              <CardDescription>Editable concurrency and crawler pacing.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              <Field label="Name" error={form.formState.errors.runtimeProfileName?.message}>
+                <Input {...form.register('runtimeProfileName')} disabled={configInputsDisabled} />
+              </Field>
+              <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-3">
+                <Field
+                  label="Crawler Concurrency"
+                  error={form.formState.errors.crawlerMaxConcurrency?.message}
+                  labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  <Input
+                    type="number"
+                    {...form.register('crawlerMaxConcurrency', { valueAsNumber: true })}
                     disabled={configInputsDisabled}
                   />
                 </Field>
                 <Field
-                  label="Start URLs (one per line)"
-                  error={form.formState.errors.startUrlsText?.message}
+                  label="Crawler RPM"
+                  error={form.formState.errors.crawlerMaxRequestsPerMinute?.message}
+                  labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
                 >
-                  <Textarea
-                    rows={4}
-                    {...form.register('startUrlsText')}
+                  <Input
+                    type="number"
+                    {...form.register('crawlerMaxRequestsPerMinute', { valueAsNumber: true })}
                     disabled={configInputsDisabled}
                   />
                 </Field>
-                <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-2">
-                  <Field label="Max Items" error={form.formState.errors.maxItems?.message}>
-                    <Input
-                      type="number"
-                      {...form.register('maxItems', { valueAsNumber: true })}
-                      disabled={configInputsDisabled}
-                    />
-                  </Field>
-                  <div className="md:pt-[2.25rem]">
-                    <CheckboxField
-                      label="Allow inactive marking"
-                      {...form.register('allowInactiveMarking')}
-                      disabled={
-                        !isEditing || !canEditInactiveMarking || hasActiveRun || deletePending
-                      }
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Runtime Profile</CardTitle>
-                <CardDescription>Editable concurrency and crawler pacing.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6">
-                <Field label="Name" error={form.formState.errors.runtimeProfileName?.message}>
-                  <Input {...form.register('runtimeProfileName')} disabled={configInputsDisabled} />
+                <Field
+                  label="Ingestion Concurrency"
+                  error={form.formState.errors.ingestionConcurrency?.message}
+                  labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  <Input
+                    type="number"
+                    {...form.register('ingestionConcurrency', { valueAsNumber: true })}
+                    disabled={
+                      !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
+                    }
+                  />
                 </Field>
-                <div className="grid grid-cols-1 gap-6 items-start md:grid-cols-3">
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Structured Output</CardTitle>
+              <CardDescription>
+                MongoDB and downloadable JSON destination toggles. Mongo sink options are available
+                only when MongoDB output is enabled.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6">
+              <CheckboxField
+                label="MongoDB"
+                {...form.register('includeMongoOutput')}
+                disabled={
+                  !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
+                }
+              />
+              {watchedIncludeMongoOutput ? (
+                <div className="ml-6 grid gap-4 rounded-sm border border-border/80 bg-card/40 p-4">
                   <Field
-                    label="Crawler Concurrency"
-                    error={form.formState.errors.crawlerMaxConcurrency?.message}
-                    labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
+                    label="MongoDB URI"
+                    error={form.formState.errors.operatorMongoUri?.message}
                   >
                     <Input
-                      type="number"
-                      {...form.register('crawlerMaxConcurrency', { valueAsNumber: true })}
-                      disabled={configInputsDisabled}
+                      {...form.register('operatorMongoUri')}
+                      autoComplete="off"
+                      placeholder="********"
+                      disabled={sinkInputsDisabled}
                     />
                   </Field>
                   <Field
-                    label="Crawler RPM"
-                    error={form.formState.errors.crawlerMaxRequestsPerMinute?.message}
-                    labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
+                    label="Database Name"
+                    error={form.formState.errors.operatorDbName?.message}
                   >
-                    <Input
-                      type="number"
-                      {...form.register('crawlerMaxRequestsPerMinute', { valueAsNumber: true })}
-                      disabled={configInputsDisabled}
-                    />
-                  </Field>
-                  <Field
-                    label="Ingestion Concurrency"
-                    error={form.formState.errors.ingestionConcurrency?.message}
-                    labelClassName="overflow-hidden text-ellipsis whitespace-nowrap"
-                  >
-                    <Input
-                      type="number"
-                      {...form.register('ingestionConcurrency', { valueAsNumber: true })}
-                      disabled={
-                        !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
-                      }
-                    />
+                    <Input {...form.register('operatorDbName')} disabled={sinkInputsDisabled} />
                   </Field>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Structured Output</CardTitle>
-                <CardDescription>
-                  MongoDB and downloadable JSON destination toggles. Mongo sink options are
-                  available only when MongoDB output is enabled.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-6">
-                <CheckboxField
-                  label="MongoDB"
-                  {...form.register('includeMongoOutput')}
-                  disabled={
-                    !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
-                  }
-                />
-                {watchedIncludeMongoOutput ? (
-                  <div className="ml-6 grid gap-4 rounded-sm border border-border/80 bg-card/40 p-4">
-                    <Field
-                      label="MongoDB URI"
-                      error={form.formState.errors.operatorMongoUri?.message}
-                    >
-                      <Input
-                        {...form.register('operatorMongoUri')}
-                        autoComplete="off"
-                        placeholder="********"
-                        disabled={sinkInputsDisabled}
-                      />
-                    </Field>
-                    <Field
-                      label="Database Name"
-                      error={form.formState.errors.operatorDbName?.message}
-                    >
-                      <Input {...form.register('operatorDbName')} disabled={sinkInputsDisabled} />
-                    </Field>
-                  </div>
-                ) : null}
-                <CheckboxField
-                  label="Downloadable JSON"
-                  {...form.register('includeDownloadableJson')}
-                  disabled={
-                    !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
-                  }
-                />
-              </CardContent>
-            </Card>
+              ) : null}
+              <CheckboxField
+                label="Downloadable JSON"
+                {...form.register('includeDownloadableJson')}
+                disabled={
+                  !isEditing || watchedMode === 'crawl_only' || hasActiveRun || deletePending
+                }
+              />
+            </CardContent>
+          </Card>
         </div>
 
         {isEditing ? (
