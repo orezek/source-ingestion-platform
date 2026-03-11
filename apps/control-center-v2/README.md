@@ -49,4 +49,10 @@ pnpm -C apps/control-center-v2 lint
 pnpm -C apps/control-center-v2 check-types
 pnpm -C apps/control-center-v2 build
 pnpm -C apps/control-center-v2 test
+pnpm -C apps/control-center-v2 test:e2e
 ```
+
+E2E notes:
+
+- Playwright scenarios live in [`tests/e2e`](./tests/e2e).
+- Create-form e2e tests run in headed mode and mock `POST /api/pipelines`.

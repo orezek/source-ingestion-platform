@@ -21,7 +21,8 @@
     "check-types": "tsc --noEmit",
     "pretest": "pnpm run build:workspace-contracts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test --config playwright.config.ts --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "catalog:",
@@ -43,6 +44,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@playwright/test": "catalog:",
     "@repo/eslint-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@testing-library/jest-dom": "catalog:",

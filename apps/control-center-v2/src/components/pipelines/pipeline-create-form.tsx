@@ -3,6 +3,15 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { ControlPlanePipeline } from '@/lib/contracts';
 import {
+  CRAWLER_MAX_CONCURRENCY_MAX,
+  CRAWLER_MAX_CONCURRENCY_MIN,
+  CRAWLER_RPM_MAX,
+  CRAWLER_RPM_MIN,
+  INGESTION_CONCURRENCY_MAX,
+  INGESTION_CONCURRENCY_MIN,
+  MAX_ITEMS_MAX,
+  MAX_ITEMS_MIN,
+  MONGO_DB_NAME_MAX_BYTES,
   PIPELINE_NAME_MAX_LENGTH,
   buildCreatePipelinePayload,
   pipelineCreateFormSchema,
@@ -73,7 +82,7 @@ export function PipelineCreateForm() {
   });
 
   return (
-    <form className="grid gap-4" onSubmit={submit}>
+    <form className="grid gap-4" onSubmit={submit} noValidate>
       <Card>
         <CardHeader>
           <CardTitle>Create Pipeline</CardTitle>
@@ -129,7 +138,12 @@ export function PipelineCreateForm() {
           </Field>
           <div className="grid gap-4 md:grid-cols-[minmax(0,240px),1fr] md:items-end">
             <Field label="Max Items" error={form.formState.errors.maxItems?.message}>
-              <Input type="number" {...form.register('maxItems', { valueAsNumber: true })} />
+              <Input
+                type="number"
+                min={MAX_ITEMS_MIN}
+                max={MAX_ITEMS_MAX}
+                {...form.register('maxItems', { valueAsNumber: true })}
+              />
             </Field>
             <CheckboxField
               label="Allow inactive marking"
@@ -159,6 +173,8 @@ export function PipelineCreateForm() {
             >
               <Input
                 type="number"
+                min={CRAWLER_MAX_CONCURRENCY_MIN}
+                max={CRAWLER_MAX_CONCURRENCY_MAX}
                 {...form.register('crawlerMaxConcurrency', { valueAsNumber: true })}
               />
             </Field>
@@ -168,6 +184,8 @@ export function PipelineCreateForm() {
             >
               <Input
                 type="number"
+                min={CRAWLER_RPM_MIN}
+                max={CRAWLER_RPM_MAX}
                 {...form.register('crawlerMaxRequestsPerMinute', { valueAsNumber: true })}
               />
             </Field>
@@ -177,6 +195,8 @@ export function PipelineCreateForm() {
             >
               <Input
                 type="number"
+                min={INGESTION_CONCURRENCY_MIN}
+                max={INGESTION_CONCURRENCY_MAX}
                 disabled={mode === 'crawl_only'}
                 {...form.register('ingestionConcurrency', { valueAsNumber: true })}
               />
@@ -211,11 +231,18 @@ export function PipelineCreateForm() {
                 <Input
                   {...form.register('operatorMongoUri')}
                   autoComplete="off"
+                  inputMode="url"
+                  pattern="^mongodb(\\+srv)?:\\/\\/.+"
                   placeholder="mongodb+srv://cluster.example.net"
                 />
               </Field>
               <Field label="Database Name" error={form.formState.errors.operatorDbName?.message}>
-                <Input {...form.register('operatorDbName')} placeholder="pl-prague-tech-01" />
+                <Input
+                  {...form.register('operatorDbName')}
+                  maxLength={MONGO_DB_NAME_MAX_BYTES}
+                  pattern="[A-Za-z0-9_-]+"
+                  placeholder="pl-prague-tech-01"
+                />
               </Field>
             </div>
           ) : null}

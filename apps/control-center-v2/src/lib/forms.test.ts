@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_ITEMS_MAX,
+  START_URLS_MAX_COUNT,
   PIPELINE_NAME_MAX_LENGTH,
   buildCreatePipelinePayload,
   buildUpdatePipelinePayload,
@@ -136,5 +138,75 @@ describe('forms', () => {
         operatorDbName: 'pl_crawler_only_01',
       }),
     ).toThrow(new RegExp(`at most ${PIPELINE_NAME_MAX_LENGTH} characters`, 'i'));
+  });
+
+  it('rejects non-mongodb operator sink URI schemes', () => {
+    expect(() =>
+      pipelineCreateFormSchema.parse({
+        name: 'Pipeline',
+        source: 'jobs.cz',
+        mode: 'crawl_only',
+        searchSpaceName: 'Search Space',
+        searchSpaceDescription: '',
+        startUrlsText: 'https://example.com/jobs',
+        maxItems: 50,
+        allowInactiveMarking: false,
+        runtimeProfileName: 'Runtime',
+        crawlerMaxConcurrency: 2,
+        crawlerMaxRequestsPerMinute: 30,
+        ingestionConcurrency: 4,
+        includeMongoOutput: true,
+        includeDownloadableJson: false,
+        operatorMongoUri: 'https://example.com/not-mongo',
+        operatorDbName: 'pl_pipeline_sink_01',
+      }),
+    ).toThrow(/must start with mongodb:\/\/ or mongodb\+srv:\/\//i);
+  });
+
+  it('rejects invalid start URLs and oversized start URL lists', () => {
+    expect(() =>
+      pipelineCreateFormSchema.parse({
+        name: 'Pipeline',
+        source: 'jobs.cz',
+        mode: 'crawl_only',
+        searchSpaceName: 'Search Space',
+        searchSpaceDescription: '',
+        startUrlsText: 'https://example.com/jobs\ninvalid-url-line',
+        maxItems: MAX_ITEMS_MAX,
+        allowInactiveMarking: false,
+        runtimeProfileName: 'Runtime',
+        crawlerMaxConcurrency: 2,
+        crawlerMaxRequestsPerMinute: 30,
+        ingestionConcurrency: 4,
+        includeMongoOutput: true,
+        includeDownloadableJson: false,
+        operatorMongoUri: 'mongodb://localhost:27017',
+        operatorDbName: 'pl_pipeline_sink_01',
+      }),
+    ).toThrow(/valid absolute URL/i);
+
+    expect(() =>
+      pipelineCreateFormSchema.parse({
+        name: 'Pipeline',
+        source: 'jobs.cz',
+        mode: 'crawl_only',
+        searchSpaceName: 'Search Space',
+        searchSpaceDescription: '',
+        startUrlsText: Array.from(
+          { length: START_URLS_MAX_COUNT + 1 },
+          (_, index) => `https://example.com/jobs?page=${index + 1}`,
+        ).join('\n'),
+        maxItems: MAX_ITEMS_MAX,
+        allowInactiveMarking: false,
+        runtimeProfileName: 'Runtime',
+        crawlerMaxConcurrency: 2,
+        crawlerMaxRequestsPerMinute: 30,
+        ingestionConcurrency: 4,
+        includeMongoOutput: true,
+        includeDownloadableJson: false,
+        operatorMongoUri: 'mongodb://localhost:27017',
+        operatorDbName: 'pl_pipeline_sink_01',
+      }),
+    ).toThrow(new RegExp(`At most ${START_URLS_MAX_COUNT} start URLs are allowed`, 'i'));
   });
 });
