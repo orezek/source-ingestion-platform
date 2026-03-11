@@ -7,8 +7,50 @@ import {
   listPipelines,
   listRuns,
 } from '@/lib/control-service-client';
+import type { ListControlPlaneRunsQuery } from '@/lib/contracts';
 
 export const dynamic = 'force-dynamic';
+
+const RUN_STATUSES = new Set<ListControlPlaneRunsQuery['status']>([
+  'queued',
+  'running',
+  'succeeded',
+  'completed_with_errors',
+  'failed',
+  'stopped',
+]);
+
+const toFirstString = (value: string | string[] | undefined): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.at(0);
+  }
+
+  return undefined;
+};
+
+const parseRunsQuery = (rawSearchParams: Record<string, string | string[] | undefined>) => {
+  const statusCandidate = toFirstString(rawSearchParams.status);
+  const limitCandidate = toFirstString(rawSearchParams.limit);
+  const parsedLimit = limitCandidate ? Number.parseInt(limitCandidate, 10) : undefined;
+
+  return listControlPlaneRunsQueryV2Schema.parse({
+    pipelineId: toFirstString(rawSearchParams.pipelineId),
+    status:
+      statusCandidate && RUN_STATUSES.has(statusCandidate as ListControlPlaneRunsQuery['status'])
+        ? statusCandidate
+        : undefined,
+    source: toFirstString(rawSearchParams.source),
+    limit:
+      parsedLimit && Number.isInteger(parsedLimit) && parsedLimit > 0 && parsedLimit <= 200
+        ? parsedLimit
+        : undefined,
+    cursor: toFirstString(rawSearchParams.cursor),
+  });
+};
 
 export default async function RunsPage({
   searchParams,
@@ -16,14 +58,7 @@ export default async function RunsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const rawSearchParams = await searchParams;
-  const query = listControlPlaneRunsQueryV2Schema.parse({
-    pipelineId:
-      typeof rawSearchParams.pipelineId === 'string' ? rawSearchParams.pipelineId : undefined,
-    status: typeof rawSearchParams.status === 'string' ? rawSearchParams.status : undefined,
-    source: typeof rawSearchParams.source === 'string' ? rawSearchParams.source : undefined,
-    limit: typeof rawSearchParams.limit === 'string' ? Number(rawSearchParams.limit) : undefined,
-    cursor: typeof rawSearchParams.cursor === 'string' ? rawSearchParams.cursor : undefined,
-  });
+  const query = parseRunsQuery(rawSearchParams);
 
   try {
     const [runs, pipelines] = await Promise.all([listRuns(query), listPipelines()]);

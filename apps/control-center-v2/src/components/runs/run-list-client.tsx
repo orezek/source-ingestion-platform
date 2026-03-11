@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyLabTray } from '@/components/state/empty-lab-tray';
 import { StatusBadge } from '@/components/state/status-badge';
 import { Button } from '@/components/ui/button';
@@ -24,11 +24,23 @@ import type {
 import { upsertRun, useControlStream } from '@/lib/live';
 import { formatDateTime } from '@/lib/utils';
 
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 200;
+
 function runMatchesFilter(run: ControlPlaneRun, filters: Partial<ListControlPlaneRunsQuery>) {
   if (filters.pipelineId && run.pipelineId !== filters.pipelineId) return false;
   if (filters.status && run.status !== filters.status) return false;
   if (filters.source && run.source !== filters.source) return false;
   return true;
+}
+
+function normalizeLimit(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_LIMIT;
+  }
+
+  return Math.min(parsed, MAX_LIMIT);
 }
 
 export function RunListClient({
@@ -48,9 +60,24 @@ export function RunListClient({
     pipelineId: filters.pipelineId ?? '',
     status: filters.status ?? '',
     source: filters.source ?? '',
-    limit: String(filters.limit ?? 20),
+    limit: String(filters.limit ?? DEFAULT_LIMIT),
   });
+
+  useEffect(() => {
+    setRuns(initialRuns);
+  }, [initialRuns]);
+
+  useEffect(() => {
+    setDraftFilters({
+      pipelineId: filters.pipelineId ?? '',
+      status: filters.status ?? '',
+      source: filters.source ?? '',
+      limit: String(filters.limit ?? DEFAULT_LIMIT),
+    });
+  }, [filters.limit, filters.pipelineId, filters.source, filters.status]);
+
   useControlStream({
+    pipelineId: filters.pipelineId,
     onRunUpserted: (run) => {
       setRuns((current) => {
         if (!runMatchesFilter(run, filters)) {
@@ -71,8 +98,8 @@ export function RunListClient({
     const params = new URLSearchParams();
     if (draftFilters.pipelineId) params.set('pipelineId', draftFilters.pipelineId);
     if (draftFilters.status) params.set('status', draftFilters.status);
-    if (draftFilters.source) params.set('source', draftFilters.source);
-    if (draftFilters.limit) params.set('limit', draftFilters.limit);
+    if (draftFilters.source.trim()) params.set('source', draftFilters.source.trim());
+    params.set('limit', String(normalizeLimit(draftFilters.limit)));
     router.push(params.toString() ? `/runs?${params.toString()}` : '/runs');
   };
 
@@ -133,6 +160,7 @@ export function RunListClient({
               Source
             </span>
             <Input
+              placeholder="jobs.cz"
               value={draftFilters.source}
               onChange={(event) =>
                 setDraftFilters((current) => ({ ...current, source: event.target.value }))
@@ -146,6 +174,8 @@ export function RunListClient({
               </span>
               <Input
                 type="number"
+                min={1}
+                max={MAX_LIMIT}
                 value={draftFilters.limit}
                 onChange={(event) =>
                   setDraftFilters((current) => ({ ...current, limit: event.target.value }))
